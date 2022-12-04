@@ -1924,7 +1924,7 @@ void Vector_Update_Jk_VAR(const double h[3], double Jk[3], double Jk0[3],
       a2 = (pk2 != 0) ? (-xkpk + sqrdelta) / pk2 : 0.;
       alpha_max = (a1 > a2) ? a1 : a2;
       gfkpk = gfk[0] * pk[0] + gfk[1] * pk[1] + gfk[2] * pk[2];
-      int k_ls = 1;
+      //int k_ls = 1;
       // while( gnorm > GTOL )
       // while(alpha*pknorm>TOL_DX)
       while(alpha * pknorm > TOL_DX && gnorm > GTOL) {
@@ -2001,7 +2001,7 @@ void Vector_Update_Jk_VAR(const double h[3], double Jk[3], double Jk0[3],
         else {
           alpha = alpha / 2;
         }
-        k_ls += 1;
+        //k_ls += 1;
       } // end first while
 
       if((gfkpk < 0) && ((alpha * pknorm < TOL_LOOSECRIT) || (gnorm <= GTOL)))
