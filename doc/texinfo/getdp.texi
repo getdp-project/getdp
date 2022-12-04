@@ -5374,10 +5374,11 @@ coordinates of the points).
 @{ @{ @var{expression-cst-list} @} @{ @var{expression-cst-list} @} @{ @var{expression-cst-list} @} @}@*
 @code{@{ @var{expression-cst}, @var{expression-cst} @}}
 
-To compute a quantity on a plane (specified by three points), with an
-associated number of divisions equal to each @var{expression-cst} along both
-generating directions. Each @var{expression-cst-list} must contain exactly
-three elements (the coordinates of the points).
+To compute a quantity on a plane (specified by three points: the origin
+and the end of the unit vectors), with an associated number of divisions
+equal to each @var{expression-cst} along both generating
+directions. Each @var{expression-cst-list} must contain exactly three
+elements (the coordinates of the points).
 
 @item OnBox
 @{ @{ @var{expression-cst-list} @} @{ @var{expression-cst-list} @} @{ @var{expression-cst-list} @}@*
