@@ -708,6 +708,11 @@ if(WALL AND NOT MSVC)
   file(GLOB_RECURSE WALL_SRC src/common/*.cpp src/interface/*.cpp src/kernel/*.cpp
        src/main/*.cpp src/numeric/*.cpp src/functions/*.cpp)
   set(WF "-Wall")
+  check_cxx_compiler_flag("-Wdeprecated-declarations" WDEPREC)
+  if(WDEPREC)
+    # FIXME: remove this when we have fixed the deprecated sprintf calls on macOS
+    set(WF "${WF} -Wno-deprecated-declarations")
+  endif()
   check_cxx_compiler_flag("-Wmisleading-indentation" WIND)
   if(WIND)
     set(WF "${WF} -Wno-misleading-indentation")
@@ -857,7 +862,7 @@ else()
   target_link_libraries(getdp ${LINK_LIBRARIES})
 endif()
 
-# Windows specific linker options
+# OS specific linker options
 if(WIN32 AND NOT MSVC)
   set(FLAGS "-Wl,--image-base -Wl,0x10000000 -static")
   set_target_properties(getdp PROPERTIES LINK_FLAGS "${FLAGS} -municode")
@@ -867,6 +872,8 @@ if(WIN32 AND NOT MSVC)
     set(CMAKE_EXE_LINK_DYNAMIC_C_FLAGS)
     set(CMAKE_EXE_LINK_DYNAMIC_CXX_FLAGS)
   endif()
+elseif(APPLE)
+  set_target_properties(getdp PROPERTIES LINK_FLAGS "-Wl,-no_compact_unwind")
 endif()
 
 # parser target
