@@ -877,11 +877,12 @@ void Treatment_Operation(struct Resolution *Resolution_P, List_T *Operation_L,
       Generate_System(DefineSystem_P, DofData_P, DofData_P0, Flag_Jac, 0,
                       cumulative);
 
-      if(Flag_Jac && !DofData_P->Flag_Only) {
-        if(Flag_AddMHMoving) {
-          LinAlg_AddMatrixMatrix(&DofData_P->A, &DofData_P->A_MH_moving,
-                                 &DofData_P->A);
-        }
+      if(Flag_AddMHMoving) {
+        LinAlg_AddMatrixMatrix(&DofData_P->A, &DofData_P->A_MH_moving,
+                               &DofData_P->A);
+      }
+
+      if(Flag_Jac && !DofData_P->Flag_Only) {  
         // compute full Jacobian J = A + JacNL, and store it in Jac
         LinAlg_AddMatrixMatrix(&DofData_P->A, &DofData_P->Jac, &DofData_P->Jac);
 
