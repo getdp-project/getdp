@@ -4782,10 +4782,12 @@ the @var{expression-cst}th solution in the solution list.
 @code{res <- b - Ax}
 
 @item CopySolution
-@code{[@var{system-id}, @var{char-expression} | @var{constant-id}() ]}
+@code{[@var{system-id}, @var{char-expression} | @var{constant-id}() <, SendToServer @var{char-expression} > ]}
 
 Copy the current solution @code{x} into a vector named
-@var{char-expression} or into a list named @var{constant-id}.
+@var{char-expression} or into a list named @var{constant-id}. In the
+latter case, if @code{SendToServer} is provided, copy the list to the
+ONELAB server as well.
 
 @item CopySolution
 @code{[@var{char-expression} | @var{constant-id}(), @var{system-id}]}
@@ -4794,10 +4796,12 @@ Copy the vector named @var{char-expression} or the list named
 @var{constant-id} into the current solution @code{x}.
 
 @item CopyRightHandSide
-@code{[@var{system-id}, @var{char-expression} | @var{constant-id}() ]}
+@code{[@var{system-id}, @var{char-expression} | @var{constant-id}() <, SendToServer @var{char-expression} > ]}
 
 Copy the current right-hand side @code{b} into a vector named
-@var{char-expression} or into a list named @var{constant-id}.
+@var{char-expression} or into a list named @var{constant-id}. In the
+latter case, if @code{SendToServer} is provided, copy the list to the
+ONELAB server as well.
 
 @item CopyRightHandSide
 @code{[@var{char-expression} | @var{constant-id}(), @var{system-id}]}
@@ -4806,10 +4810,12 @@ Copy the vector named @var{char-expression} or the list named
 @var{constant-id} into the current right-hand-side @code{b}.
 
 @item CopyResidual
-@code{[@var{system-id}, @var{char-expression} | @var{constant-id}() ]}
+@code{[@var{system-id}, @var{char-expression} | @var{constant-id}() <, SendToServer @var{char-expression} > ]}
 
 Copy the current residual into a vector named @var{char-expression} or
-into a list named @var{constant-id}.
+into a list named @var{constant-id}. In the latter case, if
+@code{SendToServer} is provided, copy the list to the ONELAB server as
+well.
 
 @item CopyResidual
 @code{[@var{char-expression} | @var{constant-id}(), @var{system-id}]}

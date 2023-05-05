@@ -116,6 +116,7 @@ public:
   static bool UseOnelab() { return _onelabClient ? true : false; }
   static std::string GetOnelabClientName();
   static void SetOnelabNumber(std::string name, double val);
+  static void SetOnelabNumbers(std::string name, const std::vector<double> &val);
   static void SetOnelabString(std::string name, std::string val);
   static double GetOnelabNumber(std::string name, double defaultValue = 0.,
                                 bool errorIfMissing = false);

@@ -903,6 +903,21 @@ void Message::SetOnelabNumber(std::string name, double val)
   }
 }
 
+void Message::SetOnelabNumbers(std::string name, const std::vector<double> &val)
+{
+  if(_onelabClient) {
+    std::vector<onelab::number> numbers;
+    // get if first so we can keep its options
+    _onelabClient->get(numbers, name);
+    if(numbers.empty()) {
+      numbers.resize(1);
+      numbers[0].setName(name);
+    }
+    numbers[0].setValues(val);
+    _onelabClient->set(numbers[0]);
+  }
+}
+
 void Message::SetOnelabString(std::string name, std::string val)
 {
   if(_onelabClient) {

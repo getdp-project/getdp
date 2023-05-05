@@ -231,6 +231,8 @@ void Operation_CopyVector(struct Operation *Operation_P,
         }
       }
       GetDPNumbers[Operation_P->Case.Copy.to] = v;
+      if(Operation_P->Case.Copy.SendToServer)
+        Message::SetOnelabNumbers(Operation_P->Case.Copy.SendToServer, v);
     }
     LinAlg_DestroyVector(&tmp);
   }

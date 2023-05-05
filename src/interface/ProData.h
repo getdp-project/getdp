@@ -1237,7 +1237,7 @@ struct Operation {
     } ClearVectors;
     struct {
       int useList;
-      char *from, *to;
+      char *from, *to, *SendToServer;
     } Copy;
     struct {
       int alphaIndex, betaIndex;

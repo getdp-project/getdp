@@ -6149,6 +6149,7 @@ OperationTerm :
       Operation_P->Case.Copy.useList = 0 ;
       Operation_P->Case.Copy.to = $5 ;
       Operation_P->Case.Copy.from = 0 ;
+      Operation_P->Case.Copy.SendToServer = NULL;
     }
 
   | CopyOperation '[' String__Index ',' String__Index '(' ')' ']' tEND
@@ -6164,6 +6165,24 @@ OperationTerm :
       Operation_P->Case.Copy.useList = 1 ;
       Operation_P->Case.Copy.to = $5 ;
       Operation_P->Case.Copy.from = 0 ;
+      Operation_P->Case.Copy.SendToServer = NULL;
+    }
+
+  | CopyOperation '[' String__Index ',' String__Index '(' ')' ','
+                      tSendToServer CharExpr ']' tEND
+    { Operation_P = (struct Operation*)
+	List_Pointer(Operation_L, List_Nbr(Operation_L)-1) ;
+      Operation_P->Type = $1;
+      int i;
+      if ((i = List_ISearchSeq(Resolution_S.DefineSystem, $3,
+			       fcmp_DefineSystem_Name)) < 0)
+	vyyerror(0, "Unknown System: %s", $3) ;
+      Free($3) ;
+      Operation_P->DefineSystemIndex = i ;
+      Operation_P->Case.Copy.useList = 1 ;
+      Operation_P->Case.Copy.to = $5 ;
+      Operation_P->Case.Copy.from = 0 ;
+      Operation_P->Case.Copy.SendToServer = $10;
     }
 
   | CopyOperation '[' CharExprNoVar ',' String__Index ']' tEND
@@ -6179,6 +6198,7 @@ OperationTerm :
       Operation_P->Case.Copy.useList = 0 ;
       Operation_P->Case.Copy.to = 0 ;
       Operation_P->Case.Copy.from = $3 ;
+      Operation_P->Case.Copy.SendToServer = NULL;
     }
 
   | CopyOperation '[' String__Index '(' ')' ',' String__Index ']' tEND
@@ -6194,6 +6214,7 @@ OperationTerm :
       Operation_P->Case.Copy.useList = 1 ;
       Operation_P->Case.Copy.to = 0 ;
       Operation_P->Case.Copy.from = $3 ;
+      Operation_P->Case.Copy.SendToServer = NULL;
     }
 
   | tOptimizerInitialize '[' CharExpr ',' CharExpr ','
