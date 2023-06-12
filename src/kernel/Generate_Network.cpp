@@ -76,6 +76,37 @@ struct ConstraintActive *Generate_Network(char *Name,
       MatNode[i - 1][j] = 1;
   }
 
+  /* Fill matrix MatLoop */
+
+  char FileName[256];
+  strcpy(FileName, Name_Path);
+  strcat(FileName, Name);
+  strcat(FileName, ".cache");
+
+  if(Flag_NETWORK_CACHE) {
+    FILE *fp = fopen(FileName, "r");
+    if(fp) {
+      Message::Info("Reading network cache '%s'", FileName);
+      int n;
+      if(fscanf(fp, "%d", &n) != 1) { Message::Error("Bad cache file"); }
+      for(int l = 0; l < n; l++) {
+        int i, j, val;
+        if(fscanf(fp, "%d %d %d", &i, &j, &val) != 3) {
+          Message::Error("Bad cache file");
+        }
+        if(i < Nbr_Loop && j < Nbr_Branch)
+          MatLoop[i][j] = val;
+        else
+          Message::Error("Invalid network cache entry");
+      }
+      fclose(fp);
+      return Active;
+    }
+    else {
+      Message::Info("Did not find network cache '%s': generating it", FileName);
+    }
+  }
+
   /* Transformation of MatNode -> MatA ... Welsh algorithm */
 
   int **MatA = (int **)Malloc(n * sizeof(int *));
@@ -134,37 +165,6 @@ struct ConstraintActive *Generate_Network(char *Name,
 
   /* Matrix Loop - Branch */
 
-  char FileName[256];
-  strcpy(FileName, Name_Path);
-  strcat(FileName, Name);
-  strcat(FileName, ".cache");
-
-  if(Flag_NETWORK_CACHE) {
-    FILE *fp = fopen(FileName, "r");
-    if(fp) {
-      Message::Info("Reading network cache '%s'", FileName);
-      int n;
-      if(fscanf(fp, "%d", &n) != 1) { Message::Error("Bad cache file"); }
-      for(int l = 0; l < n; l++) {
-        int i, j, val;
-        if(fscanf(fp, "%d %d %d", &i, &j, &val) != 3) {
-          Message::Error("Bad cache file");
-        }
-        if(i < Nbr_Loop && j < Nbr_Branch)
-          MatLoop[i][j] = val;
-        else
-          Message::Error("Invalid network cache entry");
-      }
-      fclose(fp);
-      return Active;
-    }
-    else {
-      Message::Info("Did not find network cache '%s': generating it", FileName);
-    }
-  }
-
-  Message::ResetProgressMeter();
-  int idx = 0;
   //#pragma omp parallel for
   for(int i = 0; i < Nbr_Loop; i++) {
     int ni = Num_col[n + i];
@@ -178,8 +178,9 @@ struct ConstraintActive *Generate_Network(char *Name,
     }
     for(int j = 0; j < Nbr_Loop; j++) /* Unit matrix */
       MatLoop[i][Num_col[n + j]] = (j == i) ? 1 : 0;
-    Message::ProgressMeter(++idx, Nbr_Loop, "Processing (Generate Network)");
   }
+
+  // FIXME: deallocate MatA, Flag_row and Num_col
 
   if(Flag_NETWORK_CACHE) {
     FILE *fp = fopen(FileName, "w");
