@@ -39,8 +39,9 @@ struct ConstraintActive *Generate_Network(char *Name,
   int n = List_Nbr(ListInt_L) - 1; /* Nbr_Node - 1 */
   int Nbr_Loop = Nbr_Branch - n; /* Nbr of independent loops */
 
-  Message::Info("Network has %d branch(es), %d node(s) and %d loop(s)",
-                Nbr_Branch, n + 1, Nbr_Loop);
+  Message::Info("Generating network %s (%d branch%s, %d node%s and %d loop%s)...",
+                Name, Nbr_Branch, (Nbr_Branch > 1) ? "s" : "", n + 1,
+                (n + 1) > 1 ? "s" : "", Nbr_Loop, (Nbr_Loop > 1) ? "s" : "");
 
   /* Active data */
 
@@ -86,7 +87,7 @@ struct ConstraintActive *Generate_Network(char *Name,
   if(Flag_NETWORK_CACHE) {
     FILE *fp = fopen(FileName, "r");
     if(fp) {
-      Message::Info("Reading network cache '%s'", FileName);
+      Message::Info("Reading network cache '%s'...", FileName);
       int n;
       if(fscanf(fp, "%d", &n) != 1) { Message::Error("Bad cache file"); }
       for(int l = 0; l < n; l++) {
@@ -100,6 +101,8 @@ struct ConstraintActive *Generate_Network(char *Name,
           Message::Error("Invalid network cache entry");
       }
       fclose(fp);
+      Message::Info("Done reading network cache '%s'", FileName);
+      Message::Info("Done generating network %s", Name);
       return Active;
     }
     else {
@@ -121,6 +124,8 @@ struct ConstraintActive *Generate_Network(char *Name,
   for(int i = 0; i < n; i++) Flag_row[i] = 0;
 
   int j_col1 = 0, j_col2 = n;
+
+  Message::Info("... begin Welsh algorithm");
 
   for(int j = 0; j < Nbr_Branch; j++) {
     int i = 0;
@@ -151,6 +156,8 @@ struct ConstraintActive *Generate_Network(char *Name,
         Message::Error("Bad network");
     }
   }
+
+  Message::Info("... end Welsh algorithm");
 
   /*
   printf ("\nMatNode transformed:\n\n") ;
@@ -204,5 +211,6 @@ struct ConstraintActive *Generate_Network(char *Name,
     }
   }
 
+  Message::Info("Done generating network");
   return Active;
 }
