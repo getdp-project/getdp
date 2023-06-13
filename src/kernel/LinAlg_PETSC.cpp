@@ -109,7 +109,7 @@ void LinAlg_InitializeSolver(int *argc, char ***argv)
 #if(PETSC_VERSION_MAJOR == 2)
       PetscOptionsInsertFile((*argv)[i + 1]);
 #else
-      PetscOptionsInsertFile(MyComm, (*argv)[i + 1], PETSC_FALSE);
+      PetscOptionsInsertFile(MyComm, (*argv)[i + 1], PETSC_TRUE);
 #endif
     }
   }
@@ -197,25 +197,36 @@ static void _fillseq(gVector *V)
 
 void LinAlg_CreateMatrix(gMatrix *M, gSolver *Solver, int n, int m)
 {
-  PetscInt prealloc = 100.;
-  PetscInt prealloc_full = n;
+  PetscInt prealloc = 100., prealloc_full = n, prealloc_full_last = 0;
   int nonloc = Current.DofData->NonLocalEquations.size();
+
   // heuristic for preallocation of global rows: don't prelloc more than 500 Mb
   double limit = 500. * 1024. * 1024. / (gSCALAR_SIZE * sizeof(double));
   double estim = (double)nonloc * (double)n;
   if(estim > limit) {
     prealloc_full = (int)(limit / nonloc);
-    Message::Debug("Heuristic -petsc_prealloc_full changed to %d",
-                   prealloc_full);
+    Message::Debug("Heuristic PETSc prealloc_full changed to %d", prealloc_full);
   }
 
-  PetscTruth set;
-  PetscOptionsGetInt(PETSC_NULL, "-petsc_prealloc", &prealloc, &set);
-  PetscOptionsGetInt(PETSC_NULL, "-petsc_prealloc_full", &prealloc_full, &set);
+  PetscTruth set_prealloc, set_prealloc_full, set_prealloc_full_last;
+  PetscOptionsGetInt(PETSC_NULL, "-petsc_prealloc", &prealloc,
+                     &set_prealloc);
+  PetscOptionsGetInt(PETSC_NULL, "-petsc_prealloc_full", &prealloc_full,
+                     &set_prealloc_full);
+  PetscOptionsGetInt(PETSC_NULL, "-petsc_prealloc_full_last", &prealloc_full_last,
+                     &set_prealloc_full_last);
 
   // prealloc cannot be bigger than the number of rows!
-  prealloc = (n < prealloc) ? n : prealloc;
-  prealloc_full = (n < prealloc_full) ? n : prealloc_full;
+  prealloc = (prealloc > n) ? n : prealloc;
+  prealloc_full = (prealloc_full > n) ? n : prealloc_full;
+  prealloc_full_last = (prealloc_full_last > n) ? n : prealloc_full_last;
+
+  if(set_prealloc)
+    Message::Info("Setting PETSc prealloc to %d", prealloc);
+  if(set_prealloc_full)
+    Message::Info("Setting PETSc prealloc_full to %d", prealloc_full);
+  if(set_prealloc_full_last)
+    Message::Info("Setting PETSc prealloc_full_last to %d", prealloc_full_last);
 
   std::vector<PetscInt> nnz(n, prealloc);
 
@@ -225,6 +236,9 @@ void LinAlg_CreateMatrix(gMatrix *M, gSolver *Solver, int n, int m)
   // in the AIJ matrix format)
   for(int i = 0; i < nonloc; i++)
     nnz[Current.DofData->NonLocalEquations[i] - 1] = prealloc_full;
+
+  for(int i = n - prealloc_full_last - 1; i < n; i++)
+    nnz[i] = n;
 
   if(Message::GetCommSize() > 1) { // FIXME: alloc full lines...
 #if((PETSC_VERSION_MAJOR == 3) && (PETSC_VERSION_MINOR >= 3))
