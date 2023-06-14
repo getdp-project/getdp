@@ -180,7 +180,7 @@ static void ZeroMatrix(gMatrix *M, gSolver *S, int N)
   // LinAlg_ZeroMatrix preserves the mask from iteration to iteration, which
   // increases memory every time we reassemble.
   LinAlg_DestroyMatrix(M);
-  LinAlg_CreateMatrix(M, S, N, N);
+  LinAlg_CreateMatrix(M, S, N, N, true);
 }
 
 void ExtrapolatingPolynomial(int degreewanted, struct DofData *DofData_P,
@@ -792,7 +792,6 @@ void Treatment_Operation(struct Resolution *Resolution_P, List_T *Operation_L,
   int row_old, row_new, col_old, col_new;
 
   double aii, ajj;
-  int nnz__;
 
   List_T *DofList_MH_moving;
   static int NbrDof_MH_moving;
@@ -882,7 +881,7 @@ void Treatment_Operation(struct Resolution *Resolution_P, List_T *Operation_L,
                                &DofData_P->A);
       }
 
-      if(Flag_Jac && !DofData_P->Flag_Only) {  
+      if(Flag_Jac && !DofData_P->Flag_Only) {
         // compute full Jacobian J = A + JacNL, and store it in Jac
         LinAlg_AddMatrixMatrix(&DofData_P->A, &DofData_P->Jac, &DofData_P->Jac);
 
@@ -2236,7 +2235,6 @@ void Treatment_Operation(struct Resolution *Resolution_P, List_T *Operation_L,
       //                     Current.DofData->NbrDof) ;
       // LinAlg_ZeroVector(&b_MH_moving_tmp) ;
 
-      nnz__ = 0;
       for(int i = 0; i < NbrDof_MH_moving; i++) {
         for(int k = 0; k < Current.NbrHar; k++) {
           row_old = Current.NbrHar * i + k;
@@ -2259,7 +2257,6 @@ void Treatment_Operation(struct Resolution *Resolution_P, List_T *Operation_L,
                 if(d * d > 1e-12 * aii * ajj) {
                   LinAlg_AddDoubleInMatrix(d, &A_MH_moving_tmp, col_new,
                                            row_new);
-                  nnz__++;
                 }
               }
               else {
@@ -2268,7 +2265,6 @@ void Treatment_Operation(struct Resolution *Resolution_P, List_T *Operation_L,
                     (row_new == col_new))) {
                   LinAlg_AddDoubleInMatrix(d, &A_MH_moving_tmp, col_new,
                                            row_new);
-                  nnz__++;
                 }
               }
             }

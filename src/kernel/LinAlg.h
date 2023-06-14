@@ -96,7 +96,7 @@ void LinAlg_SetCommWorld();
 void LinAlg_CreateSolver(gSolver *Solver, const char *SolverDataFileName);
 void LinAlg_SetGlobalSolverOptions(const std::string &opt);
 void LinAlg_CreateVector(gVector *V, gSolver *Solver, int n);
-void LinAlg_CreateMatrix(gMatrix *M, gSolver *Solver, int n, int m);
+void LinAlg_CreateMatrix(gMatrix *M, gSolver *Solver, int n, int m, bool silent=false);
 
 void LinAlg_DestroySolver(gSolver *Solver);
 void LinAlg_DestroyVector(gVector *V);

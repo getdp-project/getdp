@@ -195,7 +195,7 @@ static void _fillseq(gVector *V)
   if(V->haveSeq) _fillseq(V->V, V->Vseq);
 }
 
-void LinAlg_CreateMatrix(gMatrix *M, gSolver *Solver, int n, int m)
+void LinAlg_CreateMatrix(gMatrix *M, gSolver *Solver, int n, int m, bool silent)
 {
   PetscInt prealloc = 100., prealloc_full = n, prealloc_full_last = 0;
   int nonloc = Current.DofData->NonLocalEquations.size();
@@ -221,11 +221,11 @@ void LinAlg_CreateMatrix(gMatrix *M, gSolver *Solver, int n, int m)
   prealloc_full = (prealloc_full > n) ? n : prealloc_full;
   prealloc_full_last = (prealloc_full_last > n) ? n : prealloc_full_last;
 
-  if(set_prealloc)
+  if(!silent && set_prealloc)
     Message::Info("Setting PETSc prealloc to %d", prealloc);
-  if(set_prealloc_full)
+  if(!silent && set_prealloc_full)
     Message::Info("Setting PETSc prealloc_full to %d", prealloc_full);
-  if(set_prealloc_full_last)
+  if(!silent && set_prealloc_full_last)
     Message::Info("Setting PETSc prealloc_full_last to %d", prealloc_full_last);
 
   std::vector<PetscInt> nnz(n, prealloc);
