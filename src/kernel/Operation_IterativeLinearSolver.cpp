@@ -83,11 +83,11 @@ public:
   static bool areNeighbor;
   // number of field that this process must receive
   int nb_field_to_receive;
-  std::vector<std::vector<PetscInt> > myN;
+  std::vector<std::vector<int> > myN;
   // sizes of vectors of PView that this process is in charge
-  std::vector<std::vector<PetscInt> > mySizeV;
-  std::vector<std::vector<PetscInt> > theirN;
-  std::vector<std::vector<PetscInt> > theirSizeV;
+  std::vector<std::vector<int> > mySizeV;
+  std::vector<std::vector<int> > theirN;
+  std::vector<std::vector<int> > theirSizeV;
   // GmshTag of the fields that must be received by the current MPI processe
   // (concatenation of myNeighbor)
   std::vector<PetscInt> FieldToReceive;
@@ -622,7 +622,7 @@ PETSc_Vec_to_STD_Vec(Vec petsc_vec, ILSField *Local,
     int nb_element = Local->size[cpt_view];
     int iStart = Local->iStart[cpt_view];
     for(int j = 0; j < nb_element; j++) {
-      int cpt = iStart + j;
+      PetscInt cpt = iStart + j;
       if(Current.NbrHar == 2) {
 #if defined(PETSC_USE_COMPLEX)
         _try(VecGetValues(petsc_vec, 1, &cpt, &val));
@@ -769,8 +769,9 @@ static PetscErrorCode MatMultILSMat(Mat A, Vec X, Vec Y)
 // Used to, e.g., study eigenvalues of the operators
 static PetscErrorCode BuildIterationMatrix(Mat A, Mat *IterationMatrix)
 {
+  int n_proc;
   const PetscScalar one = 1., zero = 0.;
-  PetscInt n_proc, m, n, m_loc, n_loc;
+  PetscInt m, n, m_loc, n_loc;
   PetscInt m_start, m_end, vec_m_start, vec_m_end;
 
   _try(MPI_Comm_size(PETSC_COMM_WORLD, &n_proc));
@@ -792,7 +793,7 @@ static PetscErrorCode BuildIterationMatrix(Mat A, Mat *IterationMatrix)
   _try(VecDuplicate(ej, &Aej));
   _try(VecGetOwnershipRange(ej, &vec_m_start, &vec_m_end));
 
-  for(int cpt = 0; cpt < n; cpt++) {
+  for(PetscInt cpt = 0; cpt < n; cpt++) {
     Message::Info(3, "Column number %d over %d", cpt, n - 1);
     std::vector<PetscScalar> vec_temp(n);
     _try(VecSet(ej, zero));
