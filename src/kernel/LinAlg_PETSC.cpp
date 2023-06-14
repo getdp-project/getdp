@@ -237,8 +237,10 @@ void LinAlg_CreateMatrix(gMatrix *M, gSolver *Solver, int n, int m, bool silent)
   for(int i = 0; i < nonloc; i++)
     nnz[Current.DofData->NonLocalEquations[i] - 1] = prealloc_full;
 
-  for(int i = n - prealloc_full_last - 1; i < n; i++)
-    nnz[i] = n;
+  if(n > 0) {
+    for(int i = n - prealloc_full_last - 1; i < n; i++)
+      nnz[i] = n;
+  }
 
   if(Message::GetCommSize() > 1) { // FIXME: alloc full lines...
 #if((PETSC_VERSION_MAJOR == 3) && (PETSC_VERSION_MINOR >= 3))
