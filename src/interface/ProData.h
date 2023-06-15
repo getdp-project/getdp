@@ -34,6 +34,7 @@
 
 #define ASSEMBLY_AGGREGATE 1
 #define ASSEMBLY_SEPARATE 2
+#define ASSEMBLY_SPARSITY_PATTERN 3
 
 /* ------------------------------------------------------------------------ */
 /*  V a l u e                                                               */

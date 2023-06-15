@@ -195,54 +195,54 @@ static void _fillseq(gVector *V)
   if(V->haveSeq) _fillseq(V->V, V->Vseq);
 }
 
+std::set<std::pair<int, int>> SparsityPattern;
+
 void LinAlg_CreateMatrix(gMatrix *M, gSolver *Solver, int n, int m, bool silent)
 {
-  PetscInt prealloc = 100., prealloc_full = n, prealloc_full_last = 0;
-  int nonloc = Current.DofData->NonLocalEquations.size();
+  PetscInt prealloc = 100.;
+  std::vector<PetscInt> nnz;
 
-  // heuristic for preallocation of global rows: don't prelloc more than 500 Mb
-  double limit = 500. * 1024. * 1024. / (gSCALAR_SIZE * sizeof(double));
-  double estim = (double)nonloc * (double)n;
-  if(estim > limit) {
-    prealloc_full = (int)(limit / nonloc);
-    Message::Debug("Heuristic PETSc prealloc_full changed to %d", prealloc_full);
+  if(Message::GetCommSize() > 1 || SparsityPattern.empty()) { // use heuristics
+    PetscInt prealloc_full = n;
+    int nonloc = Current.DofData->NonLocalEquations.size();
+
+    // heuristic for preallocation of global rows: don't prelloc more than 500 Mb
+    double limit = 500. * 1024. * 1024. / (gSCALAR_SIZE * sizeof(double));
+    double estim = (double)nonloc * (double)n;
+    if(estim > limit) {
+      prealloc_full = (int)(limit / nonloc);
+      Message::Debug("Heuristic PETSc prealloc_full changed to %d", prealloc_full);
+    }
+
+    PetscTruth set_prealloc, set_prealloc_full;
+    PetscOptionsGetInt(PETSC_NULL, "-petsc_prealloc", &prealloc,
+                       &set_prealloc);
+    PetscOptionsGetInt(PETSC_NULL, "-petsc_prealloc_full", &prealloc_full,
+                       &set_prealloc_full);
+
+    // prealloc cannot be bigger than the number of rows!
+    prealloc = (prealloc > n) ? n : prealloc;
+    prealloc_full = (prealloc_full > n) ? n : prealloc_full;
+
+    if(!silent && set_prealloc)
+      Message::Info("Setting PETSc prealloc to %d", prealloc);
+    if(!silent && set_prealloc_full)
+      Message::Info("Setting PETSc prealloc_full to %d", prealloc_full);
+
+    nnz.resize(n, prealloc);
+
+    // preallocate non local equations as full lines (this is not optimal, but
+    // preallocating too few elements leads to horrible assembly performance:
+    // petsc really sucks at dynamic reallocation in the AIJ matrix format)
+    for(int i = 0; i < nonloc; i++)
+      nnz[Current.DofData->NonLocalEquations[i] - 1] = prealloc_full;
+  }
+  else {
+    nnz.resize(n, 0);
+    for(auto p : SparsityPattern) nnz[p.first]++;
   }
 
-  PetscTruth set_prealloc, set_prealloc_full, set_prealloc_full_last;
-  PetscOptionsGetInt(PETSC_NULL, "-petsc_prealloc", &prealloc,
-                     &set_prealloc);
-  PetscOptionsGetInt(PETSC_NULL, "-petsc_prealloc_full", &prealloc_full,
-                     &set_prealloc_full);
-  PetscOptionsGetInt(PETSC_NULL, "-petsc_prealloc_full_last", &prealloc_full_last,
-                     &set_prealloc_full_last);
-
-  // prealloc cannot be bigger than the number of rows!
-  prealloc = (prealloc > n) ? n : prealloc;
-  prealloc_full = (prealloc_full > n) ? n : prealloc_full;
-  prealloc_full_last = (prealloc_full_last > n) ? n : prealloc_full_last;
-
-  if(!silent && set_prealloc)
-    Message::Info("Setting PETSc prealloc to %d", prealloc);
-  if(!silent && set_prealloc_full)
-    Message::Info("Setting PETSc prealloc_full to %d", prealloc_full);
-  if(!silent && set_prealloc_full_last)
-    Message::Info("Setting PETSc prealloc_full_last to %d", prealloc_full_last);
-
-  std::vector<PetscInt> nnz(n, prealloc);
-
-  // preallocate non local equations as full lines (this is not
-  // optimal, but preallocating too few elements leads to horrible
-  // assembly performance: petsc really sucks at dynamic reallocation
-  // in the AIJ matrix format)
-  for(int i = 0; i < nonloc; i++)
-    nnz[Current.DofData->NonLocalEquations[i] - 1] = prealloc_full;
-
-  if(n > 0) {
-    for(int i = n - prealloc_full_last - 1; i < n; i++)
-      nnz[i] = n;
-  }
-
-  if(Message::GetCommSize() > 1) { // FIXME: alloc full lines...
+  if(Message::GetCommSize() > 1) { // FIXME: use nnz
 #if((PETSC_VERSION_MAJOR == 3) && (PETSC_VERSION_MINOR >= 3))
     _try(MatCreateAIJ(MyComm, PETSC_DECIDE, PETSC_DECIDE, n, m, prealloc,
                       PETSC_NULL, prealloc, PETSC_NULL, &M->M));

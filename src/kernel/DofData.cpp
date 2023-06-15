@@ -1461,6 +1461,8 @@ void Dof_UpdateLinkDof(int D1, int D2, int NbrHar, double Value[], int D2_Link)
 /*  D o f _ A s s e m b l e I n M a t                                       */
 /* ------------------------------------------------------------------------ */
 
+extern std::set<std::pair<int, int>> SparsityPattern;
+
 void Dof_AssembleInMat(struct Dof *Equ_P, struct Dof *Dof_P, int NbrHar,
                        double *Val, gMatrix *Mat, gVector *Vec, List_T *Vecs)
 {
@@ -1474,16 +1476,22 @@ void Dof_AssembleInMat(struct Dof *Equ_P, struct Dof *Dof_P, int NbrHar,
     switch(Dof_P->Type) {
     case DOF_UNKNOWN:
       if(Current.DofData->Flag_RHS) break;
-      if(NbrHar == 1) {
-        LinAlg_AddDoubleInMatrix(Val[0], Mat, Equ_P->Case.Unknown.NumDof - 1,
-                                 Dof_P->Case.Unknown.NumDof - 1);
+      if(Current.TypeAssembly == ASSEMBLY_SPARSITY_PATTERN) {
+        SparsityPattern.insert(std::make_pair(Equ_P->Case.Unknown.NumDof - 1,
+                                              Dof_P->Case.Unknown.NumDof - 1));
       }
-      else
-        LinAlg_AddComplexInMatrix(
-          Val[0], Val[1], Mat, Equ_P->Case.Unknown.NumDof - 1,
-          Dof_P->Case.Unknown.NumDof - 1,
-          (gSCALAR_SIZE == 1) ? ((Equ_P + 1)->Case.Unknown.NumDof - 1) : -1,
-          (gSCALAR_SIZE == 1) ? ((Dof_P + 1)->Case.Unknown.NumDof - 1) : -1);
+      else {
+        if(NbrHar == 1) {
+          LinAlg_AddDoubleInMatrix(Val[0], Mat, Equ_P->Case.Unknown.NumDof - 1,
+                                   Dof_P->Case.Unknown.NumDof - 1);
+        }
+        else
+          LinAlg_AddComplexInMatrix(
+            Val[0], Val[1], Mat, Equ_P->Case.Unknown.NumDof - 1,
+            Dof_P->Case.Unknown.NumDof - 1,
+            (gSCALAR_SIZE == 1) ? ((Equ_P + 1)->Case.Unknown.NumDof - 1) : -1,
+            (gSCALAR_SIZE == 1) ? ((Dof_P + 1)->Case.Unknown.NumDof - 1) : -1);
+      }
       break;
 
     case DOF_FIXED:

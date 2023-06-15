@@ -441,11 +441,26 @@ void Generate_System(struct DefineSystem *DefineSystem_P,
 
   Nbr_Formulation = List_Nbr(DefineSystem_P->FormulationIndex);
 
+  bool sparsity = true;
+  if(sparsity) {
+    int old = Current.TypeAssembly;
+    Current.TypeAssembly = ASSEMBLY_SPARSITY_PATTERN;
+    for(int i = 0; i < Nbr_Formulation; i++) {
+      List_Read(DefineSystem_P->FormulationIndex, i, &Index_Formulation);
+      Formulation_P = (struct Formulation *)List_Pointer(Problem_S.Formulation,
+                                                         Index_Formulation);
+      Init_DofDataInDefineQuantity(DefineSystem_P, DofData_P0, Formulation_P);
+      Treatment_Formulation(Formulation_P);
+    }
+    ZeroMatrix(&Current.DofData->A, &Current.DofData->Solver,
+               Current.DofData->NbrDof);
+    Current.TypeAssembly = old;
+  }
+
   for(int i = 0; i < Nbr_Formulation; i++) {
     List_Read(DefineSystem_P->FormulationIndex, i, &Index_Formulation);
     Formulation_P = (struct Formulation *)List_Pointer(Problem_S.Formulation,
                                                        Index_Formulation);
-
     Init_DofDataInDefineQuantity(DefineSystem_P, DofData_P0, Formulation_P);
     Treatment_Formulation(Formulation_P);
   }

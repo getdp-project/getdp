@@ -730,6 +730,18 @@ void Cal_GalerkinTermOfFemEquation(struct Element *Element,
         for(j = 0; j < Nbr_Dof; j++)
           for(k = 0; k < Current.NbrHar; k++) Ek[i][j][k] = 0.;
 
+
+    if(Current.TypeAssembly == ASSEMBLY_SPARSITY_PATTERN) {
+      for(i = 0; i < Nbr_Equ; i++)
+        for(j = 0; j < Nbr_Dof; j++)
+          ((void (*)(struct Dof *, struct Dof *,
+                     double *))FI->Function_AssembleTerm)(
+            QuantityStorageEqu_P->BasisFunction[i].Dof,
+            QuantityStorageDof_P->BasisFunction[j].Dof, Ek[i][j]);
+      if(FI->Type_DefineQuantityDof != INTEGRALQUANTITY) break;
+      continue;
+    }
+
     switch(IntegrationCase_P->Type) {
       /*  -------------------------------------  */
       /*  Q U A D R A T U R E                    */
