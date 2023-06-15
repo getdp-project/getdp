@@ -40,7 +40,7 @@ struct ConstraintActive *Generate_Network(char *Name,
   int Nbr_Loop = Nbr_Branch - n; /* Nbr of independent loops */
 
   Message::Info("Generating network %s (%d branch%s, %d node%s and %d loop%s)...",
-                Name, Nbr_Branch, (Nbr_Branch > 1) ? "s" : "", n + 1,
+                Name, Nbr_Branch, (Nbr_Branch > 1) ? "es" : "", n + 1,
                 (n + 1) > 1 ? "s" : "", Nbr_Loop, (Nbr_Loop > 1) ? "s" : "");
 
   /* Active data */
