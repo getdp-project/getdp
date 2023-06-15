@@ -239,7 +239,8 @@ void LinAlg_CreateMatrix(gMatrix *M, gSolver *Solver, int n, int m, bool silent)
       nnz[Current.DofData->NonLocalEquations[i] - 1] = prealloc_full;
   }
   else {
-    nnz.resize(n, 0);
+    // we add 1 to account for forced non-zero diagonal enforced below
+    nnz.resize(n, 1);
     for(auto p : SparsityPattern) nnz[p.first]++;
   }
 
@@ -255,7 +256,6 @@ void LinAlg_CreateMatrix(gMatrix *M, gSolver *Solver, int n, int m, bool silent)
   else {
     _try(MatCreateSeqAIJ(PETSC_COMM_SELF, n, m, 0, &nnz[0], &M->M));
     // PETSc (I)LU does not like matrices with empty (non assembled) diagonals
-
     for(int i = 0; i < n; i++) {
       PetscInt ti = i;
       PetscScalar d = 0.;
@@ -265,13 +265,10 @@ void LinAlg_CreateMatrix(gMatrix *M, gSolver *Solver, int n, int m, bool silent)
     _try(MatAssemblyEnd(M->M, MAT_FLUSH_ASSEMBLY));
   }
 
-  // MatSetOption(M->M, MAT_NEW_NONZERO_ALLOCATION_ERR, PETSC_FALSE);
-
 #if((PETSC_VERSION_MAJOR == 3) && (PETSC_VERSION_MINOR >= 3))
-  // Preallocation routines automatically set now
-  // MAT_NEW_NONZERO_ALLOCATION_ERR, what causes a problem when the mask of the
-  // matrix changes (e.g. moving band) We must disable the error generation and
-  // allow new allocation (if needed)
+  // Preallocation routines automatically set this to true, which causes a
+  // problem when the mask of the matrix changes (e.g. moving band), where we
+  // must allow (some) new allocations
   _try(MatSetOption(M->M, MAT_NEW_NONZERO_ALLOCATION_ERR, PETSC_FALSE));
 #endif
 
