@@ -225,9 +225,6 @@ void Cal_FemGlobalEquation(struct EquationTerm *EquationTerm_P,
 
     for(i_Loop = 0; i_Loop < MCPR_P->Active->Case.Network.NbrLoop; i_Loop++) {
 
-      printf("assembling global row %d\n",
-             DofGlobal_Equ[Num_Equ].Dof->Case.Unknown.NumDof - 1);
-
       for(j_Branch = 0; j_Branch < MCPR_P->Active->Case.Network.NbrBranch;
           j_Branch++) {
         if(MCPR_P->Active->Case.Network.MatLoop[i_Loop][j_Branch]) {
