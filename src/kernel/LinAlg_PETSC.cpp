@@ -195,6 +195,7 @@ static void _fillseq(gVector *V)
   if(V->haveSeq) _fillseq(V->V, V->Vseq);
 }
 
+#include <set>
 std::set<std::pair<int, int>> SparsityPattern;
 
 void LinAlg_CreateMatrix(gMatrix *M, gSolver *Solver, int n, int m, bool silent)
