@@ -211,6 +211,6 @@ struct ConstraintActive *Generate_Network(char *Name,
     }
   }
 
-  Message::Info("Done generating network");
+  Message::Info("Done generating network %s", Name);
   return Active;
 }
