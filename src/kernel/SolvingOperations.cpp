@@ -453,8 +453,14 @@ void Generate_System(struct DefineSystem *DefineSystem_P,
       Init_DofDataInDefineQuantity(DefineSystem_P, DofData_P0, Formulation_P);
       Treatment_Formulation(Formulation_P);
     }
+    // recreate matrices with exact sparsity pattern - TODO: all matrices
     ZeroMatrix(&Current.DofData->A, &Current.DofData->Solver,
                Current.DofData->NbrDof);
+    if(Flag_Jac)
+      ZeroMatrix(&Current.DofData->Jac, &Current.DofData->Solver,
+                 Current.DofData->NbrDof);
+    // cleanup vectors
+    LinAlg_ZeroVector(&Current.DofData->b);
     Current.TypeAssembly = old;
   }
 
