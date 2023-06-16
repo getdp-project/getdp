@@ -195,15 +195,20 @@ static void _fillseq(gVector *V)
   if(V->haveSeq) _fillseq(V->V, V->Vseq);
 }
 
-#include <set>
-std::set<std::pair<int, int>> SparsityPattern;
-
 void LinAlg_CreateMatrix(gMatrix *M, gSolver *Solver, int n, int m, bool silent)
 {
   PetscInt prealloc = 100.;
   std::vector<PetscInt> nnz;
 
-  if(Message::GetCommSize() > 1 || SparsityPattern.empty()) { // use heuristics
+  if(Message::GetCommSize() == 1 && Current.DofData->SparsityPattern &&
+     Current.DofData->SparsityPattern->size() > 1) {
+    // we add 1 to account for the diagonal element enforced below in seqaij
+    // matrices
+    nnz.resize(n, 1);
+    for(auto p : *Current.DofData->SparsityPattern) nnz[p.first]++;
+  }
+  else {
+    // use heuristics
     PetscInt prealloc_full = n;
     int nonloc = Current.DofData->NonLocalEquations.size();
 
@@ -237,11 +242,6 @@ void LinAlg_CreateMatrix(gMatrix *M, gSolver *Solver, int n, int m, bool silent)
     // petsc really sucks at dynamic reallocation in the AIJ matrix format)
     for(int i = 0; i < nonloc; i++)
       nnz[Current.DofData->NonLocalEquations[i] - 1] = prealloc_full;
-  }
-  else {
-    // we add 1 to account for forced non-zero diagonal enforced below
-    nnz.resize(n, 1);
-    for(auto p : SparsityPattern) nnz[p.first]++;
   }
 
   if(Message::GetCommSize() > 1) { // FIXME: use nnz

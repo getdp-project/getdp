@@ -30,7 +30,7 @@
 int Flag_PRE = 0, Flag_CAL = 0, Flag_POS = 0, Flag_RESTART = 0;
 int Flag_XDATA = 0, Flag_BIN = 0, Flag_SPLIT = 0, Flag_GMSH_VERSION = 1;
 int Flag_NETWORK_CACHE = 0, Flag_CALLED_WITH_ONELAB_SERVER = 0;
-int Flag_SLEPC = 0;
+int Flag_SLEPC = 0, Flag_SPARSITY_PATTERN = 0;
 double Flag_ORDER = -1., Flag_MSH_SCALING = 1.;
 char *Name_Generic = 0, *Name_Path = 0;
 char *Name_Resolution = 0;
@@ -66,6 +66,7 @@ static void Info(int level, char *arg0)
       "  -adapt file               read adaptation constraints from file\n"
       "  -order num                restrict maximum interpolation order\n"
       "  -cache                    cache network computations to disk\n"
+      "  -sparsity                 compute exact sparsity pattern\n"
       "Linear solver options:\n"
 #if defined(HAVE_PETSC)
       "  -solver file              specify parameter file (default: .petscrc)\n"
@@ -160,6 +161,10 @@ static void Get_Options(int argc, char *argv[], int *sargc, char **sargv,
       }
       else if(!strcmp(argv[i] + 1, "cache")) {
         Flag_NETWORK_CACHE = 1;
+        i++;
+      }
+      else if(!strcmp(argv[i] + 1, "sparsity")) {
+        Flag_SPARSITY_PATTERN = 1;
         i++;
       }
       else if(!strcmp(argv[i] + 1, "bin")) {

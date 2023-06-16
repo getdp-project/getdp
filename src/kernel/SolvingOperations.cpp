@@ -42,7 +42,7 @@ extern int TreatmentStatus;
 
 extern int Flag_POS;
 extern int Flag_RESTART;
-extern int Flag_BIN, Flag_SPLIT;
+extern int Flag_BIN, Flag_SPLIT, Flag_SPARSITY_PATTERN;
 
 extern char *Name_Generic, *Name_Path;
 extern char *Name_MshFile, *Name_ResFile[NBR_MAX_RES];
@@ -441,8 +441,9 @@ void Generate_System(struct DefineSystem *DefineSystem_P,
 
   Nbr_Formulation = List_Nbr(DefineSystem_P->FormulationIndex);
 
-  bool sparsity = true;
-  if(sparsity) {
+  if(Flag_SPARSITY_PATTERN) {
+    Message::Info("Computing exact sparsity patterns");
+    // do a first "fake" assembly pass to compute the exact sparsity patterns
     int old = Current.TypeAssembly;
     Current.TypeAssembly = ASSEMBLY_SPARSITY_PATTERN;
     for(int i = 0; i < Nbr_Formulation; i++) {

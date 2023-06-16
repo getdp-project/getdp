@@ -7,6 +7,7 @@
 #define DOFDATA_H
 
 #include <vector>
+#include <set>
 #include "ListUtils.h"
 #include "TreeUtils.h"
 #include "LinAlg.h"
@@ -145,6 +146,10 @@ struct DofData {
   gVector b_MH_moving;
 
   std::vector<int> NonLocalEquations;
+
+  // this should be added to each gMatrix, but the current implementation makes
+  // it cumbersome
+  std::set<std::pair<int, int>> *SparsityPattern;
 };
 
 int fcmp_Dof(const void *a, const void *b);
