@@ -224,6 +224,7 @@ void Cal_FemGlobalEquation(struct EquationTerm *EquationTerm_P,
     } /* for i_Node ... */
 
     for(i_Loop = 0; i_Loop < MCPR_P->Active->Case.Network.NbrLoop; i_Loop++) {
+
       for(j_Branch = 0; j_Branch < MCPR_P->Active->Case.Network.NbrBranch;
           j_Branch++) {
         if(MCPR_P->Active->Case.Network.MatLoop[i_Loop][j_Branch]) {
@@ -612,8 +613,10 @@ void Treatment_FemFormulation(struct Formulation *Formulation_P)
 
     Message::ProgressMeter(i_Element + 1, Nbr_Element,
                            (TreatmentStatus == STATUS_PRE) ?
-                             "Pre-processing" :
-                             "Processing (Generate)");
+                           "Pre-processing" :
+                           (Current.TypeAssembly == ASSEMBLY_SPARSITY_PATTERN) ?
+                           "Processing (Sparsity)" :
+                           "Processing (Generate)");
     if(Message::GetErrorCount()) break;
   } /* for i_Element ... */
 
