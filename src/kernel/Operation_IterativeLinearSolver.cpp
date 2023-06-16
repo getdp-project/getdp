@@ -629,10 +629,10 @@ PETSc_Vec_to_STD_Vec(Vec petsc_vec, ILSField *Local,
         (*std_vec)[cpt_view][0][j] = (double)PetscRealPart(val);
         (*std_vec)[cpt_view][1][j] = (double)PetscImaginaryPart(val);
 #else
-        int cpt2 = 2 * iStart + 2 * j;
+        PetscInt cpt2 = 2 * iStart + 2 * j;
         _try(VecGetValues(petsc_vec, 1, &cpt2, &val));
         (*std_vec)[cpt_view][0][j] = (double)(val);
-        int cpt3 = 2 * iStart + 2 * j + 1;
+        PetscInt cpt3 = 2 * iStart + 2 * j + 1;
         _try(VecGetValues(petsc_vec, 1, &cpt3, &val));
         (*std_vec)[cpt_view][1][j] = (double)(val);
 #endif
