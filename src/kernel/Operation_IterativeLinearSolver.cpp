@@ -156,8 +156,8 @@ InitData(ILSField *MyField, ILSField *AllField, struct Operation *Operation_P,
 {
   int mpi_comm_size = Message::GetCommSize();
   int mpi_comm_rank = Message::GetCommRank();
-  std::vector<PetscInt> tab_nb_field_loc;
-  std::vector<PetscInt> displs(mpi_comm_size);
+  std::vector<int> tab_nb_field_loc;
+  std::vector<int> displs(mpi_comm_size);
   int counter = 0;
 
   // number of fields owned by me and the other tasks
@@ -406,7 +406,7 @@ InitData(ILSField *MyField, ILSField *AllField, struct Operation *Operation_P,
     }
 
     // check if reception is ok
-    std::vector<MPI_Status> tab_status;
+    std::vector<MPI_Status> tab_status(tab_request.size());
     MPI_Waitall(tab_request.size(), &tab_request[0], &tab_status[0]);
   }
 
