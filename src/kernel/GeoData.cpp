@@ -346,7 +346,7 @@ void Geo_SaveMesh(struct GeoData *GeoData_P, List_T *InitialList,
   }
 
   file = FOpen(FileName, "w");
-  if(file) {
+  if(!file) {
     Message::Error("Could not open file '%s'", FileName);
     return;
   }
