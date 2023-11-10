@@ -1397,6 +1397,7 @@ static void _solve(gMatrix *A, gVector *B, gSolver *Solver, gVector *X,
   else {
 #if(PETSC_VERSION_MAJOR == 3) && (PETSC_VERSION_MINOR >= 5)
     _try(KSPSetReusePreconditioner(Solver->ksp[kspIndex], PETSC_TRUE));
+    _try(KSPSetOperators(Solver->ksp[kspIndex], A->M, A->M));
 #endif
   }
 

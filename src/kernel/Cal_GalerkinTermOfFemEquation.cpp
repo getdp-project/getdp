@@ -721,6 +721,22 @@ void Cal_GalerkinTermOfFemEquation(struct Element *Element,
       } /* if NextElement */
     } /* if INTEGRALQUANTITY */
 
+#if 0
+    // if all the equations lead to matrix entries and they are all outside the
+    // range owned by the current process, skip the assembly altogether:
+    int skip = 0;
+    int min, max;
+    for(i = 0; i < Nbr_Equ; i++) {
+      struct Dof *Equ_P = QuantityStorageEqu_P->BasisFunction[i].Dof;
+      if(Equ_P->Type == DOF_UNKNOWN) {
+        if(Equ_P->Case.Unknown.NumDof - 1 < min ||
+           Equ_P->Case.Unknown.NumDof - 1 > max)
+          skip++;
+      }
+    }
+    if(skip ==  Nbr_Equ) return;
+#endif
+
     if(FI->SymmetricalMatrix)
       for(i = 0; i < Nbr_Equ; i++)
         for(j = 0; j <= i; j++)
