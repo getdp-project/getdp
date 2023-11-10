@@ -1257,6 +1257,7 @@ struct StringXFunction2Nbr F_Function[] =
    {"SetCumulativeVariable", (CAST)F_SetCumulativeVariable, -1, -1},
    {"GetVariable", (CAST)F_GetVariable, -1, -1},
    {"ValueFromTable", (CAST)F_ValueFromTable, -1, -1},
+   {"ValueFromFile", (CAST)F_ValueFromFile, -1, 0},
    {"VirtualWork", (CAST)F_VirtualWork, 0, 1},
    {"Felec", (CAST)F_Felec, 0, 1},
 

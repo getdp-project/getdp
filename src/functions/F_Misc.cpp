@@ -245,12 +245,7 @@ void F_ValueFromTable(F_ARG)
     return;
   }
 
-  // if(GetDPNumbersMap.size()){
-  //   Message::Warning("No element or node table found with name %s, or "
-  //                    "no entity index %d in the table", Fct->String,
-  //                    Current.NumEntity);
-  // }
-
+  // if no value is found, return as default the first argument of the function
   for(int i = 0; i < Fct->NbrArguments; i++) {
     if(i != 0) {
       Message::Warning("Ignoring %d-th argument in ValueFromTable");
@@ -267,6 +262,30 @@ void F_ValueFromTable(F_ARG)
   Message::Warning("Missing table data or default value in ValueFromTable");
   V->Val[0] = 0.;
   V->Type = SCALAR;
+}
+
+void F_ValueFromFile(F_ARG)
+{
+  V->Val[0] = 0.;
+  V->Type = SCALAR;
+
+  if(!Fct->String) {
+    Message::Error("Missing filename: use ValueFromFile[]{filename}");
+    return;
+  }
+
+  FILE *fp = FOpen(Fct->String, "r");
+  if(!fp) {
+    Message::Error("Could not open file '%s'", Fct->String);
+    return;
+  }
+  double val;
+  if(fscanf(fp, "%lf", &val) != 1) {
+    Message::Error("Could not read value from file '%s'", Fct->String);
+    return;
+  }
+  fclose(fp);
+  V->Val[0] = val;
 }
 
 void F_VirtualWork(F_ARG)

@@ -221,6 +221,7 @@ void F_SetVariable(F_ARG);
 void F_SetCumulativeVariable(F_ARG);
 void F_GetVariable(F_ARG);
 void F_ValueFromTable(F_ARG);
+void F_ValueFromFile(F_ARG);
 void F_VirtualWork(F_ARG);
 
 void F_Felec(F_ARG);
