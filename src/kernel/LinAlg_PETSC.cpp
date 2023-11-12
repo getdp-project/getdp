@@ -1357,10 +1357,7 @@ static void _solve(gMatrix *A, gVector *B, gSolver *Solver, gVector *X,
     // any)
     _try(KSPSetFromOptions(Solver->ksp[kspIndex]));
 
-    if(view && (!Message::GetCommRank() || !Message::GetIsCommWorld())) {
-      // either we are on parallel (!GetIsCommWorld) or in sequential with rank
-      // = 0 (GetIsCommWorld)
-
+    if(view) {
 #if(PETSC_VERSION_MAJOR == 3) && (PETSC_VERSION_MINOR >= 4)
       const char *ksptype = "";
       _try(KSPGetType(Solver->ksp[kspIndex], &ksptype));
@@ -1411,9 +1408,7 @@ static void _solve(gMatrix *A, gVector *B, gSolver *Solver, gVector *X,
 
   PetscInt its;
   _try(KSPGetIterationNumber(Solver->ksp[kspIndex], &its));
-  if(!Message::GetCommRank() || !Message::GetIsCommWorld()) {
-    if(its > 1) Message::Info("%d iterations", its);
-  }
+  if(its > 1) Message::Info("%d iterations", its);
   Current.KSPIterations = its;
 
   PetscTruth set, kspfree = PETSC_FALSE;
@@ -1527,7 +1522,7 @@ static void _solveNL(gMatrix *A, gVector *B, gMatrix *J, gVector *R,
 
   // either we are on sequential (!GetIsCommWorld) or in parallel with rank = 0
   // (GetIsCommWorld)
-  if(view && (!Message::GetCommRank() || !Message::GetIsCommWorld()))
+  if(view)
     Message::Info("N: %ld", (long)n);
 
   if(solverIndex != 0)
@@ -1582,11 +1577,9 @@ static void _solveNL(gMatrix *A, gVector *B, gMatrix *J, gVector *R,
   if(view && Message::GetVerbosity() > 5)
     _try(SNESView(Solver->snes[solverIndex], MyPetscViewer));
 
-  if(!Message::GetCommRank() || !Message::GetIsCommWorld()) {
-    PetscInt its;
-    _try(SNESGetIterationNumber(Solver->snes[solverIndex], &its));
-    Message::Info("Number of Newton iterations %d", its);
-  }
+  PetscInt its;
+  _try(SNESGetIterationNumber(Solver->snes[solverIndex], &its));
+  Message::Info("Number of Newton iterations %d", its);
 }
 
 void LinAlg_SolveNL(gMatrix *A, gVector *B, gMatrix *J, gVector *R,

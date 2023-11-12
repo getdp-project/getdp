@@ -355,7 +355,7 @@ void Message::Warning(const char *fmt, ...)
 
 void Message::Info(const char *fmt, ...)
 {
-  if((_commRank && _isCommWorld) || _verbosity < 4) return;
+  if(((_commRank && _isCommWorld) || _verbosity < 4) && !_infoCpu) return;
   char str[1024];
   va_list args;
   va_start(args, fmt);
@@ -367,7 +367,8 @@ void Message::Info(const char *fmt, ...)
 
 void Message::Info(int level, const char *fmt, ...)
 {
-  if((_commRank && _isCommWorld && level > 0) || _verbosity < abs(level))
+  if(((_commRank && _isCommWorld && level > 0) || _verbosity < abs(level)) &&
+     !_infoCpu)
     return;
 
   char str[1024];
