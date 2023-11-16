@@ -334,7 +334,7 @@ struct doubleXstring{
 %token      tDivisionCoefficient tChangeOfState
 %token      tChangeOfCoordinates tChangeOfCoordinates2 tSystemCommand tError
 %token        tGmshRead tGmshMerge tGmshOpen tGmshWrite tGmshClearAll
-%token        tDelete tDeleteFile tRenameFile tCreateDir
+%token        tDelete tDeleteFile tRenameFile tCreateDir tReadTable
 %token      tGenerateOnly tGenerateOnlyJac
 %token      tSolveJac_AdaptRelax
 %token      tSaveSolutionExtendedMH tSaveSolutionMHtoTime tSaveSolutionWithEntityNum
@@ -5737,6 +5737,16 @@ OperationTerm :
       Free($3);
     }
 
+  | tReadTable '[' CharExpr ',' CharExpr ']' tEND
+    {
+      Operation_P = (struct Operation*)
+	List_Pointer(Operation_L, List_Nbr(Operation_L)-1);
+      Operation_P->Type = OPERATION_READTABLE;
+      Operation_P->Case.ReadTable.FileName = strSave(Fix_RelativePath($3).c_str());
+      Operation_P->Case.ReadTable.TableName = $5;
+      Free($3);
+    }
+
   | tSolveJac_AdaptRelax '[' String__Index ',' ListOfFExpr ',' FExpr ']' tEND
     { Operation_P = (struct Operation*)
 	List_Pointer(Operation_L, List_Nbr(Operation_L)-1);
@@ -9986,6 +9996,14 @@ MultiFExpr :
         List_Add($$, &val[i]);
       Free($3);
     }
+
+  | tReadTable '[' CharExpr ',' CharExpr ']'
+    {
+      $$ = List_Create(100, 100, sizeof(double));
+      Read_Table(Fix_RelativePath($3), $5, $$);
+      Free($3);
+      Free($5);
+    }
 ;
 
 StringIndex :
@@ -11315,4 +11333,46 @@ List_T * Treat_Struct_FullName_dot_tSTRING_ListOfString
   Free(c1); Free(c2);
   if (flag_tSTRING_alloc) Free(c3);
   return out;
+}
+
+void Read_Table(const std::string &FileName, const std::string &TableName,
+                List_T *TableData)
+{
+  std::string tmp = Fix_RelativePath(FileName.c_str());
+  FILE *File = FOpen(tmp.c_str(), "rb");
+  if(!File){
+    Message::Error("Could not open file '%s'", tmp.c_str());
+    return;
+  }
+  Message::Info("Reading table '%s' from file '%s'", TableName.c_str(), tmp.c_str());
+
+  std::map<int, std::vector<double> > table;
+
+  // FIXME: generalize this to handle table of vectors
+  double d;
+  int index, count = 0;
+  while(!feof(File)){
+    int ret = fscanf(File, "%lf", &d);
+    if(ret == 1){
+      if(TableData) List_Add(TableData, &d);
+      if(count) {
+        if(count % 2)
+          index = (int)d;
+        else {
+          table[index] = std::vector<double>(1, d);
+        }
+      }
+      count++;
+    }
+    else if(ret == EOF){
+      break;
+    }
+    else{
+      char dummy[1024];
+      if(fscanf(File, "%s", dummy))
+        vyyerror(1, "Ignoring '%s' in file '%s'", dummy, tmp.c_str());
+    }
+  }
+  GetDPNumbersMap[TableName] = table;
+  fclose(File);
 }

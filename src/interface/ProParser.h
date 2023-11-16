@@ -513,5 +513,7 @@ void Print_Constants();
 void Print_Struct();
 int Print_ListOfDouble(char *format, List_T *list, char *buffer);
 Constant *Get_ParserConstant(char *name);
+void Read_Table(const std::string &FileName, const std::string &TableName,
+                List_T *TableData=nullptr);
 
 #endif

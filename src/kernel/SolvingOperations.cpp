@@ -2440,6 +2440,11 @@ void Treatment_Operation(struct Resolution *Resolution_P, List_T *Operation_L,
         Get_TimeFunctionValues(DofData_P);
     } break;
 
+    case OPERATION_READTABLE:
+      Read_Table(Operation_P->Case.ReadTable.FileName,
+                 Operation_P->Case.ReadTable.TableName);
+      break;
+
       /*  -->  G m s h R e a d                        */
       /*  ------------------------------------------  */
 

@@ -1100,7 +1100,8 @@ List of constant expressions are defined as:
   @var{expression-cst-list-item} * @var{expression-cst-list-item} |
   @var{expression-cst-list-item} / @var{expression-cst-list-item} |
   ListFromFile [ @var{expression-char} ] |
-  ListFromServer [ @var{expression-char} ]
+  ListFromServer [ @var{expression-char} ] |
+  ReadTable [ @var{expression-char}, @var{expression-char} ]
 @end example
 
 The second case in this last definition permits to create a list
@@ -1123,7 +1124,9 @@ permit to create linear and logarithmic lists of numbers,
 respectively. The remaining cases permit to apply arithmetic operators
 item-wise in lists.  @code{ListFromFile} reads a list of numbers from a
 file.  @code{ListFromServer} attemps to get a list of numbers from the
-ONELAB variable @var{expression-char}.
+ONELAB variable @var{expression-char}. @code{ReadTable} reads tabular
+data in the same format as @code{ListFromFile}, and in addition stores
+in the run-time table named after the second @var{expression-char}.
 
 Contrary to a general @var{expression} which is evaluated at runtime (thanks
 to an internal stack mechanism), an @var{expression-cst} is completely
@@ -5118,6 +5121,12 @@ Writes the a Gmsh field to disk. (The format is guessed from the file extension.
 @code{[]}
 
 Clears all Gmsh data (loaded with @code{GmshRead} and friends).
+
+@item ReadTable
+@code{[@var{expression-char}, @var{expression-char}]}
+
+Reads tabular data in the same format as @code{ListFromFile}, and stores
+in the run-time table named after the second @var{expression-char}.
 
 @item DeleteFile
 @code{[@var{expression-char}]}

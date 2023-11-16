@@ -390,6 +390,7 @@ Quantity                     return tQuantity;
 Rand                         return tRand;
 Rational                     return tRational;
 Read                         return tRead;
+ReadTable                    return tReadTable;
 Region                       return tRegion;
 RegionRef                    return tRegionRef;
 RelaxationFactor             return tRelaxationFactor;

@@ -274,7 +274,7 @@ void F_ValueFromFile(F_ARG)
     return;
   }
 
-  FILE *fp = FOpen(Fct->String, "r");
+  FILE *fp = FOpen(Fix_RelativePath(Fct->String).c_str(), "r");
   if(!fp) {
     Message::Error("Could not open file '%s'", Fct->String);
     return;

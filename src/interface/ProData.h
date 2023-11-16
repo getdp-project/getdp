@@ -1025,6 +1025,10 @@ struct Operation {
       char *DirName;
     } CreateDir;
     struct {
+      char *FileName;
+      char *TableName;
+    } ReadTable;
+    struct {
       int ExpressionIndex;
     } SetTime;
     struct {
@@ -1418,6 +1422,7 @@ struct IterativeLoopSystem {
 #define OPERATION_SCATTERVARIABLES 117
 #define OPERATION_EXIT 118
 #define OPERATION_GENERATELISTOFRHS 119
+#define OPERATION_READTABLE 120
 
 /* ChangeOfState.Type */
 #define CHANGEOFSTATE_NOCHANGE 0
