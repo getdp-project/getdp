@@ -670,3 +670,14 @@ PostProcessing {
     }
   }
 }
+
+PostOperation {
+  { Name Magnetodynamics2D_av; NameOfPostProcessing Magnetodynamics2D_av;
+    Operation {
+      CreateDir[resPath];
+      Print[ a, OnElementsOf Vol_Mag, File StrCat[resPath, "a.pos"] ];
+      Print[ b, OnElementsOf Vol_Mag, File StrCat[resPath, "b.pos"] ];
+      Print[ j, OnElementsOf Vol_C_Mag, File StrCat[resPath, "j.pos"] ];
+    }
+  }
+}
