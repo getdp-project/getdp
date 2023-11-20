@@ -62,7 +62,7 @@ Group {
 }
 
 Jacobian {
-  { Name Vol;
+  { Name JacVol_Mag;
     Case {
       If(Flag_Axi && modelDim < 3)
         { Region Vol_Inf_Mag;
@@ -75,7 +75,7 @@ Jacobian {
       EndIf
     }
   }
-  { Name Sur;
+  { Name JacSur_Mag;
     Case {
       If(Flag_Axi && modelDim < 3)
         { Region All; Jacobian SurAxi; }
@@ -87,7 +87,7 @@ Jacobian {
 }
 
 Integration {
-  { Name Int;
+  { Name Int_Mag;
     Case {
       { Type Gauss;
         Case {
@@ -155,25 +155,25 @@ Formulation {
     }
     Equation {
       Integral { [ - mu[] * Dof{d phi} , {d phi} ];
-        In Vol_L_Mag; Jacobian Vol; Integration Int; }
+        In Vol_L_Mag; Jacobian JacVol_Mag; Integration Int_Mag; }
 
       If(Flag_NewtonRaphson)
         Integral { [ - mu[-{d phi}] * {d phi} , {d phi} ];
-          In Vol_NL_Mag; Jacobian Vol; Integration Int; }
+          In Vol_NL_Mag; Jacobian JacVol_Mag; Integration Int_Mag; }
         Integral { [ - dbdh[-{d phi}] * Dof{d phi} , {d phi}];
-          In Vol_NL_Mag; Jacobian Vol; Integration Int; }
+          In Vol_NL_Mag; Jacobian JacVol_Mag; Integration Int_Mag; }
         Integral { [ dbdh[-{d phi}] * {d phi} , {d phi}];
-          In Vol_NL_Mag; Jacobian Vol; Integration Int; }
+          In Vol_NL_Mag; Jacobian JacVol_Mag; Integration Int_Mag; }
       Else
         Integral { [ - mu[-{d phi}] * Dof{d phi} , {d phi} ];
-          In Vol_NL_Mag; Jacobian Vol; Integration Int; }
+          In Vol_NL_Mag; Jacobian JacVol_Mag; Integration Int_Mag; }
       EndIf
 
       Integral { [ - mu[] * hc[] , {d phi} ];
-        In Vol_M_Mag; Jacobian Vol; Integration Int; }
+        In Vol_M_Mag; Jacobian JacVol_Mag; Integration Int_Mag; }
 
       Integral { [ bn[] , {phi} ];
-        In Sur_Neu_Mag; Jacobian Sur; Integration Int; }
+        In Sur_Neu_Mag; Jacobian JacSur_Mag; Integration Int_Mag; }
     }
   }
   { Name Magnetostatics_a; Type FemEquation;
@@ -182,28 +182,28 @@ Formulation {
     }
     Equation {
       Integral { [ nu[] * Dof{d a} , {d a} ];
-        In Vol_L_Mag; Jacobian Vol; Integration Int; }
+        In Vol_L_Mag; Jacobian JacVol_Mag; Integration Int_Mag; }
 
       If(Flag_NewtonRaphson)
         Integral { [ nu[{d a}] * {d a} , {d a} ];
-          In Vol_NL_Mag; Jacobian Vol; Integration Int; }
+          In Vol_NL_Mag; Jacobian JacVol_Mag; Integration Int_Mag; }
         Integral { [ dhdb[{d a}] * Dof{d a} , {d a} ];
-          In Vol_NL_Mag; Jacobian Vol; Integration Int; }
+          In Vol_NL_Mag; Jacobian JacVol_Mag; Integration Int_Mag; }
         Integral { [ - dhdb[{d a}] * {d a} , {d a} ];
-          In Vol_NL_Mag; Jacobian Vol; Integration Int; }
+          In Vol_NL_Mag; Jacobian JacVol_Mag; Integration Int_Mag; }
       Else
         Integral { [ nu[{d a}] * Dof{d a}, {d a} ];
-          In Vol_NL_Mag; Jacobian Vol; Integration Int; }
+          In Vol_NL_Mag; Jacobian JacVol_Mag; Integration Int_Mag; }
       EndIf
 
       Integral { [ hc[] , {d a} ];
-        In Vol_M_Mag; Jacobian Vol; Integration Int; }
+        In Vol_M_Mag; Jacobian JacVol_Mag; Integration Int_Mag; }
 
       Integral { [ - js[] , {a} ];
-        In Vol_S0_Mag; Jacobian Vol; Integration Int; }
+        In Vol_S0_Mag; Jacobian JacVol_Mag; Integration Int_Mag; }
 
       Integral { [ nxh[] , {a} ];
-        In Sur_Neu_Mag; Jacobian Sur; Integration Int; }
+        In Sur_Neu_Mag; Jacobian JacSur_Mag; Integration Int_Mag; }
     }
   }
 }
@@ -261,20 +261,22 @@ PostProcessing {
   { Name Magnetostatics_phi; NameOfFormulation Magnetostatics_phi;
     Quantity {
       { Name b; Value {
-          Term { [ - mu[-{d phi}] * {d phi} ]; In Vol_Mag; Jacobian Vol; }
-          Term { [ - mu[] * hc[] ]; In Vol_M_Mag; Jacobian Vol; }
+          Term { [ - mu[-{d phi}] * {d phi} ];
+            In Vol_Mag; Jacobian JacVol_Mag; }
+          Term { [ - mu[] * hc[] ];
+            In Vol_M_Mag; Jacobian JacVol_Mag; }
         }
       }
       { Name h; Value {
-          Term { [ - {d phi} ]; In Vol_Mag; Jacobian Vol; }
+          Term { [ - {d phi} ]; In Vol_Mag; Jacobian JacVol_Mag; }
         }
       }
       { Name hc; Value {
-          Term { [ hc[] ]; In Vol_M_Mag; Jacobian Vol; }
+          Term { [ hc[] ]; In Vol_M_Mag; Jacobian JacVol_Mag; }
         }
       }
       { Name phi; Value {
-          Term { [ {phi} ]; In Vol_Mag; Jacobian Vol; }
+          Term { [ {phi} ]; In Vol_Mag; Jacobian JacVol_Mag; }
         }
       }
     }
@@ -282,28 +284,28 @@ PostProcessing {
   { Name Magnetostatics_a; NameOfFormulation Magnetostatics_a;
     Quantity {
       { Name az; Value {
-          Local { [ CompZ[{a}] ]; In Vol_Mag; Jacobian Vol; }
+          Local { [ CompZ[{a}] ]; In Vol_Mag; Jacobian JacVol_Mag; }
         }
       }
       { Name b; Value {
-          Term { [ {d a} ]; In Vol_Mag; Jacobian Vol; }
+          Term { [ {d a} ]; In Vol_Mag; Jacobian JacVol_Mag; }
         }
       }
       { Name a; Value {
-          Term { [ {a} ]; In Vol_Mag; Jacobian Vol; }
+          Term { [ {a} ]; In Vol_Mag; Jacobian JacVol_Mag; }
         }
       }
       { Name h; Value {
-          Term { [ nu[{d a}] * {d a} ]; In Vol_Mag; Jacobian Vol; }
-          Term { [ hc[] ]; In Vol_M_Mag; Jacobian Vol; }
+          Term { [ nu[{d a}] * {d a} ]; In Vol_Mag; Jacobian JacVol_Mag; }
+          Term { [ hc[] ]; In Vol_M_Mag; Jacobian JacVol_Mag; }
         }
       }
       { Name hc; Value {
-          Term { [ hc[] ]; In Vol_M_Mag; Jacobian Vol; }
+          Term { [ hc[] ]; In Vol_M_Mag; Jacobian JacVol_Mag; }
         }
       }
       { Name js; Value {
-          Term { [ js[] ]; In Vol_S0_Mag; Jacobian Vol; }
+          Term { [ js[] ]; In Vol_S0_Mag; Jacobian JacVol_Mag; }
         }
       }
     }

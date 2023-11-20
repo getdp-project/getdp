@@ -49,7 +49,7 @@ Function{
 // End of definitions.
 
 Jacobian {
-  { Name Vol;
+  { Name JacVol_Mec;
     Case {
       If(Flag_Axi && modelDim < 3)
         { Region All; Jacobian VolAxiSqu; }
@@ -58,7 +58,7 @@ Jacobian {
       EndIf
     }
   }
-  { Name Sur;
+  { Name JacSur_Mec;
     Case {
       If(Flag_Axi && modelDim < 3)
         { Region All; Jacobian SurAxi; }
@@ -70,7 +70,7 @@ Jacobian {
 }
 
 Integration {
-  { Name Int;
+  { Name Int_Mec;
     Case {
       { Type Gauss;
         Case {
@@ -159,60 +159,60 @@ Formulation {
     }
     Equation {
       Integral { [ -C_xx[] * Dof{d ux}, {d ux} ];
-        In Vol_Mec; Jacobian Vol; Integration Int; }
+        In Vol_Mec; Jacobian JacVol_Mec; Integration Int_Mec; }
       Integral { [ -C_xy[] * Dof{d uy}, {d ux} ];
-        In Vol_Mec; Jacobian Vol; Integration Int; }
+        In Vol_Mec; Jacobian JacVol_Mec; Integration Int_Mec; }
       If(modelDim == 3)
         Integral { [ -C_xz[] * Dof{d uz}, {d ux} ];
-          In Vol_Mec; Jacobian Vol; Integration Int; }
+          In Vol_Mec; Jacobian JacVol_Mec; Integration Int_Mec; }
       EndIf
 
       Integral { [ -C_yx[] * Dof{d ux}, {d uy} ];
-        In Vol_Mec; Jacobian Vol; Integration Int; }
+        In Vol_Mec; Jacobian JacVol_Mec; Integration Int_Mec; }
       Integral { [ -C_yy[] * Dof{d uy}, {d uy} ];
-        In Vol_Mec; Jacobian Vol; Integration Int; }
+        In Vol_Mec; Jacobian JacVol_Mec; Integration Int_Mec; }
       If(modelDim == 3)
         Integral { [ -C_yz[] * Dof{d uz}, {d uy} ];
-          In Vol_Mec; Jacobian Vol; Integration Int; }
+          In Vol_Mec; Jacobian JacVol_Mec; Integration Int_Mec; }
       EndIf
 
       If(modelDim == 3)
         Integral { [ -C_zx[] * Dof{d ux}, {d uz} ];
-          In Vol_Mec; Jacobian Vol; Integration Int; }
+          In Vol_Mec; Jacobian JacVol_Mec; Integration Int_Mec; }
         Integral { [ -C_zy[] * Dof{d uy}, {d uz} ];
-          In Vol_Mec; Jacobian Vol; Integration Int; }
+          In Vol_Mec; Jacobian JacVol_Mec; Integration Int_Mec; }
         Integral { [ -C_zz[] * Dof{d uz}, {d uz} ];
-          In Vol_Mec; Jacobian Vol; Integration Int; }
+          In Vol_Mec; Jacobian JacVol_Mec; Integration Int_Mec; }
       EndIf
 
       If(Flag_Regime)
         Integral { DtDtDof [ -rho[] * Dof{ux} , {ux} ];
-          In Vol_Mec ; Jacobian Vol ; Integration Int ; }
+          In Vol_Mec ; Jacobian JacVol_Mec ; Integration Int_Mec ; }
         Integral { DtDtDof [ -rho[] * Dof{uy} , {uy} ];
-          In Vol_Mec ; Jacobian Vol ; Integration Int ; }
+          In Vol_Mec ; Jacobian JacVol_Mec ; Integration Int_Mec ; }
         If(modelDim == 3)
           Integral { DtDtDof [ -rho[] * Dof{uz} , {uz} ];
-            In Vol_Mec ; Jacobian Vol ; Integration Int ; }
+            In Vol_Mec ; Jacobian JacVol_Mec ; Integration Int_Mec ; }
         EndIf
       EndIf
 
       If(Flag_Regime != 3)
         Integral { [ CompX[f[]] , {ux} ];
-          In Vol_F_Mec; Jacobian Vol; Integration Int; }
+          In Vol_F_Mec; Jacobian JacVol_Mec; Integration Int_Mec; }
         Integral { [ CompY[f[]] , {uy} ];
-          In Vol_F_Mec; Jacobian Vol; Integration Int; }
+          In Vol_F_Mec; Jacobian JacVol_Mec; Integration Int_Mec; }
         If(modelDim == 3)
           Integral { [ CompZ[f[]] , {uy} ];
-            In Vol_F_Mec; Jacobian Vol; Integration Int; }
+            In Vol_F_Mec; Jacobian JacVol_Mec; Integration Int_Mec; }
         EndIf
 
         Integral { [ CompX[sigman[]] , {ux} ];
-          In Sur_Neu_Mec; Jacobian Sur; Integration Int; }
+          In Sur_Neu_Mec; Jacobian JacSur_Mec; Integration Int_Mec; }
         Integral { [ CompY[sigman[]] , {uy} ];
-          In Sur_Neu_Mec; Jacobian Sur; Integration Int; }
+          In Sur_Neu_Mec; Jacobian JacSur_Mec; Integration Int_Mec; }
         If(modelDim == 3)
           Integral { [ CompZ[sigman[]] , {uz} ];
-            In Sur_Neu_Mec; Jacobian Sur; Integration Int; }
+            In Sur_Neu_Mec; Jacobian JacSur_Mec; Integration Int_Mec; }
         EndIf
       EndIf
     }
@@ -252,9 +252,11 @@ PostProcessing {
     PostQuantity {
       { Name u; Value {
           If(modelDim == 3)
-            Term { [ Vector[ {ux}, {uy}, {uz} ]]; In Vol_Mec; Jacobian Vol; }
+            Term { [ Vector[ {ux}, {uy}, {uz} ]];
+              In Vol_Mec; Jacobian JacVol_Mec; }
           Else
-            Term { [ Vector[ {ux}, {uy}, 0 ]]; In Vol_Mec; Jacobian Vol; }
+            Term { [ Vector[ {ux}, {uy}, 0 ]];
+              In Vol_Mec; Jacobian JacVol_Mec; }
           EndIf
         }
       }
@@ -263,12 +265,12 @@ PostProcessing {
             Term { [ TensorV[ C_xx[]*{d ux} + C_xy[]*{d uy} + C_xz[]*{d uz},
                               C_yx[]*{d ux} + C_yy[]*{d uy} + C_yz[]*{d uz},
                               C_zx[]*{d ux} + C_zy[]*{d uy} + C_zz[]*{d uz} ] ];
-              In Vol_Mec; Jacobian Vol; }
+              In Vol_Mec; Jacobian JacVol_Mec; }
           Else
             Term { [ TensorV[ C_xx[]*{d ux} + C_xy[]*{d uy},
                               C_yx[]*{d ux} + C_yy[]*{d uy},
                               Vector[0,0,0]] ];
-              In Vol_Mec; Jacobian Vol; }
+              In Vol_Mec; Jacobian JacVol_Mec; }
           EndIf
           }
       }
