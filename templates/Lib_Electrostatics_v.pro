@@ -12,6 +12,7 @@ DefineConstant[
   modelDim = 2, // default model dimension (2D)
   eps0 = 8.854187818e-12, // permittivity of vacuum
   Flag_Axi = 0, // axisymmetric model?
+  Flag_FrequencyDomain = 0, // frequency-domain (complex)
   Val_Rint = 0, // internal radius of Vol_Inf_Ele annulus
   Val_Rext = 0, // external radius of Vol_Inf_Ele annulus
   Val_Cx = 0, // x-coordinate of center of Vol_Inf_Ele
@@ -46,7 +47,7 @@ Function{
 // End of definitions.
 
 Jacobian {
-  { Name Vol;
+  { Name JacVol_Ele;
     Case {
       If(Flag_Axi && modelDim < 3)
         { Region Vol_Inf_Ele;
@@ -59,7 +60,7 @@ Jacobian {
       EndIf
     }
   }
-  { Name Sur;
+  { Name JacSur_Ele;
     Case {
       If(Flag_Axi && modelDim < 3)
         { Region All; Jacobian SurAxi; }
@@ -71,7 +72,7 @@ Jacobian {
 }
 
 Integration {
-  { Name Int;
+  { Name Int_Ele;
     Case {
       { Type Gauss;
         Case {
@@ -132,13 +133,13 @@ Formulation {
     }
     Equation {
       Integral { [ epsr[] * eps0 * Dof{d v} , {d v} ];
-        In Vol_Ele; Jacobian Vol; Integration Int; }
+        In Vol_Ele; Jacobian JacVol_Ele; Integration Int_Ele; }
 
       Integral { [ - rho[], {v} ];
-        In Vol_Q_Ele; Jacobian Vol; Integration Int; }
+        In Vol_Q_Ele; Jacobian JacVol_Ele; Integration Int_Ele; }
 
       Integral { [ dn[] , {v} ];
-        In Sur_Neu_Ele; Jacobian Sur; Integration Int; }
+        In Sur_Neu_Ele; Jacobian JacSur_Ele; Integration Int_Ele; }
 
       GlobalTerm { [ - Dof{Q}, {V} ]; In Sur_C_Ele; }
     }
@@ -148,7 +149,11 @@ Formulation {
 Resolution {
   { Name Electrostatics_v;
     System {
-      { Name A; NameOfFormulation Electrostatics_vf; }
+      { Name A; NameOfFormulation Electrostatics_vf;
+        If(Flag_FrequencyDomain)
+          Type ComplexValue; Frequency Freq;
+        EndIf
+      }
     }
     Operation {
       Generate[A]; Solve[A]; SaveSolution[A];
@@ -160,15 +165,15 @@ PostProcessing {
   { Name Electrostatics_v; NameOfFormulation Electrostatics_vf;
     PostQuantity {
       { Name v; Value {
-          Term { [ {v} ]; In Vol_Ele; Jacobian Vol; }
+          Term { [ {v} ]; In Vol_Ele; Jacobian JacVol_Ele; }
         }
       }
       { Name e; Value {
-          Term { [ -{d v} ]; In Vol_Ele; Jacobian Vol; }
+          Term { [ -{d v} ]; In Vol_Ele; Jacobian JacVol_Ele; }
         }
       }
       { Name d; Value {
-          Term { [ -eps0*epsr[] * {d v} ]; In Vol_Ele; Jacobian Vol; }
+          Term { [ -eps0*epsr[] * {d v} ]; In Vol_Ele; Jacobian JacVol_Ele; }
         }
       }
       { Name Q; Value {
@@ -184,20 +189,20 @@ PostProcessing {
         }
       }
       { Name vf; Value {
-          Term { [ {vf} ]; In Vol_Ele; Jacobian Vol; }
+          Term { [ {vf} ]; In Vol_Ele; Jacobian JacVol_Ele; }
         }
       }
       { Name force; Value {
           Integral { [ eps0*epsr[] / 2. * VirtualWork[{d v}] ];
             //In Vol_Ele; // restrict support to speed-up search
             In ElementsOf[Vol_Ele, OnOneSideOf Sur_C_Ele];
-            Jacobian Vol; Integration Int;
+            Jacobian JacVol_Ele; Integration Int_Ele;
 	  }
 	}
       }
       { Name energy; Value {
           Integral {  [ eps0*epsr[] / 2. * SquNorm[{d v}] ];
-	    In Vol_Ele; Jacobian Vol; Integration Int;
+	    In Vol_Ele; Jacobian JacVol_Ele; Integration Int_Ele;
           }
         }
       }
@@ -212,9 +217,9 @@ PostOperation {
       Print[ e, OnElementsOf Vol_Ele, File StrCat[resPath, "e.pos"] ];
       Print[ v, OnElementsOf Vol_Ele, File StrCat[resPath, "v.pos"] ];
       If(NbrRegions[Sur_C_Ele])
-        Print[ Q, OnRegion Sur_C_Ele, File StrCat[resPath, "q.txt"],
+        Print[ Q, OnRegion Sur_C_Ele, File StrCat[resPath, "Q.txt"],
           Format Table, SendToServer "}Output/Floating charge [C]" ];
-        Print[ V, OnRegion Sur_C_Ele, File StrCat[resPath, "q.txt"],
+        Print[ V, OnRegion Sur_C_Ele, File StrCat[resPath, "V.txt"],
           Format Table, SendToServer "}Output/Floating potential [V]" ];
       EndIf
     }

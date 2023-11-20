@@ -14,14 +14,14 @@ DefineConstant[
   Flag_FrequencyDomain = 1, // frequency-domain or time-domain simulation
   Flag_CircuitCoupling = 0, // consider coupling with external electric circuit
   Flag_NewtonRaphson = 1, // Newton-Raphson or Picard method for nonlinear iterations
-  CoefPower = 0.5, // coefficient for power calculations
+  CoefPower = 0.5, // coefficient for power calculations (0.5 for max value, 1 for RMS)
   Freq = 50, // frequency (for harmonic simulations)
   TimeInit = 0, // intial time (for time-domain simulations)
   TimeFinal = 1/50, // final time (for time-domain simulations)
   DeltaTime = 1/500, // time step (for time-domain simulations)
   FE_Order = 1, // finite element order
   Val_Rint = 0, // interior radius of annulus shell transformation region (Vol_Inf_Mag)
-  Val_Rext = 0 // exterior radius of annulus shell  transformation region (Vol_Inf_Mag)
+  Val_Rext = 0, // exterior radius of annulus shell  transformation region (Vol_Inf_Mag)
   Val_Cx = 0, // x-coordinate of center of Vol_Inf_Mag
   Val_Cy = 0, // y-coordinate of center of Vol_Inf_Mag
   Val_Cz = 0, // z-coordinate of center of Vol_Inf_Mag
@@ -102,7 +102,7 @@ Group{
 }
 
 Jacobian {
-  { Name Vol;
+  { Name JacVol_Mag;
     Case {
       If(Flag_Axi)
         { Region Vol_Inf_Mag;
@@ -115,7 +115,7 @@ Jacobian {
       EndIf
     }
   }
-  { Name Sur;
+  { Name JacSur_Mag;
     Case {
       If(Flag_Axi)
         { Region All; Jacobian SurAxi; }
@@ -127,7 +127,7 @@ Jacobian {
 }
 
 Integration {
-  { Name Gauss_v;
+  { Name Int_Mag;
     Case {
       { Type Gauss;
         Case {
@@ -255,31 +255,31 @@ Formulation {
     }
     Equation {
       Integral { [ nu[] * Dof{d a} , {d a} ];
-        In Vol_L_Mag; Jacobian Vol; Integration Gauss_v; }
+        In Vol_L_Mag; Jacobian JacVol_Mag; Integration Int_Mag; }
 
       If(Flag_NewtonRaphson)
         Integral { [ nu[{d a}] * {d a} , {d a} ];
-          In Vol_NL_Mag; Jacobian Vol; Integration Gauss_v; }
+          In Vol_NL_Mag; Jacobian JacVol_Mag; Integration Int_Mag; }
         Integral { [ dhdb[{d a}] * Dof{d a} , {d a} ];
-          In Vol_NL_Mag; Jacobian Vol; Integration Gauss_v; }
+          In Vol_NL_Mag; Jacobian JacVol_Mag; Integration Int_Mag; }
         Integral { [ - dhdb[{d a}] * {d a} , {d a} ];
-          In Vol_NL_Mag; Jacobian Vol; Integration Gauss_v; }
+          In Vol_NL_Mag; Jacobian JacVol_Mag; Integration Int_Mag; }
       Else
         Integral { [ nu[{d a}] * Dof{d a}, {d a} ];
-          In Vol_NL_Mag; Jacobian Vol; Integration Gauss_v; }
+          In Vol_NL_Mag; Jacobian JacVol_Mag; Integration Int_Mag; }
       EndIf
 
       Integral { [ - nu[] * br[] , {d a} ];
-        In Vol_M_Mag; Jacobian Vol; Integration Gauss_v; }
+        In Vol_M_Mag; Jacobian JacVol_Mag; Integration Int_Mag; }
 
       Integral { [ - js0[] , {a} ];
-        In Vol_S0_Mag; Jacobian Vol; Integration Gauss_v; }
+        In Vol_S0_Mag; Jacobian JacVol_Mag; Integration Int_Mag; }
 
       Integral { [ - (js0[]*Vector[0,0,1]) * Dof{ir} , {a} ];
-        In Vol_S_Mag; Jacobian Vol; Integration Gauss_v; }
+        In Vol_S_Mag; Jacobian JacVol_Mag; Integration Int_Mag; }
 
       Integral { [ nxh[] , {a} ];
-        In Sur_Neu_Mag; Jacobian Sur; Integration Gauss_v; }
+        In Sur_Neu_Mag; Jacobian JacSur_Mag; Integration Int_Mag; }
     }
   }
 }
@@ -307,65 +307,65 @@ Formulation {
     }
     Equation {
       Integral { [ nu[] * Dof{d a} , {d a} ];
-        In Vol_L_Mag; Jacobian Vol; Integration Gauss_v; }
+        In Vol_L_Mag; Jacobian JacVol_Mag; Integration Int_Mag; }
 
       If(Flag_NewtonRaphson)
         Integral { [ nu[{d a}] * {d a} , {d a} ];
-          In Vol_NL_Mag; Jacobian Vol; Integration Gauss_v; }
+          In Vol_NL_Mag; Jacobian JacVol_Mag; Integration Int_Mag; }
         Integral { [ dhdb[{d a}] * Dof{d a} , {d a} ];
-          In Vol_NL_Mag; Jacobian Vol; Integration Gauss_v; }
+          In Vol_NL_Mag; Jacobian JacVol_Mag; Integration Int_Mag; }
         Integral { [ - dhdb[{d a}] * {d a} , {d a} ];
-          In Vol_NL_Mag; Jacobian Vol; Integration Gauss_v; }
+          In Vol_NL_Mag; Jacobian JacVol_Mag; Integration Int_Mag; }
       Else
         Integral { [ nu[{d a}] * Dof{d a}, {d a} ];
-          In Vol_NL_Mag; Jacobian Vol; Integration Gauss_v; }
+          In Vol_NL_Mag; Jacobian JacVol_Mag; Integration Int_Mag; }
       EndIf
 
       Integral { [ - nu[] * br[] , {d a} ];
-        In Vol_M_Mag; Jacobian Vol; Integration Gauss_v; }
+        In Vol_M_Mag; Jacobian JacVol_Mag; Integration Int_Mag; }
 
       // Electric field e = -Dt[{a}]-{ur},
       // with {ur} = Grad v constant in each region of Vol_C_Mag
       Integral { DtDof [ sigma[] * Dof{a} , {a} ];
-        In Vol_C_Mag; Jacobian Vol; Integration Gauss_v; }
+        In Vol_C_Mag; Jacobian JacVol_Mag; Integration Int_Mag; }
       Integral { [ sigma[] * Dof{ur} / CoefGeos[] , {a} ];
-        In Vol_C_Mag; Jacobian Vol; Integration Gauss_v; }
+        In Vol_C_Mag; Jacobian JacVol_Mag; Integration Int_Mag; }
 
       Integral { [ - sigma[] * (Velocity[] /\ Dof{d a}) , {a} ];
-        In Vol_V_Mag; Jacobian Vol; Integration Gauss_v; }
+        In Vol_V_Mag; Jacobian JacVol_Mag; Integration Int_Mag; }
 
       Integral { [ - js0[] , {a} ];
-        In Vol_S0_Mag; Jacobian Vol; Integration Gauss_v; }
+        In Vol_S0_Mag; Jacobian JacVol_Mag; Integration Int_Mag; }
 
       Integral { [ nxh[] , {a} ];
-        In Sur_Neu_Mag; Jacobian Sur; Integration Gauss_v; }
+        In Sur_Neu_Mag; Jacobian JacSur_Mag; Integration Int_Mag; }
 
       Integral { DtDof [  Ysur[] * Dof{a} , {a} ];
-        In Sur_Imped_Mag; Jacobian Sur; Integration Gauss_v; }
+        In Sur_Imped_Mag; Jacobian JacSur_Mag; Integration Int_Mag; }
       Integral { [ Ysur[] * Dof{ur} / CoefGeos[] , {a} ];
-        In Sur_Imped_Mag; Jacobian Sur; Integration Gauss_v; }
+        In Sur_Imped_Mag; Jacobian JacSur_Mag; Integration Int_Mag; }
 
       // When {ur} act as a test function, one obtains the circuits relations,
       // relating the voltage and the current of each region in Vol_C_Mag
       Integral { DtDof [ sigma[] * Dof{a} , {ur} ];
-        In Vol_C_Mag; Jacobian Vol; Integration Gauss_v; }
+        In Vol_C_Mag; Jacobian JacVol_Mag; Integration Int_Mag; }
       Integral { [ sigma[] * Dof{ur} / CoefGeos[] , {ur} ];
-        In Vol_C_Mag; Jacobian Vol; Integration Gauss_v; }
+        In Vol_C_Mag; Jacobian JacVol_Mag; Integration Int_Mag; }
       GlobalTerm { [ Dof{I} *(CoefGeos[]/Fabs[CoefGeos[]]) , {U} ]; In Vol_C_Mag; }
 
       Integral { DtDof [ Ysur[] * Dof{a} , {ur} ];
-        In Sur_Imped_Mag; Jacobian Sur; Integration Gauss_v; }
+        In Sur_Imped_Mag; Jacobian JacSur_Mag; Integration Int_Mag; }
       Integral { [ Ysur[] * Dof{ur} / CoefGeos[] , {ur} ];
-        In Sur_Imped_Mag; Jacobian Sur; Integration Gauss_v; }
+        In Sur_Imped_Mag; Jacobian JacSur_Mag; Integration Int_Mag; }
       GlobalTerm { [ Dof{I} *(CoefGeos[]/Fabs[CoefGeos[]]) , {U} ]; In Sur_Imped_Mag; }
 
       // js[0] should be of the form: Ns[]/Sc[] * Vector[0,0,1]
       Integral { [ - (js0[]*Vector[0,0,1]) * Dof{ir} , {a} ];
-        In Vol_S_Mag; Jacobian Vol; Integration Gauss_v; }
+        In Vol_S_Mag; Jacobian JacVol_Mag; Integration Int_Mag; }
       Integral { DtDof [ Ns[]/Sc[] * Dof{a} , {ir} ];
-        In Vol_S_Mag; Jacobian Vol; Integration Gauss_v; }
+        In Vol_S_Mag; Jacobian JacVol_Mag; Integration Int_Mag; }
       Integral { [ Ns[]/Sc[] / sigma[] * (js0[]*Vector[0,0,1]) * Dof{ir} , {ir} ];
-        In Vol_S_Mag; Jacobian Vol; Integration Gauss_v; }
+        In Vol_S_Mag; Jacobian JacVol_Mag; Integration Int_Mag; }
       GlobalTerm { [ Dof{Us} / CoefGeos[] , {Is} ]; In Vol_S_Mag; }
       // Attention: CoefGeo[.] = 2*Pi for Axi
 
@@ -460,64 +460,70 @@ Resolution {
   }
 }
 
-// Same PostProcessing for both static and dynamic formulations (both refer to
-// the same FunctionSpace from which the solution is obtained)
 PostProcessing {
   { Name Magnetodynamics2D_av; NameOfFormulation Magnetodynamics2D_av;
     PostQuantity {
       // In 2D, a is a vector with only a z-component: (0,0,az)
       { Name a; Value {
-          Term { [ {a} ]; In Vol_Mag; Jacobian Vol; }
+          Term { [ {a} ]; In Vol_Mag; Jacobian JacVol_Mag; }
         }
       }
       // The equilines of az are field lines (giving the magnetic field direction)
       { Name az; Value {
-          Term { [ CompZ[{a}] ]; In Vol_Mag; Jacobian Vol; }
+          Term { [ CompZ[{a}] ]; In Vol_Mag; Jacobian JacVol_Mag; }
         }
       }
       { Name xaz; Value {
-          Term { [ X[] * CompZ[{a}] ]; In Vol_Mag; Jacobian Vol; }
+          Term { [ X[] * CompZ[{a}] ]; In Vol_Mag; Jacobian JacVol_Mag; }
         }
       }
       { Name b; Value {
-          Term { [ {d a} ]; In Vol_Mag; Jacobian Vol; }
+          Term { [ {d a} ]; In Vol_Mag; Jacobian JacVol_Mag; }
         }
       }
       { Name norm_of_b; Value {
-          Term { [ Norm[{d a}] ]; In Vol_Mag; Jacobian Vol; }
+          Term { [ Norm[{d a}] ]; In Vol_Mag; Jacobian JacVol_Mag; }
         }
       }
       { Name h; Value {
-          Term { [ nu[] * {d a} ]; In Vol_L_Mag; Jacobian Vol; }
-          Term { [ nu[{d a}] * {d a} ]; In Vol_NL_Mag; Jacobian Vol; }
-          Term { [ -nu[] * br[] ]; In Vol_M_Mag; Jacobian Vol; }
+          Term { [ nu[] * {d a} ]; In Vol_L_Mag; Jacobian JacVol_Mag; }
+          Term { [ nu[{d a}] * {d a} ]; In Vol_NL_Mag; Jacobian JacVol_Mag; }
+          Term { [ -nu[] * br[] ]; In Vol_M_Mag; Jacobian JacVol_Mag; }
         }
       }
       { Name js; Value {
-          Term { [ js0[] ]; In Vol_S0_Mag; Jacobian Vol; }
-          Term { [  (js0[]*Vector[0,0,1])*{ir} ]; In Vol_S_Mag; Jacobian Vol; }
+          Term { [ js0[] ];
+            In Vol_S0_Mag; Jacobian JacVol_Mag; }
+          Term { [  (js0[]*Vector[0,0,1])*{ir} ];
+            In Vol_S_Mag; Jacobian JacVol_Mag; }
 	  // to force a vector result out of sources
-          Term { [ Vector[0,0,0] ]; In Vol_Mag; Jacobian Vol; }
+          Term { [ Vector[0,0,0] ];
+            In Vol_Mag; Jacobian JacVol_Mag; }
         }
       }
       { Name j; Value {
-          Term { [ -sigma[] * (Dt[{a}]+{ur}/CoefGeos[]) ]; In Vol_C_Mag; Jacobian Vol; }
-          Term { [ js0[] ]; In Vol_S0_Mag; Jacobian Vol; }
-          Term { [ (js0[]*Vector[0,0,1])*{ir} ]; In Vol_S_Mag; Jacobian Vol; }
-          Term { [ Vector[0,0,0] ]; In Vol_Mag; Jacobian Vol; }
+          Term { [ -sigma[] * (Dt[{a}]+{ur}/CoefGeos[]) ];
+            In Vol_C_Mag; Jacobian JacVol_Mag; }
+          Term { [ js0[] ];
+            In Vol_S0_Mag; Jacobian JacVol_Mag; }
+          Term { [ (js0[]*Vector[0,0,1])*{ir} ];
+            In Vol_S_Mag; Jacobian JacVol_Mag; }
+          Term { [ Vector[0,0,0] ];
+            In Vol_Mag; Jacobian JacVol_Mag; }
           // Current density in A/m
-          Term { [ -Ysur[] * (Dt[{a}]+{ur}/CoefGeos[]) ]; In Sur_Imped_Mag; Jacobian Sur; }
+          Term { [ -Ysur[] * (Dt[{a}]+{ur}/CoefGeos[]) ];
+            In Sur_Imped_Mag; Jacobian JacSur_Mag; }
         }
       }
       { Name JouleLosses; Value {
           Integral { [ CoefPower * sigma[]*SquNorm[Dt[{a}]+{ur}/CoefGeos[]] ];
-            In Vol_C_Mag; Jacobian Vol; Integration Gauss_v; }
+            In Vol_C_Mag; Jacobian JacVol_Mag; Integration Int_Mag; }
           Integral { [ CoefPower * 1./sigma[]*SquNorm[js0[]] ];
-            In Vol_S0_Mag; Jacobian Vol; Integration Gauss_v; }
+            In Vol_S0_Mag; Jacobian JacVol_Mag; Integration Int_Mag; }
 	  Integral { [ CoefPower * 1./sigma[]*SquNorm[(js0[]*Vector[0,0,1])*{ir}] ];
-            In Vol_S_Mag; Jacobian Vol; Integration Gauss_v; }
+            In Vol_S_Mag; Jacobian JacVol_Mag; Integration Int_Mag; }
           Integral { [ CoefPower * Ysur[]*SquNorm[Dt[{a}]+{ur}/CoefGeos[]] ];
-            In Sur_Imped_Mag; Jacobian Sur; Integration Gauss_v; }
+            In Sur_Imped_Mag; Jacobian JacSur_Mag; Integration Int_Mag; }
 	}
       }
       { Name U; Value {
@@ -536,45 +542,131 @@ PostProcessing {
           EndIf
         }
       }
+      { Name f; Value {
+          If(Flag_FrequencyDomain)
+            // DC component (phasor at 2*Freq in f_2F)
+            Term { [ Re[ -sigma[] * (Dt[{a}]+{ur}/CoefGeos[]) ] /\ Re[{d a}] / 2. +
+                     Im[ -sigma[] * (Dt[{a}]+{ur}/CoefGeos[]) ] /\ Im[{d a}] / 2. ];
+              In Vol_C_Mag; Jacobian JacVol_Mag; }
+            Term { [ Re[ js0[] ] /\ Re[{d a}] / 2. +
+                     Im[ js0[] ] /\ Im[{d a}] / 2. ];
+              In Vol_S0_Mag; Jacobian JacVol_Mag; }
+            Term { [ Re[ (js0[]*Vector[0,0,1])*{ir} ] /\ Re[{d a}] / 2. +
+                     Im[ (js0[]*Vector[0,0,1])*{ir} ] /\ Im[{d a}] / 2. ];
+              In Vol_S_Mag; Jacobian JacVol_Mag; }
+          Else
+            Term { [ -sigma[] * (Dt[{a}]+{ur}/CoefGeos[]) /\ {d a} ];
+              In Vol_C_Mag; Jacobian JacVol_Mag; }
+            Term { [ js0[] /\ {d a} ];
+              In Vol_S0_Mag; Jacobian JacVol_Mag; }
+            Term { [ (js0[]*Vector[0,0,1])*{ir} /\ {d a} ];
+              In Vol_S_Mag; Jacobian JacVol_Mag; }
+          EndIf
+        }
+      }
+      { Name int_f; Value {
+          If(Flag_FrequencyDomain)
+            // DC component (a component also exists at 2*Freq)
+            Integral { [ Re[ -sigma[] * (Dt[{a}]+{ur}/CoefGeos[]) ]  /\ Re[{d a}] / 2. +
+                         Im[ -sigma[] * (Dt[{a}]+{ur}/CoefGeos[]) ]  /\ Im[{d a}] / 2. ];
+              In Vol_C_Mag; Jacobian JacVol_Mag; Integration Int_Mag; }
+            Integral { [ Re[ js0[] ] /\ Re[{d a}] / 2. +
+                         Im[ js0[] ] /\ Im[{d a}] / 2. ];
+              In Vol_S0_Mag; Jacobian JacVol_Mag; Integration Int_Mag; }
+            Integral { [ Re[ (js0[]*Vector[0,0,1])*{ir} ] /\ Re[{d a}] / 2. +
+                         Im[ (js0[]*Vector[0,0,1])*{ir} ] /\ Im[{d a}] / 2. ];
+              In Vol_S_Mag; Jacobian JacVol_Mag; Integration Int_Mag; }
+          Else
+            Integral { [ -sigma[] * (Dt[{a}]+{ur}/CoefGeos[]) /\ {d a} ];
+              In Vol_C_Mag; Jacobian JacVol_Mag; Integration Int_Mag; }
+            Integral { [ js0[] /\ {d a} ];
+              In Vol_S0_Mag; Jacobian JacVol_Mag; Integration Int_Mag; }
+            Integral { [ (js0[]*Vector[0,0,1])*{ir} /\ {d a} ];
+              In Vol_S_Mag; Jacobian JacVol_Mag; Integration Int_Mag; }
+          EndIf
+        }
+      }
+      { Name f_2F; Value {
+          If(Flag_FrequencyDomain)
+            // 2*Freq component
+            Term { [ Complex[
+                  Re[ -sigma[] * (Dt[{a}]+{ur}/CoefGeos[]) ] /\ Re[{d a}] / 2. -
+                  Im[ -sigma[] * (Dt[{a}]+{ur}/CoefGeos[]) ] /\ Im[{d a}] / 2. ,
+                  Im[ -sigma[] * (Dt[{a}]+{ur}/CoefGeos[]) ] /\ Re[{d a}] / 2. +
+                  Re[ -sigma[] * (Dt[{a}]+{ur}/CoefGeos[]) ] /\ Im[{d a}] / 2. ] ];
+              In Vol_C_Mag; Jacobian JacVol_Mag; }
+            Term { [ Complex [
+                  Re[ js0[] ] /\ Re[{d a}] / 2. -
+                  Im[ js0[] ] /\ Im[{d a}] / 2. ,
+                  Im[ js0[] ] /\ Re[{d a}] / 2. +
+                  Re[ js0[] ] /\ Im[{d a}] / 2. ] ];
+              In Vol_S0_Mag; Jacobian JacVol_Mag; }
+            Term { [ Complex [
+                  Re[ (js0[]*Vector[0,0,1])*{ir} ] /\ Re[{d a}] / 2. -
+                  Im[ (js0[]*Vector[0,0,1])*{ir} ] /\ Im[{d a}] / 2. ,
+                  Im[ (js0[]*Vector[0,0,1])*{ir} ] /\ Re[{d a}] / 2. +
+                  Re[ (js0[]*Vector[0,0,1])*{ir} ] /\ Im[{d a}] / 2. ] ];
+              In Vol_S_Mag; Jacobian JacVol_Mag; }
+          EndIf
+        }
+      }
     }
   }
 
   { Name Magnetostatics2D_a; NameOfFormulation Magnetostatics2D_a;
     PostQuantity {
       { Name a; Value {
-          Term { [ {a} ]; In Vol_Mag; Jacobian Vol; }
+          Term { [ {a} ];
+            In Vol_Mag; Jacobian JacVol_Mag; }
         }
       }
       { Name az; Value {
-          Term { [ CompZ[{a}] ]; In Vol_Mag; Jacobian Vol; }
+          Term { [ CompZ[{a}] ];
+            In Vol_Mag; Jacobian JacVol_Mag; }
         }
       }
       { Name xaz; Value {
-          Term { [ X[] * CompZ[{a}] ]; In Vol_Mag; Jacobian Vol; }
+          Term { [ X[] * CompZ[{a}] ];
+            In Vol_Mag; Jacobian JacVol_Mag; }
         }
       }
       { Name b; Value {
-          Term { [ {d a} ]; In Vol_Mag; Jacobian Vol; }
+          Term { [ {d a} ];
+            In Vol_Mag; Jacobian JacVol_Mag; }
         }
       }
       { Name norm_of_b; Value {
-          Term { [ Norm[{d a}] ]; In Vol_Mag; Jacobian Vol; }
+          Term { [ Norm[{d a}] ];
+            In Vol_Mag; Jacobian JacVol_Mag; }
         }
       }
       { Name h; Value {
-          Term { [ nu[] * {d a} ]; In Vol_L_Mag; Jacobian Vol; }
-          Term { [ nu[{d a}] * {d a} ]; In Vol_NL_Mag; Jacobian Vol; }
+          Term { [ nu[] * {d a} ];
+            In Vol_L_Mag; Jacobian JacVol_Mag; }
+          Term { [ nu[{d a}] * {d a} ];
+            In Vol_NL_Mag; Jacobian JacVol_Mag; }
         }
       }
       { Name j; Value {
-          Term { [ js0[] ]; In Vol_S0_Mag; Jacobian Vol; }
-          Term { [ (js0[]*Vector[0,0,1])*{ir} ]; In Vol_S_Mag; Jacobian Vol; }
-          Term { [ Vector[0,0,0] ]; In Vol_Mag; Jacobian Vol; }
+          Term { [ js0[] ];
+            In Vol_S0_Mag; Jacobian JacVol_Mag; }
+          Term { [ (js0[]*Vector[0,0,1])*{ir} ];
+            In Vol_S_Mag; Jacobian JacVol_Mag; }
+          Term { [ Vector[0,0,0] ];
+            In Vol_Mag; Jacobian JacVol_Mag; }
         }
       }
       { Name flux; Value {
           Integral { [ CoefGeos[] * Ns[] / Sc[] * CompZ[{a}] ];
-            In Vol_S_Mag; Jacobian Vol; Integration Gauss_v; } } }
+            In Vol_S_Mag; Jacobian JacVol_Mag; Integration Int_Mag; } }
+      }
+      { Name f; Value {
+          Term { [ js0[] /\ {d a} ];
+            In Vol_S0_Mag; Jacobian JacVol_Mag; }
+          Term { [ (js0[]*Vector[0,0,1])*{ir} /\ {d a} ];
+            In Vol_S_Mag; Jacobian JacVol_Mag; }
+        }
+      }
     }
   }
 }
