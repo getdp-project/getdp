@@ -511,7 +511,7 @@ void Message::Cpu(int level, bool printDate, bool printWallTime, bool printCpu,
   if(_verbosity < abs(level)) return;
 
   double s = 0.;
-  long mem = 0;
+  std::size_t mem = 0;
   GetResources(&s, &mem);
   double val[2] = {s, (double)mem / 1024. / 1024.};
   double min[2] = {val[0], val[1]};

@@ -10,7 +10,7 @@
 #include <stdio.h>
 
 FILE *FOpen(const char *f, const char *mode);
-void GetResources(double *s, long *mem);
+void GetResources(double *s, std::size_t *mem);
 double GetTotalRam();
 double GetTimeOfDay();
 void IncreaseStackSize();

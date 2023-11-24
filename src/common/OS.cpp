@@ -260,7 +260,7 @@ FILE *FOpen(const char *f, const char *mode)
 #endif
 }
 
-void GetResources(double *s, long *mem)
+void GetResources(double *s, std::size_t *mem)
 {
 #if defined(WIN32) && !defined(__CYGWIN__)
   FILETIME creation, exit, kernel, user;
@@ -270,15 +270,15 @@ void GetResources(double *s, long *mem)
   }
   PROCESS_MEMORY_COUNTERS info;
   GetProcessMemoryInfo(GetCurrentProcess(), &info, sizeof(info));
-  *mem = (long)info.PeakWorkingSetSize;
+  *mem = (std::size_t)info.PeakWorkingSetSize;
 #else
   static struct rusage r;
   getrusage(RUSAGE_SELF, &r);
   *s = (double)r.ru_utime.tv_sec + 1.e-6 * (double)r.ru_utime.tv_usec;
 #if defined(__APPLE__)
-  *mem = (long)r.ru_maxrss;
+  *mem = (std::size_t)r.ru_maxrss;
 #else
-  *mem = (long)(r.ru_maxrss * 1024L);
+  *mem = (std::size_t)(r.ru_maxrss * 1024L);
 #endif
 #endif
 }

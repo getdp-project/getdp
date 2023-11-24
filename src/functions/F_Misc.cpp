@@ -69,7 +69,7 @@ void F_QuadraturePointIndex(F_ARG)
 void F_GetCpuTime(F_ARG)
 {
   double s = 0.;
-  long mem = 0;
+  std::size_t mem = 0;
   GetResources(&s, &mem);
   V->Type = SCALAR;
   V->Val[0] = s;
@@ -84,9 +84,9 @@ void F_GetWallClockTime(F_ARG)
 void F_GetMemory(F_ARG)
 {
   double s = 0.;
-  long mem = 0;
+  std::size_t mem = 0;
   GetResources(&s, &mem);
-  double val = mem / 1024. / 1024.;
+  double val = (double)mem / 1024. / 1024.;
   V->Type = SCALAR;
   V->Val[0] = val;
 }
