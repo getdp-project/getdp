@@ -721,7 +721,7 @@ void Cal_GalerkinTermOfFemEquation(struct Element *Element,
       } /* if NextElement */
     } /* if INTEGRALQUANTITY */
 
-#if 0
+#if 1
     if(Message::GetCommSize() > 1) {
       // if all the equations lead to matrix entries and they are all outside
       // the range owned by the current process, skip the assembly altogether:
