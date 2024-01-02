@@ -1376,6 +1376,9 @@ struct StringXFunction2Nbr F_Function[] =
 
    {"DyadGreenHom", (CAST)F_DyadGreenHom, 0, 6},
    {"CurlDyadGreenHom", (CAST)F_CurlDyadGreenHom, 0, 6},
+   
+   {"OscilatingParticleE", (CAST)F_OscilatingParticleE ,   0,   5 },
+   {"OscilatingParticleB", (CAST)F_OscilatingParticleB ,   0,   5 },
 
    // F_PeWe
    {"ElastodynamicsCylinderCavity", (CAST)F_ElastodynamicsCylinderCavity, 5, 1},

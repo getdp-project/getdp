@@ -68,6 +68,9 @@ void F_Nnm(F_ARG);
 void F_DyadGreenHom(F_ARG);
 void F_CurlDyadGreenHom(F_ARG);
 
+void F_OscilatingParticleE(F_ARG) ;
+void F_OscilatingParticleB(F_ARG) ;
+
 /* F_PeWe */
 
 void F_ElastodynamicsCylinderCavity(F_ARG);
