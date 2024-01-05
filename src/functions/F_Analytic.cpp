@@ -3189,7 +3189,7 @@ void F_CurlDyadGreenHom(F_ARG)
 /* ------------------------------------------------------------ */
 /* Oscillating particle (linear trajectory)                     */
 /* See https://arxiv.org/abs/2305.17090                         */
-/* OscilatingParticleE[XYZ[],order,pulsation,pathlength,scale]; */
+/* OscillatingParticle_Z_Efield[XYZ[],order,pulsation,pathlength,scale]; */
 /* -----------------------------------------------------------  */
 static std::complex<double> integ_trapeze(std::complex<double> taby[], double a, double b, int Npts)
 {
@@ -3203,7 +3203,7 @@ static std::complex<double> integ_trapeze(std::complex<double> taby[], double a,
 }
 
 
-void  F_OscilatingParticleE(F_ARG){
+void  F_OscillatingParticle_Z_Efield(F_ARG){
   double x,y,z,w_0,a,nm;
   int l;
   std::complex<double> exp_ikR, rho_z_a, j_z_a, Q, K, I_sph, I_flat, Ex, Ey, Ez;
@@ -3217,7 +3217,7 @@ void  F_OscilatingParticleE(F_ARG){
       || (A+2)->Type != SCALAR
         || (A+3)->Type != SCALAR
           || (A+4)->Type != SCALAR)
-  Message::Error("Check types of arguments for OscilatingParticle");
+  Message::Error("Check types of arguments for OscillatingParticleZ");
 
   x   =      (A+0)->Val[0];
   y   =      (A+0)->Val[1];
@@ -3274,7 +3274,7 @@ void  F_OscilatingParticleE(F_ARG){
   V->Val[2] = Ez.real() ; V->Val[MAX_DIM+2] = Ez.imag() ;
 }
 
-void  F_OscilatingParticleB(F_ARG){
+void  F_OscillatingParticle_Z_Bfield(F_ARG){
   double x,y,z,w_0,a,nm;
   int l;
   std::complex<double> exp_ikR, j_z_a, K, Ix, Iy;
@@ -3289,7 +3289,7 @@ void  F_OscilatingParticleB(F_ARG){
       || (A+2)->Type != SCALAR
         || (A+3)->Type != SCALAR
           || (A+4)->Type != SCALAR)
-  Message::Error("Check types of arguments for OscilatingParticle");
+  Message::Error("Check types of arguments for OscillatingParticleZ");
 
   x   =      (A+0)->Val[0];
   y   =      (A+0)->Val[1];

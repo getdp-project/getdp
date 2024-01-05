@@ -68,8 +68,8 @@ void F_Nnm(F_ARG);
 void F_DyadGreenHom(F_ARG);
 void F_CurlDyadGreenHom(F_ARG);
 
-void F_OscilatingParticleE(F_ARG) ;
-void F_OscilatingParticleB(F_ARG) ;
+void F_OscillatingParticle_Z_Efield(F_ARG) ;
+void F_OscillatingParticle_Z_Bfield(F_ARG) ;
 
 /* F_PeWe */
 
