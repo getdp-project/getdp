@@ -3191,131 +3191,151 @@ void F_CurlDyadGreenHom(F_ARG)
 /* See https://arxiv.org/abs/2305.17090                         */
 /* OscilatingParticleE[XYZ[],order,pulsation,pathlength,scale]; */
 /* -----------------------------------------------------------  */
+static std::complex<double> integ_trapeze(std::complex<double> taby[], double a, double b, int Npts)
+{
+  std::complex<double> sum = 0;
+  int i;
+  double h = (b-a)/((double)Npts-1.);
+  for(i=1;i<Npts-1;i++){
+    sum=sum+taby[i];
+  }
+  return( (h/2.)*(taby[0]+taby[Npts-1]+2.*sum));
+}
+
+
 void  F_OscilatingParticleE(F_ARG){
- // 
- double x,y,z,w_0,a,nm;
- int l;
- double delta;
- std::complex<double> I1, I2, Fx, Fy, Fz, E_sph_l, E_flat_l, Phi;
+  double x,y,z,w_0,a,nm;
+  int l;
+  std::complex<double> exp_ikR, rho_z_a, j_z_a, Q, K, I_sph, I_flat, Ex, Ey, Ez;
+  double z_a, R_til;
+  std::complex<double> I = std::complex<double>(0., 1.);
+  int npts_integ = 300;
+  std::complex<double> Ker_sph[300],Ker_flat[300];
 
- if(   A->Type != VECTOR
-   || (A+1)->Type != SCALAR
-     || (A+2)->Type != SCALAR
-       || (A+3)->Type != SCALAR
-         || (A+4)->Type != SCALAR)
-   Message::Error("Check types of arguments for OscilatingParticle");
- x   =      (A+0)->Val[0];
- y   =      (A+0)->Val[1];
- z   =      (A+0)->Val[2];
- l   = (int)(A+1)->Val[0];
- w_0 =      (A+2)->Val[0];
- a   =      (A+3)->Val[0];
- nm  =      (A+4)->Val[0];
+  if(   A->Type != VECTOR
+    || (A+1)->Type != SCALAR
+      || (A+2)->Type != SCALAR
+        || (A+3)->Type != SCALAR
+          || (A+4)->Type != SCALAR)
+  Message::Error("Check types of arguments for OscilatingParticle");
 
- // definitions
- double ld    = (double)l;
- double pi    = M_PI;
- double eps_0 = 8.854187817e-3*nm;
- double mu_0  = 400.*pi*nm;
- double c     = 1.0/(std::sqrt(eps_0 * mu_0));
- double q     = 1.602e-10*nm;
- double k_0   = w_0/c;
- int npts_integ = 50;
- std::complex<double> I = std::complex<double>(0., 1.);
- std::complex<double> Ker, Ker_E, Ker_E_sph , Ker_E_flat;
- double z_a, r_til ;
+  x   =      (A+0)->Val[0];
+  y   =      (A+0)->Val[1];
+  z   =      (A+0)->Val[2];
+  l   = (int)(A+1)->Val[0];
+  w_0 =      (A+2)->Val[0];
+  a   =      (A+3)->Val[0];
+  nm  =      (A+4)->Val[0];
 
- if(l==0) delta = 1.;
- else delta = 2.;
- I1 = 0., I2 = 0.;
+  double ld    = (double)l;
+  double pi    = M_PI;
+  double eps_0 = 8.854187817e-3*nm;
+  double mu_0  = 400.*pi*nm;
+  double c     = 1.0/(std::sqrt(eps_0 * mu_0));
+  double k_0   = w_0/c;
 
- for (int i=1;i<npts_integ-1;i++)
- {
-   z_a   = -a+(double)i*(2.*a) / ((double)(npts_integ-1));
-   r_til = std::sqrt(std::pow(x,2) + std::pow(y,2) + std::pow(z-z_a,2));
-   Ker   = delta*q * std::exp(-I*ld*k_0*r_til) / std::pow(r_til,3);
-   Ker_E = Ker/(4*pi*eps_0);
-   Ker_E_sph  = Ker_E* std::cos(ld*std::acos(z_a/a))
-     /(pi*std::sqrt(std::pow(a,2)-std::pow(z_a,2)) )*(1.+I*ld*k_0*r_til);
-   Phi = a/(2*pi*std::sqrt(std::pow(a,2)-std::pow(z_a,2)))*(
-          (1+ld*std::pow((k_0*r_til),2))* std::cos((ld+1.)*std::acos(z_a/a))
-              +(1-ld*std::pow((k_0*r_til),2))* std::cos((ld-1.)*std::acos(z_a/a))
-              + I*ld*k_0*r_til*(std::cos((ld+1.)*std::acos(z_a/a)) + std::cos((ld-1.)*std::acos(z_a/a)) ) );
-   Ker_E_flat = Ker_E*Phi;
-   I1+=2.*a/((double)npts_integ-1.)*Ker_E_sph;
-   I2+=2.*a/((double)npts_integ-1.)*Ker_E_flat;
- }
- E_sph_l  = I1;
- E_flat_l = I2;
+  double theta_a_min = -pi/2.;
+  double theta_a_max =  pi/2.;
+  double theta_a;
 
- Fx = x*E_sph_l;
- Fy = y*E_sph_l;
- Fz = z*(E_sph_l - E_flat_l);
+  for (int i=0;i<npts_integ;i++){
+    theta_a = theta_a_min+(double)i*pi / ((double)(npts_integ-1.));
+    z_a     = a * std::sin(theta_a);
 
- V->Type = VECTOR;
- V->Val[0] = Fx.real() ; V->Val[MAX_DIM  ] = Fx.imag() ;
- V->Val[1] = Fy.real() ; V->Val[MAX_DIM+1] = Fy.imag() ;
- V->Val[2] = Fz.real() ; V->Val[MAX_DIM+2] = Fz.imag() ;
+    R_til = std::sqrt(std::pow(x,2) + std::pow(y,2) + std::pow(z-z_a,2));
+    exp_ikR = std::exp(-I*ld*k_0*R_til);
+
+    j_z_a = std::cos((ld+1.)*std::acos(z_a/a)) - std::cos((ld-1.)*std::acos(z_a/a));
+    j_z_a *=  1./pi;
+    j_z_a *=  a*w_0*0.5/I;
+
+    rho_z_a  = std::cos(ld*std::acos(z_a/a));
+    rho_z_a *= 1./pi;
+    Q = (rho_z_a + j_z_a*(z-z_a)/(R_til*c)) * exp_ikR;
+    K = (1./R_til + I*ld*w_0/c) * j_z_a * exp_ikR;
+
+    Ker_sph[i]  =  (Q + K/c*(z-z_a))/std::pow(R_til,3);
+    Ker_flat[i] =  (K*(z_a*(z-z_a)+std::pow(R_til,2))+Q*z_a*c) / (c*std::pow(R_til,3));
+  }
+
+  I_sph  = integ_trapeze(Ker_sph , theta_a_min, theta_a_max, npts_integ);
+  I_flat = integ_trapeze(Ker_flat, theta_a_min, theta_a_max, npts_integ);
+
+  I_sph  *= 1./(4.*pi*eps_0);
+  I_flat *= 1./(4.*pi*eps_0);
+
+  Ex = x*I_sph;
+  Ey = y*I_sph;
+  Ez = z*I_sph - I_flat;
+
+  V->Type = VECTOR;
+  V->Val[0] = Ex.real() ; V->Val[MAX_DIM  ] = Ex.imag() ;
+  V->Val[1] = Ey.real() ; V->Val[MAX_DIM+1] = Ey.imag() ;
+  V->Val[2] = Ez.real() ; V->Val[MAX_DIM+2] = Ez.imag() ;
 }
 
 void  F_OscilatingParticleB(F_ARG){
- double x,y,z,w_0,a,nm;
- int l;
- double delta;
- std::complex<double> I1, Fx, Fy, Fz, B_circ;
+  double x,y,z,w_0,a,nm;
+  int l;
+  std::complex<double> exp_ikR, j_z_a, K, Ix, Iy;
+  double z_a, R_til;
+  std::complex<double> I = std::complex<double>(0., 1.);
 
- if(   A->Type != VECTOR
-   || (A+1)->Type != SCALAR
-     || (A+2)->Type != SCALAR
-       || (A+3)->Type != SCALAR
-         || (A+4)->Type != SCALAR)
-   Message::Error("Check types of arguments for OscilatingParticle");
- x   =      (A+0)->Val[0];
- y   =      (A+0)->Val[1];
- z   =      (A+0)->Val[2];
- l   = (int)(A+1)->Val[0];
- w_0 =      (A+2)->Val[0];
- a   =      (A+3)->Val[0];
- nm  =      (A+4)->Val[0];
+  int npts_integ = 300;
+  std::complex<double> Ker_x[300],Ker_y[300];
 
- // definitions
- double ld    = (double)l;
- double pi    = M_PI;
- double eps_0 = 8.854187817e-3*nm;
- double mu_0  = 400.*pi*nm;
- double c     = 1.0/(std::sqrt(eps_0 * mu_0));
- double q     = 1.602e-10*nm;
- double k_0   = w_0/c;
- int npts_integ = 50;
- std::complex<double> I = std::complex<double>(0., 1.);
- std::complex<double> Ker, Ker_B;
- double z_a, r_til ;
+  if(   A->Type != VECTOR
+    || (A+1)->Type != SCALAR
+      || (A+2)->Type != SCALAR
+        || (A+3)->Type != SCALAR
+          || (A+4)->Type != SCALAR)
+  Message::Error("Check types of arguments for OscilatingParticle");
 
- if(l==0) delta = 1.;
- else delta = 2.;
- I1 = 0.;
+  x   =      (A+0)->Val[0];
+  y   =      (A+0)->Val[1];
+  z   =      (A+0)->Val[2];
+  l   = (int)(A+1)->Val[0];
+  w_0 =      (A+2)->Val[0];
+  a   =      (A+3)->Val[0];
+  nm  =      (A+4)->Val[0];
 
- for (int i=1;i<npts_integ-1;i++)
- {
-   z_a   = -a+(double)i*(2.*a) / ((double)(npts_integ-1));
-   r_til = std::sqrt(std::pow(x,2) + std::pow(y,2) + std::pow(z-z_a,2));
-   Ker   = delta*q * std::exp(-I*ld*k_0*r_til) / std::pow(r_til,3);
-   Ker_B = mu_0/(4*pi)*a*w_0*0.5*Ker*(-I+ld*k_0*r_til)*
-            (std::cos((ld+1.)*std::acos(z_a/a)) - std::cos((ld-1.)*std::acos(z_a/a)))
-            /(pi*std::sqrt(std::pow(a,2)-std::pow(z_a,2)));
+  double ld    = (double)l;
+  double pi    = M_PI;
+  double eps_0 = 8.854187817e-3*nm;
+  double mu_0  = 400.*pi*nm;
+  double c     = 1.0/(std::sqrt(eps_0 * mu_0));
+  double k_0   = w_0/c;
 
-   I1+=2.*a/((double)npts_integ-1.)*Ker_B;
- }
- B_circ  = I1;
+  double theta_a_min = -pi/2.;
+  double theta_a_max =  pi/2.;
+  double theta_a;
 
- Fx = -y*B_circ;
- Fy =  x*B_circ;
- Fz =  0.;
+  for (int i=0;i<npts_integ;i++){
+    theta_a = theta_a_min+(double)i*pi / ((double)(npts_integ-1.));
+    z_a     = a * std::sin(theta_a);
+    R_til   = std::sqrt(std::pow(x,2) + std::pow(y,2) + std::pow(z-z_a,2));
+    exp_ikR = std::exp(-I*ld*k_0*R_til);
 
- V->Type = VECTOR;
- V->Val[0] = Fx.real() ; V->Val[MAX_DIM  ] = Fx.imag() ;
- V->Val[1] = Fy.real() ; V->Val[MAX_DIM+1] = Fy.imag() ;
- V->Val[2] = Fz.real() ; V->Val[MAX_DIM+2] = Fz.imag() ;
+    j_z_a  = std::cos((ld+1.)*std::acos(z_a/a)) - std::cos((ld-1.)*std::acos(z_a/a));
+    j_z_a *= 1./pi;
+    j_z_a *= a*w_0*0.5/I;
+    j_z_a *= exp_ikR;
+
+    K = (1./R_til + I*ld*w_0/c) * j_z_a ;
+
+    Ker_x[i] = -y*K/std::pow(R_til,2);
+    Ker_y[i] =  x*K/std::pow(R_til,2);
+  }
+
+  Ix = integ_trapeze(Ker_x, theta_a_min, theta_a_max, npts_integ);
+  Iy = integ_trapeze(Ker_y, theta_a_min, theta_a_max, npts_integ);
+
+  Ix *=  mu_0/(4.*pi);
+  Iy *=  mu_0/(4.*pi);
+
+  V->Type = VECTOR;
+  V->Val[0] = Ix.real() ; V->Val[MAX_DIM  ] = Ix.imag() ;
+  V->Val[1] = Iy.real() ; V->Val[MAX_DIM+1] = Iy.imag() ;
+  V->Val[2] = 0.        ; V->Val[MAX_DIM+2] = 0.        ;
 }
-
 #undef F_ARG
