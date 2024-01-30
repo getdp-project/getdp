@@ -139,6 +139,23 @@ void init_Options(int member_ValMax_ = 0)
   flag_Enum = 0; member_ValMax = member_ValMax_;
 }
 
+int find_Index(std::map<std::string, int> &m, const std::string &name)
+{
+  auto it = m.find(name);
+  if(it != m.end()) return it->second;
+  return -1;
+}
+
+void set_Index(std::map<std::string, int> &m, const std::string &name, int index)
+{
+  m[name] = index;
+}
+
+void erase_Index(std::map<std::string, int> &m, const std::string &name)
+{
+  m.erase(name);
+}
+
 // External lexer functions
 void hack_fsetpos();
 void hack_fsetpos_printf();
@@ -561,7 +578,7 @@ GroupRHS :
       if(!strcmp($1, "All")) { //+++ Never considered because token tAll exists!
         $$ = -3;
       }
-      else if((i = List_ISearchSeq(Problem_S.Group, $1, fcmp_Group_Name)) >= 0) {
+      else if((i = find_Index(Problem_S.GroupIndices, $1)) >= 0) {
         List_Read(Problem_S.Group, i, &Group_S); $$ = i;
       }
       else {
@@ -630,7 +647,7 @@ SuppListOfRegion :
       if (nb_SuppList+1 <= 2) {
         int i;
         Type_SuppLists[nb_SuppList] = SUPPLIST_INSUPPORT;
-        if((i = List_ISearchSeq(Problem_S.Group, $4, fcmp_Group_Name)) >= 0) {
+        if((i = find_Index(Problem_S.GroupIndices, $4)) >= 0) {
           if(((struct Group *)List_Pointer(Problem_S.Group, i))->Type ==
 	     ELEMENTLIST) {
             $$ = List_Create(1, 5, sizeof(int));
@@ -759,7 +776,7 @@ IRegion :
     {
       if ($1.char1) vyyerror(1, "NameSpace '%s' not used yet", $1.char1);
       int i;
-      if((i = List_ISearchSeq(Problem_S.Group, $1.char2, fcmp_Group_Name)) < 0) {
+      if((i = find_Index(Problem_S.GroupIndices, $1.char2)) < 0) {
         // Si ce n'est pas un nom de groupe, est-ce un nom de constante ? :
         Constant_S.Name = $1.char2;
         if(!Tree_Query(ConstantTable_L, &Constant_S)) {
@@ -881,7 +898,7 @@ DefineGroups :
   | DefineGroups Comma String__Index
     {
       int i;
-      if ( (i = List_ISearchSeq(Problem_S.Group, $3, fcmp_Group_Name)) < 0 ) {
+      if ( (i = find_Index(Problem_S.GroupIndices, $3)) < 0 ) {
         Group_S.Type = REGIONLIST ; Group_S.FunctionType = REGION ;
         Group_S.InitialList = List_Create( 5, 5, sizeof(int)) ;
         Group_S.SuppListType = SUPPLIST_NONE ; Group_S.InitialSuppList = NULL ;
@@ -899,7 +916,7 @@ DefineGroups :
     '{' ListOfStringsForCharOptions '}' CharParameterOptionsOrNone '}'
     {
       int i;
-      if ( (i = List_ISearchSeq(Problem_S.Group, $3, fcmp_Group_Name)) < 0 ) {
+      if ( (i = find_Index(Problem_S.GroupIndices, $3)) < 0 ) {
         Group_S.Name = $3; // will be overwritten in Add_Group
 	Group_S.Type = REGIONLIST ; Group_S.FunctionType = REGION ;
 	Group_S.InitialList = List_Create( 5, 5, sizeof(int)) ;
@@ -923,8 +940,7 @@ DefineGroups :
 	char tmpstr[256];
 	sprintf(tmpstr, "%s_%d", $3, k+1) ;
 	int i;
-	if ( (i = List_ISearchSeq(Problem_S.Group, tmpstr,
-				  fcmp_Group_Name)) < 0 ) {
+	if ( (i = find_Index(Problem_S.GroupIndices, tmpstr)) < 0 ) {
 	  Group_S.Type = REGIONLIST ; Group_S.FunctionType = REGION ;
 	  Group_S.SuppListType = SUPPLIST_NONE ; Group_S.InitialSuppList = NULL ;
 	  Group_S.InitialList = List_Create( 5, 5, sizeof(int)) ;
@@ -959,8 +975,7 @@ Function :
   | String__Index '[' ']' tDEF Expression tEND
     {
       int i;
-      if((i = List_ISearchSeq
-	    (Problem_S.Expression, $1, fcmp_Expression_Name)) >= 0) {
+      if((i = find_Index(Problem_S.ExpressionIndices, $1)) >= 0) {
 	if(((struct Expression *)List_Pointer(Problem_S.Expression, i))->Type ==
 	    UNDEFINED_EXP) {
 	  Free(((struct Expression *)List_Pointer(Problem_S.Expression, i))->Name);
@@ -974,15 +989,15 @@ Function :
       else {  /* new identifier */
 	Free(((struct Expression *)List_Pointer(Problem_S.Expression, $5))->Name);
 	((struct Expression *)List_Pointer(Problem_S.Expression, $5))->Name = $1;
+        set_Index(Problem_S.ExpressionIndices, $1, $5);
       }
     }
 
   | String__Index '[' GroupRHS ']' tDEF Expression tEND
     {
       int i;
-      if((i = List_ISearchSeq
-	    (Problem_S.Expression, $1, fcmp_Expression_Name)) < 0) {
-	/* Si le nom n'existe pas : */
+      if((i = find_Index(Problem_S.ExpressionIndices, $1)) < 0) {
+	/* If the name does not exist : */
 	i = List_Nbr(Problem_S.Expression);
 	Expression_S.Type = PIECEWISEFUNCTION;
 	Expression_S.Case.PieceWiseFunction.ExpressionPerRegion =
@@ -1035,9 +1050,8 @@ Function :
     ',' GroupRHS ']' tDEF Expression tEND
     {
       int i;
-      if((i = List_ISearchSeq
-	    (Problem_S.Expression, $1, fcmp_Expression_Name)) < 0) {
-	/* Si le nom n'existe pas : */
+      if((i = find_Index(Problem_S.ExpressionIndices, $1)) < 0) {
+	/* If the name does not exist: */
 	i = List_Nbr(Problem_S.Expression);
 	Expression_S.Type = PIECEWISEFUNCTION2;
 	Expression_S.Case.PieceWiseFunction2.ExpressionPerRegion =
@@ -1098,8 +1112,7 @@ DefineFunctions :
   | DefineFunctions Comma String__Index
     {
       int i;
-      if ( (i = List_ISearchSeq
-	    (Problem_S.Expression, $3, fcmp_Expression_Name)) < 0 ) {
+      if ( (i = find_Index(Problem_S.ExpressionIndices, $3)) < 0 ) {
 	Expression_S.Type = UNDEFINED_EXP ;
 	Add_Expression(&Expression_S, $3, 0) ;
       }
@@ -1112,8 +1125,7 @@ DefineFunctions :
 	char tmpstr[256];
 	sprintf(tmpstr, "%s_%d", $3, k+1) ;
 	int i;
-	if ( (i = List_ISearchSeq(Problem_S.Expression, tmpstr,
-				  fcmp_Expression_Name)) < 0 ) {
+	if ( (i = find_Index(Problem_S.ExpressionIndices, tmpstr)) < 0 ) {
 	  Expression_S.Type = UNDEFINED_EXP ;
 	  Add_Expression(&Expression_S, tmpstr, 2) ;
 	}
@@ -1128,10 +1140,20 @@ UndefineFunctions :
     /* none */
   | UndefineFunctions Comma String__Index
     {
-      int i = List_ISearchSeq(Problem_S.Expression, $3, fcmp_Expression_Name);
+      int i = find_Index(Problem_S.ExpressionIndices, $3);
       if(i >= 0){
         Free(((struct Expression *)List_Pointer(Problem_S.Expression, i))->Name);
+#if 0
+        // this is not correct: it will change the position of expressions after
+        // the removed one, invalidating all indices that would refer to these
+        // expressions
         List_PSuppress(Problem_S.Expression, i);
+#else
+        // instead, change the name and remove the index
+        ((struct Expression *)List_Pointer(Problem_S.Expression, i))->Name =
+          strSave("__Undefined__");
+        erase_Index(Problem_S.ExpressionIndices, $3);
+#endif
       }
       Free($3) ;
     }
@@ -1151,7 +1173,7 @@ Expression :
   /* reutilisation de fonctions deja definies en amont */
   | tFunction '[' tSTRING ']'
     { int i;
-      if((i = List_ISearchSeq(Problem_S.Expression, $3, fcmp_Expression_Name)) < 0)
+      if((i = find_Index(Problem_S.ExpressionIndices, $3)) < 0)
 	vyyerror(0, "Unknown name of Expression: %s", $3);
       Free($3);  $$ = i;
     }
@@ -1429,7 +1451,7 @@ WholeQuantity_Single :
       /* Expression */
 
       int l;
-      if((l = List_ISearchSeq(Problem_S.Expression, $1, fcmp_Expression_Name)) >= 0) {
+      if((l = find_Index(Problem_S.ExpressionIndices, $1)) >= 0) {
 	WholeQuantity_S.Type = WQ_EXPRESSION;
 	WholeQuantity_S.Case.Expression.Index = l;
 	WholeQuantity_S.Case.Expression.NbrArguments = $2;
@@ -1624,7 +1646,7 @@ WholeQuantity_Single :
     '[' RecursiveListOfWholeQuantityExpression ']' ']' '{' FExpr '}'
     {
       int i;
-      if((i = List_ISearchSeq(Problem_S.Expression, $3, fcmp_Expression_Name)) < 0)
+      if((i = find_Index(Problem_S.ExpressionIndices, $3)) < 0)
 	vyyerror(0, "Undefined function '%s' used in MHTransform", $3);
       if(Current_DofIndexInWholeQuantity != Last_DofIndexInWholeQuantity)
 	vyyerror(0, "Dof{} definition cannot be used in MHTransform");
@@ -1642,7 +1664,7 @@ WholeQuantity_Single :
     '[' RecursiveListOfWholeQuantityExpression ']' ']' '{' FExpr ',' FExpr '}'
     {
       int i;
-      if((i = List_ISearchSeq(Problem_S.Expression, $3,fcmp_Expression_Name)) < 0)
+      if((i = find_Index(Problem_S.ExpressionIndices, $3)) < 0)
 	vyyerror(0, "Undefined function '%s' used in MHBilinear", $3);
       if(Current_DofIndexInWholeQuantity != Last_DofIndexInWholeQuantity)
 	vyyerror(0, "Dof{} definition cannot be used in MHBilinear");
@@ -5822,7 +5844,7 @@ OperationTerm :
     { Operation_P = (struct Operation*)
 	List_Pointer(Operation_L, List_Nbr(Operation_L)-1);
       int i;
-      if((i = List_ISearchSeq(Problem_S.Group, $3, fcmp_Group_Name)) < 0)
+      if((i = find_Index(Problem_S.GroupIndices, $3)) < 0)
    	vyyerror(0, "Unknown Group: %s", $3);
       Operation_P->Type = OPERATION_INIT_MOVINGBAND2D;
             Operation_P->Case.Init_MovingBand2D.GroupIndex = i;
@@ -5833,7 +5855,7 @@ OperationTerm :
     { Operation_P = (struct Operation*)
 	List_Pointer(Operation_L, List_Nbr(Operation_L)-1);
       int i;
-      if((i = List_ISearchSeq(Problem_S.Group, $3, fcmp_Group_Name)) < 0)
+      if((i = find_Index(Problem_S.GroupIndices, $3)) < 0)
     	vyyerror(0, "Unknown Group: %s", $3);
       Operation_P->Type = OPERATION_MESH_MOVINGBAND2D;
       Operation_P->Case.Mesh_MovingBand2D.GroupIndex = i;
@@ -5913,7 +5935,7 @@ OperationTerm :
 	vyyerror(0, "Unknown System: %s", $3);
       Free($3);
       Operation_P->DefineSystemIndex = i;
-      if((i = List_ISearchSeq(Problem_S.Group, $5, fcmp_Group_Name)) < 0)
+      if((i = find_Index(Problem_S.GroupIndices, $5)) < 0)
 	vyyerror(0, "Unknown Group: %s", $5);
       Free($5);
       Operation_P->Type = OPERATION_GENERATE_MH_MOVING;
@@ -5933,7 +5955,7 @@ OperationTerm :
 	vyyerror(0, "Unknown System: %s", $3);
       Free($3);
       Operation_P->DefineSystemIndex = i;
-      if((i = List_ISearchSeq(Problem_S.Group, $5, fcmp_Group_Name)) < 0)
+      if((i = find_Index(Problem_S.GroupIndices, $5)) < 0)
 	vyyerror(0, "Unknown Group: %s", $5);
       Free($5);
       Operation_P->Type = OPERATION_GENERATE_MH_MOVING_S;
@@ -6803,7 +6825,7 @@ ChangeOfStateTerm :
   | tFlag tSTRING tEND
     {
       int i;
-      if((i = List_ISearchSeq(Problem_S.Expression, $2, fcmp_Expression_Name)) < 0)
+      if((i = find_Index(Problem_S.ExpressionIndices, $2)) < 0)
 	vyyerror(0, "Unknown name of expression for Flag: %s", $2);
       Free($2);
       ChangeOfState_S.FlagIndex = i;
@@ -7716,7 +7738,7 @@ PrintSubType :
 	Num_Group(&Group_S, strSave("PO_On"), $2);
       int i;
 
-      if((i = List_ISearchSeq(Problem_S.Expression, $4, fcmp_Expression_Name)) < 0)
+      if((i = find_Index(Problem_S.ExpressionIndices, $4)) < 0)
 	vyyerror(0, "Unknown Name of Expression: %s", $4);
       Free($4);
 
@@ -7736,7 +7758,7 @@ PrintSubType :
 	Num_Group(&Group_S, strSave("PO_On"), $2);
       int i;
 
-      if((i = List_ISearchSeq(Problem_S.Expression, $4, fcmp_Expression_Name)) < 0)
+      if((i = find_Index(Problem_S.ExpressionIndices, $4)) < 0)
 	vyyerror(0, "Unknown Name of Expression: %s", $4);
       Free($4);
 
@@ -9472,7 +9494,7 @@ OneFExpr :
 
   | tExists LP String__Index '[' ']' RP
     {
-      if(List_ISearchSeq(Problem_S.Expression, $3, fcmp_Expression_Name) >= 0)
+      if(find_Index(Problem_S.ExpressionIndices, $3) >= 0)
         $$ = 1;
       else
         $$ = 0;
@@ -9507,7 +9529,7 @@ OneFExpr :
 
   | tGroupExists LP String__Index RP
     {
-      if(List_ISearchSeq(Problem_S.Group, $3, fcmp_Group_Name) >= 0)
+      if(find_Index(Problem_S.GroupIndices, $3) >= 0)
         $$ = 1;
       else
         $$ = 0;
@@ -10505,7 +10527,7 @@ NbrRegions :
   | tNbrRegions '[' String__Index ']'
     {
       int i;
-      if ( (i = List_ISearchSeq(Problem_S.Group, $3, fcmp_Group_Name)) >= 0 ) {
+      if ( (i = find_Index(Problem_S.GroupIndices, $3)) >= 0 ) {
 	$$ = List_Nbr(((struct Group *)List_Pointer(Problem_S.Group, i))
 		      ->InitialList) ;
       }
@@ -10517,7 +10539,7 @@ NbrRegions :
     {
       int i, j, indexInGroup;
       indexInGroup = (int)$5;
-      if ( (i = List_ISearchSeq(Problem_S.Group, $3, fcmp_Group_Name)) >= 0 ) {
+      if ( (i = find_Index(Problem_S.GroupIndices, $3)) >= 0 ) {
         if (indexInGroup >= 1 &&
             indexInGroup <= List_Nbr(((struct Group *)List_Pointer(Problem_S.Group, i))
                                      ->InitialList)) {
@@ -10696,10 +10718,11 @@ int  Add_Group(struct Group *Group_P, char *Name, int Flag_AddRemove,
   Group_S.ElementRTree = NULL;
 
   int i;
-  if((i = List_ISearchSeq(Problem_S.Group, Group_P->Name, fcmp_Group_Name)) < 0) {
+  if((i = find_Index(Problem_S.GroupIndices, Group_P->Name)) < 0) {
     i = Group_P->Num = List_Nbr(Problem_S.Group);
     Group_P->ExtendedList = Group_P->ExtendedSuppList = Group_P->ExtendedSuppList2 = NULL;
     List_Add(Problem_S.Group, Group_P);
+    set_Index(Problem_S.GroupIndices, Group_P->Name, i);
   }
   else if(Flag_AddRemove == +1) {
     List_T *InitialList = ((struct Group *)List_Pointer(Problem_S.Group, i))->InitialList;
@@ -10713,7 +10736,10 @@ int  Add_Group(struct Group *Group_P, char *Name, int Flag_AddRemove,
       List_Suppress(InitialList, (int *)List_Pointer(Group_P->InitialList, j), fcmp_Integer);
     }
   }
-  else  List_Write(Problem_S.Group, i, Group_P);
+  else {
+    List_Write(Problem_S.Group, i, Group_P);
+    set_Index(Problem_S.GroupIndices, Group_P->Name, i);
+  }
 
   return i;
 }
@@ -10799,12 +10825,15 @@ int  Add_Expression(struct Expression *Expression_P,
   }
 
   int  i;
-  if((i = List_ISearchSeq
-       (Problem_S.Expression, Name, fcmp_Expression_Name)) < 0) {
+  if((i = find_Index(Problem_S.ExpressionIndices, Name)) < 0) {
     i = List_Nbr(Problem_S.Expression);
     List_Add(Problem_S.Expression, Expression_P);
+    set_Index(Problem_S.ExpressionIndices, Expression_P->Name, i);
   }
-  else  List_Write(Problem_S.Expression, i, Expression_P);
+  else {
+    List_Write(Problem_S.Expression, i, Expression_P);
+    set_Index(Problem_S.ExpressionIndices, Expression_P->Name, i);
+  }
 
   return i;
 }
@@ -10924,7 +10953,7 @@ int  Check_NameOfStructExist(const char *Struct, List_T *List_L, void *data,
                              int level_Append)
 {
   int i;
-  if((i=List_ISearchSeq(List_L, data, fcmp)) >= 0 && !level_Append)
+  if((i = List_ISearchSeq(List_L, data, fcmp)) >= 0 && !level_Append)
     vyyerror(0, "Redefinition of %s %s", Struct, (char*)data);
   return i;
 }
