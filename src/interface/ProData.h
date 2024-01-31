@@ -93,7 +93,7 @@ struct Problem {
   List_T *Resolution, *PostProcessing, *PostOperation;
 
   // maps used only in the parser, to speed up queries by name
-  std::map<std::string, int> ExpressionIndices, GroupIndices;
+  std::map<std::string, int> GroupIndices, ExpressionIndices;
 };
 
 /* ------------------------------------------------------------------------ */
