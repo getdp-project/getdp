@@ -418,21 +418,16 @@ void Cal_WholeQuantity(struct Element *Element,
     case WQ_OPERATORANDQUANTITYEVAL:
       Save_Region = Current.Region;
       Save_CurrentElement = Current.Element;
-      /* {op qty}[x,y,z], {op qty}[x,y,z,dimension]
-         or {op qty}[Vector[x,y,x],dimension]
-         or {op qty}[ntime] */
       if(i_WQ != DofIndexInWholeQuantity || TreatmentStatus == STATUS_POS) {
         j = WholeQuantity_P->Case.OperatorAndQuantity.NbrArguments;
-        if(j == 2 || j == 3 || j == 4) {
-          if(j == 3 || j == 4) {
+        if(j == 2 || j == 3) {
+          /* {op qty}[x,y,z] or {op qty}[Vector[x,y,x],dimension] */
+          if(j == 3) {
             Index -= j;
             X = Stack[0][Index].Val[0];
             Y = Stack[0][Index + 1].Val[0];
             Z = Stack[0][Index + 2].Val[0];
-            if(j == 4)
-              Type_Dimension = (int)Stack[0][Index + 3].Val[0];
-            else
-              Type_Dimension = -1;
+            Type_Dimension = -1;
           }
           else { /* j==2 */
             Index -= j;
@@ -456,10 +451,18 @@ void Cal_WholeQuantity(struct Element *Element,
           Multi[Index] = 0;
           Index++;
         }
-        else if(j == 1) {
+        else if(j == 1 || j == 4) {
+          /* {op qty}[ntime] or {op qty}[x,y,z,ntime] */
           Index -= j;
-          ntime = (int)Stack[0][Index].Val[0];
-
+          if(j == 4) {
+            X = Stack[0][Index].Val[0];
+            Y = Stack[0][Index + 1].Val[0];
+            Z = Stack[0][Index + 2].Val[0];
+            ntime = std::abs((int)Stack[0][Index + 3].Val[0]);
+          }
+          else {
+            ntime = std::abs((int)Stack[0][Index].Val[0]);
+          }
           for(k = 0; k < Current.NbrSystem; k++) {
             if(!List_Nbr((Current.DofData_P0 + k)->Solutions)) continue;
             Solution_P0 = (struct Solution *)List_Pointer(
@@ -497,8 +500,9 @@ void Cal_WholeQuantity(struct Element *Element,
             QuantityStorage_P0 +
               WholeQuantity_P->Case.OperatorAndQuantity.Index,
             WholeQuantity_P->Case.OperatorAndQuantity.TypeQuantity,
-            WholeQuantity_P->Case.OperatorAndQuantity.TypeOperator, -1, 0, u, v,
-            w, 0, 0, 0, Stack[0][Index].Val, &Stack[0][Index].Type, 1);
+            WholeQuantity_P->Case.OperatorAndQuantity.TypeOperator,
+            -1, (j == 4) ? 1 : 0, u, v, w, X, Y, Z, Stack[0][Index].Val,
+            &Stack[0][Index].Type, 1);
 #else
           Message::Error("TODO Post_FemInterpolation");
 #endif
@@ -517,7 +521,7 @@ void Cal_WholeQuantity(struct Element *Element,
           }
         }
         else
-          Message::Error("Explicit (x,y,z,time) evaluation not implemented");
+          Message::Error("Unknown explicit evaluation of quantity with %d arguments", j);
       }
       else {
         Message::Error("Explicit Dof{} evaluation out of context");

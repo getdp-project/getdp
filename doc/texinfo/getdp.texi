@@ -1863,10 +1863,11 @@ While the operators @code{Grad}, @code{Curl} and @code{Div} can be applied
 to 0, 1 and 2-forms respectively, the exterior derivative operator @code{d}
 is usually preferred with such fields.
 @item
-The second case permits to evaluate a discretized quantity at a certain
-position X, Y, Z (when @var{expression-cst-list} contains three items) or at
-a specific time, N time steps ago (when @var{expression-cst-list} contains a
-single item).
+The second case permits to evaluate a discretized quantity N time steps
+ago when @var{expression-cst-list} contains a single item (N), at the
+position X, Y, Z when @var{expression-cst-list} contains three items (X,
+Y, Z), or at a given position N time steps ago when
+@var{expression-cst-list} contains four items (X, Y, Z, N).
 @end enumerate
 
 @c -------------------------------------------------------------------------
