@@ -241,6 +241,7 @@ void F_Distance(F_ARG)
   }
 
   double dist = 1e200;
+  double sdist = 0.;
 
   for(int ent = 0; ent < data->getNumEntities(0); ent++) {
     if(data->skipEntity(0, ent)) continue;
@@ -264,24 +265,27 @@ void F_Distance(F_ARG)
         data->getValue(0, ent, ele, nod, 2, dz[nod]);
         data->getNode(0, ent, ele, nod, nx[nod], ny[nod], nz[nod]);
       }
-      double d;
+      double d = 0;
       SPoint3 p1(nx[0] + dx[0], ny[0] + dy[0], nz[0] + dz[0]);
       SPoint3 p2(nx[1] + dx[1], ny[1] + dy[1], nz[1] + dz[1]);
       SPoint3 closePt;
       if(numNodes == 2) {
-        // Warning: this is currently NOT signed!
-        signedDistancePointLine(p1, p2, p, d, closePt);
+        // assumes we are in 2D plane z == 0
+        signedDistancePointLine(p1, p2, p, d, closePt, SVector3(0, 0, 1));
       }
       else if(numNodes == 3) {
         SPoint3 p3(nx[2] + dx[2], ny[2] + dy[2], nz[2] + dz[2]);
         signedDistancePointTriangle(p1, p2, p3, p, d, closePt);
       }
-      dist = std::min(dist, d);
+      if(std::abs(d) < dist) {
+        dist = std::abs(d);
+        sdist = d;
+      }
     }
   }
 
   V->Type = SCALAR;
-  V->Val[0] = dist;
+  V->Val[0] = sdist;
   V->Val[MAX_DIM] = 0.;
   for(int k = 2; k < std::min(NBR_MAX_HARMONIC, Current.NbrHar); k += 2) {
     V->Val[MAX_DIM * k] = V->Val[0];
