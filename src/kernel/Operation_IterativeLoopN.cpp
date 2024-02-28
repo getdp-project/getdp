@@ -111,7 +111,6 @@ double CalcMaxErrorRatio(Resolution *Resolution_P, DofData *DofData_P0,
                                                  NbrSolutions - 1);
     xPrevious_P = (gVector *)List_Pointer(PostOpSolutionPrevious_L, i);
     xCurrent_P = &Solution_P->x;
-    LinAlg_AssembleVector(&Solution_P->x);
 
     LinAlg_GetVectorSize(xCurrent_P, &PostOpSolLength);
     LinAlg_CreateVector(&xError, &DofData_P0->Solver, PostOpSolLength);
@@ -241,7 +240,6 @@ void Operation_IterativeLoopN(Resolution *Resolution_P, Operation *Operation_P,
         PostOpSolutions_P->Solutions_L, NbrSolutions - 1);
       PostOpResultPrevious_P =
         (gVector *)List_Pointer(PostOpSolutionPrevious_L, i);
-      LinAlg_AssembleVector(&Solution_P->x);
       LinAlg_CopyVector(&Solution_P->x, PostOpResultPrevious_P);
     }
 

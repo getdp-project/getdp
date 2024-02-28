@@ -1921,14 +1921,16 @@ void Format_PostFooter(struct PostSubOperation *PSO_P, int Store,
         List_Read(PostOpResults_L, i, &valr);
         LinAlg_SetDoubleInVector(valr, &Solution_S.x, i);
       }
+      LinAlg_AssembleVector(&Solution_S.x);
       List_Add(Solutions_L, &Solution_S);
     }
-    else
+    else {
       for(int i = 0; i < List_Nbr(PostOpResults_L); i++) {
         List_Read(PostOpResults_L, i, &valr);
         LinAlg_SetDoubleInVector(valr, &Solution_P->x, i);
       }
-
+      LinAlg_AssembleVector(&Solution_P->x);
+    }
     List_Delete(PostOpResults_L);
     PostOpResults_L = NULL;
     break;
