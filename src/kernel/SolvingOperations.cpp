@@ -3135,6 +3135,8 @@ void Treatment_Operation(struct Resolution *Resolution_P, List_T *Operation_L,
             LinAlg_SetDoubleInVector(d1, &Solution_P->x, NumDof + k);
           }
         }
+        LinAlg_AssembleVector(&Solution_P->x);
+
         Operation_P->Case.FourierTransform2.Period_sofar = 0;
         break;
       }

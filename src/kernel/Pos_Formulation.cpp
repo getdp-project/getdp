@@ -350,6 +350,7 @@ void Pos_ResampleTime(struct PostOperation *PostOperation_P)
       gsl_interp_accel_free(accIm);
     }
   }
+  LinAlg_AssembleVector(&Solution_P->x);
   Current.DofData->Solutions = NewSolutions_L;
   Current.DofData->CurrentSolution = (struct Solution *)List_Pointer(
     NewSolutions_L, List_Nbr(NewSolutions_L) - 1);
