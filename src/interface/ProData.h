@@ -91,6 +91,9 @@ struct Problem {
   List_T *FunctionSpace, *Constraint, *Formulation;
   List_T *JacobianMethod, *IntegrationMethod;
   List_T *Resolution, *PostProcessing, *PostOperation;
+
+  // maps used only in the parser, to speed up queries by name
+  std::map<std::string, int> GroupIndices, ExpressionIndices;
 };
 
 /* ------------------------------------------------------------------------ */
