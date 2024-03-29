@@ -13,7 +13,8 @@ Major code contributions to GetDP have been provided by Johan Gyselinck, Ruth
 Sabariego, Michael Asam, Bertrand Thierry, Francois Henrotte, Guillaume
 Dem\'esy. Other code contributors include: David Colignon, Tuan Ledinh, Patrick
 Lefevre, Andre Nicolet, Jean-Francois Remacle, Timo Tarhasaari, Christophe
-Trophime, Marc Ume and Peter Binde. See the source code for more details.
+Trophime, Marc Ume, Peter Binde and Louis Denis. See the source code for more
+details.
 
 Thanks to the following folks who have contributed by providing fresh ideas on
 theoretical or programming topics, who have sent patches, requests for changes
