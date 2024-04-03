@@ -1167,8 +1167,11 @@ static void Tabular_PrintElement(struct PostSubOperation *PSO_P, int Format,
             TableList.push_back(Value[i].Val[MAX_DIM * k + j]);
           }
           else {
-            fprintf(PostStream, " %s_%d_%d = %.16g", PSO_P->ValueName, j,
-                    PSO_P->ValueIndex, Value[i].Val[MAX_DIM * k + j]);
+            if(PSO_P->ValueName)
+              fprintf(PostStream, " %s_%d_%d = %.16g", PSO_P->ValueName, j,
+                      PSO_P->ValueIndex, Value[i].Val[MAX_DIM * k + j]);
+            else
+              fprintf(PostStream, " %.16g", Value[i].Val[MAX_DIM * k + j]);
             TableList.push_back(Value[i].Val[MAX_DIM * k + j]);
             if(j < Size - 1) fprintf(PostStream, "\n");
           }
