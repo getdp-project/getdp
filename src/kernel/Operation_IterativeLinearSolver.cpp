@@ -30,6 +30,11 @@ extern struct CurrentData Current;
 #define PetscViewerSetFormat(A, B) PetscViewerPushFormat(A, B)
 #endif
 
+#if(PETSC_VERSION_MAJOR == 3) && (PETSC_VERSION_MINOR > 19)
+#undef PETSC_NULL
+#define PETSC_NULL PETSC_NULLPTR
+#endif
+
 static void _try(int ierr)
 {
   CHKERRCONTINUE(ierr);
