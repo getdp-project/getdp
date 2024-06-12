@@ -4,6 +4,7 @@
 // issues on https://gitlab.onelab.info/getdp/getdp/issues.
 
 #include <math.h>
+#include <unordered_set>
 #include "ProData.h"
 #include "ProDefine.h"
 #include "GeoData.h"
@@ -267,8 +268,15 @@ void Pos_GlobalQuantity(struct PostQuantity *PostQuantity_P,
   struct Element Element;
   int Type_Quantity;
 
+  // to speed up search compared to bsearch in List_T:
+  std::unordered_set<int> InRegion_S, Support_S;
+  for(int i = 0; i < List_Nbr(InRegion_L); i++)
+    InRegion_S.insert(*(int*)List_Pointer(InRegion_L, i));
+  for(int i = 0; i < List_Nbr(Support_L); i++)
+    Support_S.insert(*(int*)List_Pointer(Support_L, i));
+
   if(PostQuantityTerm_P->EvaluationType == LOCAL &&
-     List_Search(InRegion_L, &Current.Region, fcmp_int)) {
+     InRegion_S.find(Current.Region) != InRegion_S.end()) {
     for(k = 0; k < PostQuantityTerm_P->NbrQuantityIndex; k++) {
       Index_DefineQuantity = PostQuantityTerm_P->QuantityIndexTable[k];
       DefineQuantity_P = DefineQuantity_P0 + Index_DefineQuantity;
@@ -310,14 +318,10 @@ void Pos_GlobalQuantity(struct PostQuantity *PostQuantity_P,
       Element.Type = Element.GeoElement->Type;
       Current.Region = Element.Region = Element.GeoElement->Region;
 
-      /* Filter: only elements in both InRegion_L and Support_L are considered
-       */
-      if((!InRegion_L ||
-          (List_Search(
-            InRegion_L,
-            (Type_InRegion == ELEMENTSOF ? &Element.Num : &Element.Region),
-            fcmp_int))) &&
-         (!Support_L || List_Search(Support_L, &Element.Region, fcmp_int))) {
+      int key = (Type_InRegion == ELEMENTSOF) ? Element.Num : Element.Region;
+      /* Filter: consider only elements in both InRegion_L and Support_L */
+      if((!InRegion_L || InRegion_S.find(key) != InRegion_S.end()) &&
+         (!Support_L || Support_S.find(Element.Region) != Support_S.end())) {
         Get_NodesCoordinatesOfElement(&Element);
         Current.x = Element.x[0];
         Current.y = Element.y[0];
