@@ -66,12 +66,14 @@ static void Info(int level, char *arg0)
       "  -adapt file               read adaptation constraints from file\n"
       "  -order num                restrict maximum interpolation order\n"
       "  -cache                    cache network computations to disk\n"
-      "  -sparsity                 compute exact sparsity pattern\n"
+#if defined(HAVE_PETSC)
+      "  -sparsity                 compute exact sparsity pattern before each assembly\n"
+      "  -sparsity-once            compute exact sparsity pattern once per system\n"
+#endif
       "Linear solver options:\n"
 #if defined(HAVE_PETSC)
       "  -solver file              specify parameter file (default: .petscrc)\n"
-      "  [PETsc options]           PETSc options (must be listed after "
-      "[file])\n"
+      "  [PETsc options]           PETSc options (must be listed after [file])\n"
 #endif
 #if defined(HAVE_SLEPC)
       "  -slepc                    use SLEPc instead of Arpack as eigensolver\n"
@@ -165,6 +167,10 @@ static void Get_Options(int argc, char *argv[], int *sargc, char **sargv,
       }
       else if(!strcmp(argv[i] + 1, "sparsity")) {
         Flag_SPARSITY_PATTERN = 1;
+        i++;
+      }
+      else if(!strcmp(argv[i] + 1, "sparsity-once")) {
+        Flag_SPARSITY_PATTERN = 2;
         i++;
       }
       else if(!strcmp(argv[i] + 1, "bin")) {

@@ -763,6 +763,14 @@ Specifies the maximum interpolation order.
 
 Caches network computations to disk.
 
+@item -sparsity
+
+Computes the exact sparsity pattern of matrices before each system assembly.
+
+@item -sparsity-once
+
+Computes the exact sparsity pattern of matrices once per system (before the first assembly).
+
 @item -bin
 
 Selects binary format for output files.

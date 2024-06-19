@@ -10,6 +10,8 @@
 
 #include <string.h>
 #include <math.h>
+#include <set>
+#include <string>
 #include "GetDPConfig.h"
 #include "ProData.h"
 #include "ProDefine.h"
@@ -441,7 +443,11 @@ void Generate_System(struct DefineSystem *DefineSystem_P,
 
   Nbr_Formulation = List_Nbr(DefineSystem_P->FormulationIndex);
 
-  if(Flag_SPARSITY_PATTERN) {
+  static std::set<std::string> sparsity_done;
+
+  if(Flag_SPARSITY_PATTERN == 1 || // each time
+     (Flag_SPARSITY_PATTERN == 2 && !sparsity_done.count(DefineSystem_P->Name))) { // once
+    sparsity_done.insert(DefineSystem_P->Name);
     Message::Info("Computing exact sparsity patterns");
     // do a first "fake" assembly pass to compute the exact sparsity patterns
     int old = Current.TypeAssembly;
