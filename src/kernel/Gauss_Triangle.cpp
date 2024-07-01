@@ -156,3 +156,14 @@ void GaussSingularR_Triangle(int Nbr_Points, int Num, double *u, double *v,
     break;
   }
 }
+
+void Collocation_Triangle(int Nbr_Points, int Num, double *u, double *v, double *w,
+                          double *wght)
+{
+  switch(Num) {
+  case 0: *u = 0; *v = 0.; *w = 0.; *wght = 0.5; break;
+  case 1: *u = 1; *v = 0.; *w = 0.; *wght = 0.5; break;
+  case 2: *u = 0; *v = 1.; *w = 0.; *wght = 0.5; break;
+  default: Message::Error("Invalid quadrature point index for Collocation on Triangle (%d)", Num);
+  }
+}

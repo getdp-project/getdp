@@ -2750,7 +2750,7 @@ Formulation @{
   FemEquation | @var{etc}
 
 @var{local-term-type}:
-  Integral | deRham
+  Integral
 
 @var{equation-term-sub-type}:
   Self (default) | Mutual | SelfAndMutual
@@ -4535,9 +4535,6 @@ Finite element method formulation (all methods of moments, integral methods).
 
 @item Integral
 Integral of Galerkin or Petrov-Galerkin type.
-
-@item deRham
-deRham projection (collocation).
 
 @end ftable
 

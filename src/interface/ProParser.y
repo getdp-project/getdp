@@ -2155,6 +2155,11 @@ QuadratureCaseTerm :
 	    (FunctionForGaussLegendre, QuadratureCase_S.ElementType,
 	     &FlagError, (void (**)())&QuadratureCase_S.Function);
 	  break;
+	case COLLOCATION :
+	  Get_FunctionForDefine
+	    (FunctionForCollocation, QuadratureCase_S.ElementType,
+	     &FlagError, (void (**)())&QuadratureCase_S.Function);
+	  break;
 	default :
 	  vyyerror(0, "Incompatible type of Integration method");
 	  break;

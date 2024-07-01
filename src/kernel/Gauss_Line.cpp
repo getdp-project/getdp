@@ -193,3 +193,13 @@ void GaussLegendre(double x1, double x2, double x[], double w[], int n)
     w[n - i] = w[i - 1];
   }
 }
+
+void Collocation_Line(int Nbr_Points, int Num, double *u, double *v, double *w,
+                      double *wght)
+{
+  switch(Num) {
+  case 0: *u = -1; *v = 0.; *w = 0.; *wght = 2; break;
+  case 1: *u = 1; *v = 0.; *w = 0.; *wght = 2; break;
+  default: Message::Error("Invalid quadrature point index for Collocation on Line (%d)", Num);
+  }
+}

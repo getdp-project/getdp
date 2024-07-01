@@ -348,6 +348,7 @@ struct IntegrationCase {
 #define ANALYTIC 1
 #define GAUSS 2
 #define GAUSSLEGENDRE 3
+#define COLLOCATION 4
 
 /* IntegrationCase.SubType */
 #define STANDARD 1

@@ -79,6 +79,7 @@ extern struct StringXPointer Current_Value[];
 extern struct DefineXFunction FunctionForGauss[];
 extern struct DefineXFunction FunctionForGaussLegendre[];
 extern struct DefineXFunction FunctionForSingularGauss[];
+extern struct DefineXFunction FunctionForCollocation[];
 
 extern struct StringX3Function3Nbr BF_Function[];
 extern struct StringXFunction2Nbr F_Function[];

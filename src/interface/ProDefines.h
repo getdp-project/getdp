@@ -96,6 +96,7 @@ struct StringXDefine1Nbr Jacobian_Type[] = {
 struct StringXDefine Integration_Type[] = {{"Gauss", GAUSS},
                                            {"GaussLegendre", GAUSSLEGENDRE},
                                            {"Analytic", ANALYTIC},
+                                           {"Collocation", COLLOCATION},
                                            {NULL, GAUSS}};
 
 struct StringXDefine Integration_SubType[] = {{"Standard", STANDARD},
@@ -548,6 +549,18 @@ struct DefineXFunction FunctionForGaussLegendre[] = {
   {PYRAMID_2_13N, NULL},
   {PYRAMID_3, NULL},
 //{PYRAMID_4, NULL},
+#endif
+  {0, 0}};
+
+struct DefineXFunction FunctionForCollocation[] = {
+#if defined(HAVE_KERNEL)
+  {POINT_ELEMENT, (CAST)Gauss_Point},
+  {LINE, (CAST)Collocation_Line},
+  {TRIANGLE, (CAST)Collocation_Triangle},
+#else
+  {POINT_ELEMENT, NULL},
+  {LINE, NULL},
+  {TRIANGLE, NULL},
 #endif
   {0, 0}};
 

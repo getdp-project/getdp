@@ -767,6 +767,7 @@ void Cal_GalerkinTermOfFemEquation(struct Element *Element,
 
     case GAUSS:
     case GAUSSLEGENDRE:
+    case COLLOCATION:
 
       Quadrature_P = (struct Quadrature *)List_PQuery(IntegrationCase_P->Case,
                                                       &Element->Type, fcmp_int);

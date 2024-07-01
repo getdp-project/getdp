@@ -31,6 +31,9 @@ void Gauss_Prism(GAUSS_ARGS);
 
 void Gauss_Pyramid(GAUSS_ARGS);
 
+void Collocation_Line(GAUSS_ARGS);
+void Collocation_Triangle(GAUSS_ARGS);
+
 #undef GAUSS_ARGS
 
 #define MAX_LINE_POINTS 100
