@@ -153,10 +153,30 @@ void LinAlg_CreateSolver(gSolver *Solver, const char *SolverDataFileName)
   }
 }
 
+static int _getLocalSize()
+{
+  int s = PETSC_DECIDE;
+
+  if(Message::GetCommSize() > 1 &&
+     Current.DofData->PartitionSplit.size() > Message::GetCommSize()) {
+    int r = Message::GetCommRank();
+    if(r == Message::GetCommSize() - 1) {
+      s = *Current.DofData->PartitionSplit.rbegin() -
+        Current.DofData->PartitionSplit[r];
+    }
+    else {
+      s = Current.DofData->PartitionSplit[r + 1] -
+        Current.DofData->PartitionSplit[r];
+    }
+    Message::Debug("localsize = %d", s);
+  }
+  return s;
+}
+
 void LinAlg_CreateVector(gVector *V, gSolver *Solver, int n)
 {
   _try(VecCreate(MyComm, &V->V));
-  _try(VecSetSizes(V->V, PETSC_DECIDE, n));
+  _try(VecSetSizes(V->V, _getLocalSize(), n));
 
   // override the default options with the ones from the option
   // database (if any)
@@ -250,11 +270,12 @@ void LinAlg_CreateMatrix(gMatrix *M, gSolver *Solver, int n, int m, bool silent)
   }
 
   if(Message::GetCommSize() > 1) { // FIXME: use nnz
+    int localsize = _getLocalSize();
 #if((PETSC_VERSION_MAJOR == 3) && (PETSC_VERSION_MINOR >= 3))
-    _try(MatCreateAIJ(MyComm, PETSC_DECIDE, PETSC_DECIDE, n, m, prealloc,
+    _try(MatCreateAIJ(MyComm, localsize, localsize, n, m, prealloc,
                       PETSC_NULL, prealloc, PETSC_NULL, &M->M));
 #else
-    _try(MatCreateMPIAIJ(MyComm, PETSC_DECIDE, PETSC_DECIDE, n, m, prealloc,
+    _try(MatCreateMPIAIJ(MyComm, localsize, localsize, n, m, prealloc,
                          PETSC_NULL, prealloc, PETSC_NULL, &M->M));
 #endif
   }
@@ -1408,8 +1429,9 @@ static void _solve(gMatrix *A, gVector *B, gSolver *Solver, gVector *X,
   // copy result on all procs
   _fillseq(X);
 
-  if(view && Message::GetVerbosity() > 5)
+  if(view && Message::GetVerbosity() > 5) {
     _try(KSPView(Solver->ksp[kspIndex], MyPetscViewer));
+  }
 
   PetscInt its;
   _try(KSPGetIterationNumber(Solver->ksp[kspIndex], &its));

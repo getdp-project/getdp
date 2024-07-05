@@ -1855,7 +1855,7 @@ struct Geo_Node {
 
 struct Geo_Element {
   int Num;
-  int Type, Region, ElementaryRegion;
+  int Type, Region, ElementaryRegion, Partition;
   int NbrNodes, *NumNodes;
   int NbrEdges, *NumEdges;
   int NbrFacets, *NumFacets;

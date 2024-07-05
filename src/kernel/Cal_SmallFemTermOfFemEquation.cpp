@@ -71,7 +71,7 @@ struct Dof getGetDPDofFromSmallFEM(const sf::Dof &dofSF,
   else {
     dofDP.Type = 1;
     dofDP.Case.Unknown.NumDof = globalId + 1;
-    dofDP.Case.Unknown.NonLocal = 0;
+    dofDP.Case.Unknown.PartitionOrNonLocal = 0;
   }
 
   return dofDP;
@@ -84,7 +84,7 @@ void printDof(struct Dof *dof)
 
   switch(dof->Type) {
   case 1:
-    std::cout << dof->Case.Unknown.NumDof << ", " << dof->Case.Unknown.NonLocal;
+    std::cout << dof->Case.Unknown.NumDof << ", " << dof->Case.Unknown.PartitionOrNonLocal;
     break;
 
   case 2:

@@ -11,6 +11,7 @@
 #include <map>
 #include <set>
 #include <complex>
+#include <sstream>
 #include <string.h>
 #include <math.h>
 #include "GetDPVersion.h"
@@ -24,6 +25,10 @@
 #include "Message.h"
 #include "ProParser.h"
 #include "OS.h"
+
+// define this to revert to the old numbering of Dofs, that does not take mesh
+// partitions into account
+//#define OLD_DOF_NUMBERING
 
 #define TWO_PI 6.2831853071795865
 
@@ -429,7 +434,7 @@ void Dof_WriteDofPRE(void *a, void *b)
   switch(Dof_P->Type) {
   case DOF_UNKNOWN:
     fprintf(File_PRE, "%d %d\n", Dof_P->Case.Unknown.NumDof,
-            Dof_P->Case.Unknown.NonLocal ? -1 : 1);
+            Dof_P->Case.Unknown.PartitionOrNonLocal);
     break;
   case DOF_FIXEDWITHASSOCIATE:
     fprintf(File_PRE, "%d ", Dof_P->Case.FixedAssociate.NumDof);
@@ -448,7 +453,7 @@ void Dof_WriteDofPRE(void *a, void *b)
     LinAlg_PrintScalar(File_PRE, &Dof_P->Val);
     fprintf(File_PRE, " ");
     LinAlg_PrintScalar(File_PRE, &Dof_P->Val2);
-    fprintf(File_PRE, " %d\n", Dof_P->Case.Unknown.NonLocal ? -1 : 1);
+    fprintf(File_PRE, " %d\n", Dof_P->Case.Unknown.PartitionOrNonLocal);
     break;
   case DOF_LINK:
     fprintf(File_PRE, "%.16g %d\n", Dof_P->Case.Link.Coef,
@@ -472,6 +477,8 @@ void Dof_ReadFilePRE(struct DofData *DofData_P)
   int i, Nbr_Index, Int, Dummy;
   struct Dof Dof;
   char String[256];
+
+  std::map<int, std::set<int>> partitions;
 
   do {
     if(!fgets(String, sizeof(String), File_PRE)) break;
@@ -547,13 +554,16 @@ void Dof_ReadFilePRE(struct DofData *DofData_P)
 
       switch(Dof.Type) {
       case DOF_UNKNOWN:
-        if(fscanf(File_PRE, "%d %d", &Dof.Case.Unknown.NumDof, &Dummy) != 2) {
+        if(fscanf(File_PRE, "%d %d", &Dof.Case.Unknown.NumDof,
+                  &Dof.Case.Unknown.PartitionOrNonLocal) != 2) {
           Message::Error("Could not read DOF_UNKNOWN");
           return;
         }
-        Dof.Case.Unknown.NonLocal = (Dummy < 0) ? true : false;
-        if(Dummy < 0)
+        if(Dof.Case.Unknown.PartitionOrNonLocal < 0)
           DofData_P->NonLocalEquations.push_back(Dof.Case.Unknown.NumDof);
+        else
+          partitions[Dof.Case.Unknown.PartitionOrNonLocal].insert
+            (Dof.Case.Unknown.NumDof);
         break;
       case DOF_FIXEDWITHASSOCIATE:
         if(fscanf(File_PRE, "%d", &Dof.Case.FixedAssociate.NumDof) != 1) {
@@ -589,13 +599,15 @@ void Dof_ReadFilePRE(struct DofData *DofData_P)
         }
         LinAlg_ScanScalar(File_PRE, &Dof.Val);
         LinAlg_ScanScalar(File_PRE, &Dof.Val2);
-        if(fscanf(File_PRE, "%d", &Dummy) != 1) {
+        if(fscanf(File_PRE, "%d", &Dof.Case.Unknown.PartitionOrNonLocal) != 1) {
           Message::Error("Could not read DOF_UNKNOWN_INIT");
           return;
         }
-        Dof.Case.Unknown.NonLocal = (Dummy < 0) ? true : false;
-        if(Dummy < 0)
+        if(Dof.Case.Unknown.PartitionOrNonLocal < 0)
           DofData_P->NonLocalEquations.push_back(Dof.Case.Unknown.NumDof);
+        else
+          partitions[Dof.Case.Unknown.PartitionOrNonLocal].insert
+            (Dof.Case.Unknown.NumDof);
         break;
       case DOF_LINK:
         if(fscanf(File_PRE, "%lf %d", &Dof.Case.Link.Coef,
@@ -625,6 +637,24 @@ void Dof_ReadFilePRE(struct DofData *DofData_P)
       break;
     }
   } while(String[0] != '$');
+
+#if !defined(OLD_DOF_NUMBERING)
+  DofData_P->PartitionSplit.push_back(0);
+  // add last dof num for each partition
+  for(auto &p : partitions) {
+    if(p.first > 0 && !p.second.empty())
+      DofData_P->PartitionSplit.push_back(*(p.second.rbegin()));
+  }
+  for(auto &p : partitions) {
+    if(p.first <= 0 && !p.second.empty())
+      DofData_P->PartitionSplit.push_back(*(p.second.rbegin()));
+  }
+  if(DofData_P->PartitionSplit.size() > 1) {
+    std::ostringstream sstream;
+    for(auto p : DofData_P->PartitionSplit) sstream << p << " ";
+    Message::Info("Dofs partitioning: %s", sstream.str().c_str());
+  }
+#endif
 
   Dof_InitDofType(DofData_P);
 }
@@ -1191,7 +1221,7 @@ void Dof_DefineAssignSolveDof(int D1, int D2, int NbrHar,
 /* ------------------------------------------------------------------------ */
 
 void Dof_DefineInitFixedDof(int D1, int D2, int NbrHar, double *Val,
-                            double *Val2, bool NonLocal)
+                            double *Val2, int PartitionOrNonLocal)
 {
   struct Dof Dof;
   int k;
@@ -1205,8 +1235,11 @@ void Dof_DefineInitFixedDof(int D1, int D2, int NbrHar, double *Val,
       Dof.Type = DOF_UNKNOWN_INIT;
       LinAlg_SetScalar(&Dof.Val, &Val[k]);
       LinAlg_SetScalar(&Dof.Val2, &Val2[k]);
-      Dof.Case.Unknown.NumDof = ++(CurrentDofData->NbrDof);
-      Dof.Case.Unknown.NonLocal = NonLocal;
+      // old version: number as we go
+      // Dof.Case.Unknown.NumDof = ++(CurrentDofData->NbrDof) ;
+      ++CurrentDofData->NbrDof;
+      Dof.Case.Unknown.NumDof = -1;
+      Dof.Case.Unknown.PartitionOrNonLocal = PartitionOrNonLocal;
       Tree_Add(CurrentDofData->DofTree, &Dof);
     }
   }
@@ -1228,8 +1261,11 @@ void Dof_DefineInitSolveDof(int D1, int D2, int NbrHar)
     Dof.Harmonic = k;
     if(!Tree_PQuery(CurrentDofData->DofTree, &Dof)) {
       Dof.Type = DOF_UNKNOWN_INIT;
-      Dof.Case.Unknown.NumDof = ++(CurrentDofData->NbrDof);
-      Dof.Case.Unknown.NonLocal = false;
+      // old version: number as we go
+      // Dof.Case.Unknown.NumDof = ++(CurrentDofData->NbrDof) ;
+      ++(CurrentDofData->NbrDof);
+      Dof.Case.Unknown.NumDof = -1;
+      Dof.Case.Unknown.PartitionOrNonLocal = 0;
       Tree_Add(CurrentDofData->DofTree, &Dof);
     }
   }
@@ -1285,7 +1321,7 @@ void Dof_DefineLinkCplxDof(int D1, int D2, int NbrHar, double Value[],
 /*  D o f _ D e f i n e U n k n o w n D o f                                 */
 /* ------------------------------------------------------------------------ */
 
-void Dof_DefineUnknownDof(int D1, int D2, int NbrHar, bool NonLocal)
+void Dof_DefineUnknownDof(int D1, int D2, int NbrHar, int PartitionOrNonLocal)
 {
   struct Dof Dof;
   int k;
@@ -1297,35 +1333,96 @@ void Dof_DefineUnknownDof(int D1, int D2, int NbrHar, bool NonLocal)
     Dof.Harmonic = k;
     if(!Tree_PQuery(CurrentDofData->DofTree, &Dof)) {
       Dof.Type = DOF_UNKNOWN;
-      /* Dof.Case.Unknown.NumDof = ++(CurrentDofData->NbrDof) ; */
+      // old version: number as we go
+      // Dof.Case.Unknown.NumDof = ++(CurrentDofData->NbrDof) ;
+      ++(CurrentDofData->NbrDof);
       Dof.Case.Unknown.NumDof = -1;
-      Dof.Case.Unknown.NonLocal = NonLocal;
+      Dof.Case.Unknown.PartitionOrNonLocal = PartitionOrNonLocal;
       Tree_Add(CurrentDofData->DofTree, &Dof);
     }
   }
 }
 
-static void NumberUnknownDof(void *a, void *b)
+#if !defined(OLD_DOF_NUMBERING)
+
+static std::map<int, std::vector<struct Dof *>> UnknownDofs;
+
+static void GetUnknownDofsWithoutNum(void *a, void *b)
 {
-  struct Dof *Dof_P;
-
-  Dof_P = (struct Dof *)a;
-
-  if(Dof_P->Type == DOF_UNKNOWN) {
-    if(Dof_P->Case.Unknown.NumDof == -1)
-      Dof_P->Case.Unknown.NumDof = ++(CurrentDofData->NbrDof);
-    if(Dof_P->Case.Unknown.NonLocal)
-      CurrentDofData->NonLocalEquations.push_back(Dof_P->Case.Unknown.NumDof);
+  struct Dof *Dof_P = (struct Dof *)a;
+  if((Dof_P->Type == DOF_UNKNOWN || Dof_P->Type == DOF_UNKNOWN_INIT) &&
+     Dof_P->Case.Unknown.NumDof == -1) {
+    UnknownDofs[Dof_P->Case.Unknown.PartitionOrNonLocal].push_back(Dof_P);
   }
 }
 
 void Dof_NumberUnknownDof(void)
 {
+  UnknownDofs.clear();
+  if(CurrentDofData->DofTree)
+    Tree_Action(CurrentDofData->DofTree, GetUnknownDofsWithoutNum);
+  else
+    List_Action(CurrentDofData->DofList, GetUnknownDofsWithoutNum);
+
+  int N = 0;
+  // number dofs by partition and keep track of last dof in each partition
+  CurrentDofData->PartitionSplit.push_back(N);
+  for(auto &p : UnknownDofs) {
+    if(p.first > 0) {
+      Message::Debug("Numbering %lu dofs in partition %d", p.second.size(),
+                     p.first);
+      for(auto &d : p.second) {
+        d->Case.Unknown.NumDof = ++N;
+      }
+      CurrentDofData->PartitionSplit.push_back(N);
+    }
+  }
+
+  // number remaining (global and non-partitioned) dofs
+  for(auto &p : UnknownDofs) {
+    if(p.first <= 0) {
+      Message::Debug("Numbering %lu global dofs", p.second.size());
+      for(auto &d : p.second) {
+        d->Case.Unknown.NumDof = ++N;
+        CurrentDofData->NonLocalEquations.push_back(N);
+      }
+      CurrentDofData->PartitionSplit.push_back(N);
+    }
+  }
+  UnknownDofs.clear();
+
+  if(CurrentDofData->PartitionSplit.size() > 1) {
+    std::ostringstream sstream;
+    for(auto p : CurrentDofData->PartitionSplit) sstream << p << " ";
+    Message::Info("Dofs partitioning: %s", sstream.str().c_str());
+  }
+}
+
+#else
+
+static int _N = 0;
+
+static void NumberUnknownDof(void *a, void *b)
+{
+  struct Dof *Dof_P = (struct Dof *)a;
+  if(Dof_P->Type == DOF_UNKNOWN || Dof_P->Type == DOF_UNKNOWN_INIT) {
+    if(Dof_P->Case.Unknown.NumDof == -1)
+      Dof_P->Case.Unknown.NumDof = ++N);
+    if(Dof_P->Case.Unknown.PartitionOrNonLocal == -1)
+      CurrentDofData->NonLocalEquations.push_back(N);
+  }
+}
+
+void Dof_NumberUnknownDof(void)
+{
+  _N = 0;
   if(CurrentDofData->DofTree)
     Tree_Action(CurrentDofData->DofTree, NumberUnknownDof);
   else
     List_Action(CurrentDofData->DofList, NumberUnknownDof);
 }
+
+#endif
 
 /* ------------------------------------------------------------------------ */
 /*  D o f _ D e f i n e A s s o c i a t e D o f                             */
@@ -1360,7 +1457,7 @@ void Dof_DefineAssociateDof(int E1, int E2, int D1, int D2, int NbrHar,
             LinAlg_ZeroScalar(&Dof.Val2);
           }
           Dof.Case.Unknown.NumDof = CurrentDofData->NbrDof;
-          Dof.Case.Unknown.NonLocal = true;
+          Dof.Case.Unknown.PartitionOrNonLocal = -1;
           Tree_Add(CurrentDofData->DofTree, &Dof);
         }
         break;
@@ -1378,7 +1475,7 @@ void Dof_DefineAssociateDof(int E1, int E2, int D1, int D2, int NbrHar,
             LinAlg_ZeroScalar(&Dof.Val2);
           }
           Dof.Case.Unknown.NumDof = CurrentDofData->NbrDof;
-          Dof.Case.Unknown.NonLocal = true;
+          Dof.Case.Unknown.PartitionOrNonLocal = -1;
           Tree_Add(CurrentDofData->DofTree, &Dof);
         }
         break;

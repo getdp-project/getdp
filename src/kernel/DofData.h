@@ -42,7 +42,8 @@ struct Dof {
   union {
     struct {
       int NumDof; /* Equation number - 1st position */
-      bool NonLocal; /* Set to true if equation is non-local */
+      int PartitionOrNonLocal; /* -1 if equation is non-local, > 0 if linked to
+                                   a mesh partition, 0 otherwise */
     } Unknown;
     struct {
       int NumDof; /* Equation number (Associate) - 1st position */
@@ -145,7 +146,8 @@ struct DofData {
   gMatrix A_MH_moving;
   gVector b_MH_moving;
 
-  std::vector<int> NonLocalEquations;
+  std::vector<int> NonLocalEquations; // dof nums
+  std::vector<int> PartitionSplit; // dof num starting each partition
 
   // this should be added to each gMatrix, but the current implementation makes
   // it cumbersome
@@ -197,14 +199,14 @@ void Dof_AddPulsation(struct DofData *DofData_P, double Val_Pulsation);
 void Dof_DefineAssignFixedDof(int D1, int D2, int NbrHar, double *Val,
                               int Index_TimeFunction);
 void Dof_DefineInitFixedDof(int D1, int D2, int NbrHar, double *Val,
-                            double *Val2, bool NonLocal = false);
+                            double *Val2, int PartitionOrNonLocal = 0);
 void Dof_DefineAssignSolveDof(int D1, int D2, int NbrHar,
                               int Index_TimeFunction);
 void Dof_DefineInitSolveDof(int D1, int D2, int NbrHar);
 void Dof_DefineLinkDof(int D1, int D2, int NbrHar, double Value[], int D2_Link);
 void Dof_DefineLinkCplxDof(int D1, int D2, int NbrHar, double Value[],
                            int D2_Link);
-void Dof_DefineUnknownDof(int D1, int D2, int NbrHar, bool NonLocal = false);
+void Dof_DefineUnknownDof(int D1, int D2, int NbrHar, int PartitionOrNonLocal = 0);
 void Dof_DefineAssociateDof(int E1, int E2, int D1, int D2, int NbrHar,
                             int init, double *Val);
 void Dof_DefineUnknownDofFromSolveOrInitDof(struct DofData **DofData_P);

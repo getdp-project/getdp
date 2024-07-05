@@ -514,6 +514,10 @@ static void Geo_ReadFileWithGmsh(struct GeoData *GeoData_P)
     gmsh::model::getPhysicalGroupsForEntity(
       dimTags[entity].first, dimTags[entity].second, physicalsTags);
 
+    std::vector<int> partitions;
+    gmsh::model::getPartitions(
+      dimTags[entity].first, dimTags[entity].second, partitions);
+
     for(unsigned int phys = 0; phys < physicalsTags.size(); phys++) {
       for(unsigned int i = 0; i < elementTypes.size(); i++) {
         Geo_Element.Type = Gmsh2GetDP(elementTypes[i]);
@@ -526,6 +530,7 @@ static void Geo_ReadFileWithGmsh(struct GeoData *GeoData_P)
           Geo_Element.Num = (phys == 0) ? elementTags[i][j] : ++maxTag;
           Geo_Element.Region = physicalsTags[phys];
           Geo_Element.ElementaryRegion = dimTags[entity].second;
+          Geo_Element.Partition = partitions.empty() ? 0 : partitions[0];
           Geo_Element.NumNodes =
             (int *)Malloc(Geo_Element.NbrNodes * sizeof(int));
           for(int k = 0; k < Geo_Element.NbrNodes; k++)
@@ -864,6 +869,7 @@ void Geo_ReadFile(struct GeoData *GeoData_P)
 
       Geo_Element.NbrEdges = Geo_Element.NbrFacets = 0;
       Geo_Element.NumEdges = Geo_Element.NumFacets = NULL;
+      Geo_Element.Partition = 0;
 
       if(!binary) {
         for(i = 0; i < Nbr; i++) {
