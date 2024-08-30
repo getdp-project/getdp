@@ -1578,6 +1578,20 @@ void Format_PostHeader(struct PostSubOperation *PSO_P, int NbTimeStep,
 /*  F o r m a t _ P o s t F o o t e r                                       */
 /* ------------------------------------------------------------------------ */
 
+static void pruneHarmonics(std::vector<double> &v, List_T *harmonics)
+{
+  std::vector<double> vh;
+  std::vector<int> har;
+  for(int i = 0; i < List_Nbr(harmonics); i++)
+    har.push_back((int)*(double *)List_Pointer(harmonics, i));
+  for(std::size_t i = 0; i < v.size(); i += Current.NbrHar) {
+    for(std::size_t j = 0; j < har.size(); j++) {
+      vh.push_back(v[i + har[j]]);
+    }
+  }
+  v = vh;
+}
+
 void Format_PostFooter(struct PostSubOperation *PSO_P, int Store,
                        bool SendToServer)
 {
@@ -1896,10 +1910,13 @@ void Format_PostFooter(struct PostSubOperation *PSO_P, int Store,
       std::vector<double> v(TableList.begin(), TableList.end());
       GetDPNumbers[CurrentName] = v;
       if(SendToServer && PSO_P->SendToServer &&
-         strcmp(PSO_P->SendToServer, "No"))
+         strcmp(PSO_P->SendToServer, "No")) {
+        if(PSO_P->Format == FORMAT_VALUE_ONLY && PSO_P->SendToServerList)
+          pruneHarmonics(v, PSO_P->SendToServerList);
         Message::AddOnelabNumberChoice(PSO_P->SendToServer, v, PSO_P->Color,
                                        PSO_P->Units, PSO_P->Label,
                                        PSO_P->Visible, PSO_P->Closed);
+      }
     }
   } break;
   case FORMAT_LOOP_ERROR:

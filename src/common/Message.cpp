@@ -829,6 +829,11 @@ void Message::AddOnelabNumberChoice(std::string name,
                                     const char *label, bool visible,
                                     bool closed)
 {
+#if 1 // debug
+  printf("add number choice %s: ", name.c_str());
+  for(auto v : value) printf("%g ", v);
+  printf("\n");
+#endif
   if(_onelabClient) {
     std::vector<onelab::number> ps;
     // optimized exchange (without growing choice vector)
