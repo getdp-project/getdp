@@ -5740,6 +5740,22 @@ plots, parametric coordinates for parametric @code{OnGrid} plots, etc.
 Like @code{Table}, but with only the @var{x-coord} @var{y-coord}
 @var{z-coord} and @var{values} columns.
 
+@item ValueOnly
+Like @code{Table}, but with only @var{values} columns.
+
+@item Gnuplot
+Space oriented column output similar to the @code{Table} format, except that
+a new line is created for each node of each element, with a repetition of
+the first node if the number of nodes in the element is greater than 2. This
+permits to draw unstructured meshes and nice three-dimensional elevation
+plots in Gnuplot. The columns are: @var{element-type} @var{element-index}
+@var{x-coord} @var{y-coord} @var{z-coord} @var{real} @var{real} @var{real}
+@var{values}. The three @var{real} numbers preceding the @var{values}
+contain context-dependent information, depending on the type of plot:
+curvilinear abscissa for @code{OnLine} plots, normal to the plane for
+@code{OnPlane} plots, parametric coordinates for parametric @code{OnGrid}
+plots, etc.
+
 @item TimeTable
 Time oriented column output, e.g., suitable for Gnuplot, Excel, Caleida
 Graph, etc. The columns are: @var{time-step} @var{time} @var{x-coord}
@@ -5764,21 +5780,17 @@ name of the @code{PostOperation} quantity. The values are also directly
 usable by the @code{ValueFromTable} function, which allows to use them
 as values in an element-wise @code{Constraint}.
 
-@item Gnuplot
-Space oriented column output similar to the @code{Table} format, except that
-a new line is created for each node of each element, with a repetition of
-the first node if the number of nodes in the element is greater than 2. This
-permits to draw unstructured meshes and nice three-dimensional elevation
-plots in Gnuplot. The columns are: @var{element-type} @var{element-index}
-@var{x-coord} @var{y-coord} @var{z-coord} @var{real} @var{real} @var{real}
-@var{values}. The three @var{real} numbers preceding the @var{values}
-contain context-dependent information, depending on the type of plot:
-curvilinear abscissa for @code{OnLine} plots, normal to the plane for
-@code{OnPlane} plots, parametric coordinates for parametric @code{OnGrid}
-plots, etc.
+@item RegionTable
+Table of global quantity values, per region.
+
+@item FrequencyTable
+Table of global quantity values, per region, with frequency in the first
+column.
 
 @item Adaptation
 Adaptation map, suitable for the GetDP @code{-adapt} command line option.
+
+@c TODO : document RegionValue
 
 @end ftable
 
