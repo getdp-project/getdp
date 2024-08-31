@@ -1,7 +1,8 @@
 3.6.0 (Work-in-progress): new functions ValueFromFile and ReadTable; improved
 support for high-order meshes; improved parsing speed of .pro files with many
 functions and groups; new -sparsity option to use exact sparsity pattern for
-PETSc matrices; bug fixes (SaveMesh, adaptive time stepping with MPI).
+PETSc matrices; bug fixes (SaveMesh, adaptive time stepping with MPI, duplicate
+values in ONELAB parameter choices).
 
 3.5.0 (May 13, 2022): generalized Trace operator on non-conforming meshes; new
 Errf function; source code reorganization.
