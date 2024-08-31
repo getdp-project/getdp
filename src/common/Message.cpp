@@ -829,7 +829,7 @@ void Message::AddOnelabNumberChoice(std::string name,
                                     const char *label, bool visible,
                                     bool closed)
 {
-#if 1 // debug
+#if 0 // debug
   printf("add number choice %s: ", name.c_str());
   for(auto v : value) printf("%g ", v);
   printf("\n");
