@@ -5185,13 +5185,25 @@ OperationTerm :
       Operation_P->DefineSystemIndex = i;
       Operation_P->Case.GetNorm.VariableName = $6;
       Operation_P->Case.GetNorm.NormType = L2NORM;
-      /*
-      NormType = Get_DefineForString(ErrorNorm_Type, $xx, &FlagError);
+    }
+
+  | GetOperation '[' String__Index ',' '$' String__Index ',' tSTRING ']' tEND
+    { Operation_P = (struct Operation*)
+	List_Pointer(Operation_L, List_Nbr(Operation_L)-1);
+      Operation_P->Type = $1;
+      int i;
+      if((i = List_ISearchSeq(Resolution_S.DefineSystem, $3,
+			       fcmp_DefineSystem_Name)) < 0)
+	vyyerror(0, "Unknown System: %s", $3);
+      Free($3);
+      Operation_P->DefineSystemIndex = i;
+      Operation_P->Case.GetNorm.VariableName = $6;
+      Operation_P->Case.GetNorm.NormType =
+        Get_DefineForString(ErrorNorm_Type, $8, &FlagError);
       if(FlagError){
-        Get_Valid_SXD($xx, ErrorNorm_Type);
-        vyyerror(0, "Unknown error norm type for residual calculation");
+        Get_Valid_SXD($8, ErrorNorm_Type);
+        vyyerror(0, "Unknown error norm type");
       }
-      */
     }
 
   | tCreateSolution '[' String__Index ']' tEND

@@ -4723,11 +4723,12 @@ Compute the residual @code{r = b - A x} and store its L2 norm in the
 run-time variable $@var{variable-id}.
 
 @item GetNormSolution | GetNormRightHandSide | GetNormResidual | GetNormIncrement
-@code{[@var{system-id}, $@var{variable-id}]}
+@code{[@var{system-id}, $@var{variable-id} <, @var{norm-type} >]}
 
 Compute the norm of the solution (resp. right-hand-side, residual or
-increment) and store its L2 norm in the run-time variable
-$@var{variable-id}.
+increment) and store its norm in the run-time variable
+$@var{variable-id}. Possible choices for @var{norm-type}: @code{L2Norm}
+(default) and @code{LinfNorm}.
 
 @item SwapSolutionAndResidual
 @code{[@var{system-id}]}

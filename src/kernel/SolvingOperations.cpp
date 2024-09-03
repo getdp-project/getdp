@@ -1326,15 +1326,37 @@ void Treatment_Operation(struct Resolution *Resolution_P, List_T *Operation_L,
         Resolution_P, Operation_P, DofData_P0, GeoData_P0, &DefineSystem_P,
         &DofData_P, Resolution2_P);
       double norm = 0.;
-      if(DofData_P->CurrentSolution &&
-         Operation_P->Type == OPERATION_GETNORMSOLUTION)
-        LinAlg_VectorNorm2(&DofData_P->CurrentSolution->x, &norm);
-      else if(Operation_P->Type == OPERATION_GETNORMRESIDUAL)
-        LinAlg_VectorNorm2(&DofData_P->res, &norm);
-      else if(Operation_P->Type == OPERATION_GETNORMRHS)
-        LinAlg_VectorNorm2(&DofData_P->b, &norm);
-      else if(Operation_P->Type == OPERATION_GETNORMINCREMENT)
-        LinAlg_VectorNorm2(&DofData_P->dx, &norm);
+      if(Operation_P->Case.GetNorm.NormType == L2NORM) {
+        if(Operation_P->Type == OPERATION_GETNORMSOLUTION) {
+          if(DofData_P->CurrentSolution)
+            LinAlg_VectorNorm2(&DofData_P->CurrentSolution->x, &norm);
+          else
+            Message::Error("No current solution for GetNormSolution[]");
+        }
+        else if(Operation_P->Type == OPERATION_GETNORMRESIDUAL)
+          LinAlg_VectorNorm2(&DofData_P->res, &norm);
+        else if(Operation_P->Type == OPERATION_GETNORMRHS)
+          LinAlg_VectorNorm2(&DofData_P->b, &norm);
+        else if(Operation_P->Type == OPERATION_GETNORMINCREMENT)
+          LinAlg_VectorNorm2(&DofData_P->dx, &norm);
+      }
+      else if(Operation_P->Case.GetNorm.NormType == LINFNORM) {
+        if(Operation_P->Type == OPERATION_GETNORMSOLUTION) {
+          if(DofData_P->CurrentSolution)
+            LinAlg_VectorNormInf(&DofData_P->CurrentSolution->x, &norm);
+          else
+            Message::Error("No current solution for GetNormSolution[]");
+        }
+        else if(Operation_P->Type == OPERATION_GETNORMRESIDUAL)
+          LinAlg_VectorNormInf(&DofData_P->res, &norm);
+        else if(Operation_P->Type == OPERATION_GETNORMRHS)
+          LinAlg_VectorNormInf(&DofData_P->b, &norm);
+        else if(Operation_P->Type == OPERATION_GETNORMINCREMENT)
+          LinAlg_VectorNormInf(&DofData_P->dx, &norm);
+      }
+      else {
+        Message::Error("Unsupported norm type");
+      }
       Cal_ZeroValue(&Value);
       Value.Type = SCALAR;
       Value.Val[0] = norm;
