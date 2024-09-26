@@ -1653,9 +1653,9 @@ void Pos_PrintExpression(struct PostSubOperation *PSO_P)
         Get_ValueOfExpressionByIndex(j, NULL, 0., 0., 0., &Value);
         List_Add(list, &Value.Val[0]);
       }
-      char buffer[1024];
+      std::string buffer;
       Print_ListOfDouble(str, list, buffer);
-      if(PostStream) fprintf(PostStream, "%s", buffer);
+      if(PostStream) fprintf(PostStream, "%s", buffer.c_str());
       List_Delete(list);
     }
     else if(str2) {

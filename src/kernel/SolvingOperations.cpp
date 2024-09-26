@@ -3301,11 +3301,11 @@ void Treatment_Operation(struct Resolution *Resolution_P, List_T *Operation_L,
             Print_Value(&Value, fp);
         }
         if(list) {
-          char buffer[1024];
+          std::string buffer;
           Print_ListOfDouble(Operation_P->Case.Print.FormatString, list,
                              buffer);
-          Message::Direct(3, buffer);
-          if(fp != stdout) fprintf(fp, "%s\n", buffer);
+          Message::Direct(3, buffer.c_str());
+          if(fp != stdout) fprintf(fp, "%s\n", buffer.c_str());
           List_Delete(list);
         }
       }
