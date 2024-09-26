@@ -40,6 +40,18 @@ static void ComputeElementBox(struct Element *Element,
     ElementBox->Zmin = std::min(ElementBox->Zmin, Element->z[i]);
     ElementBox->Zmax = std::max(ElementBox->Zmax, Element->z[i]);
   }
+  double x = ElementBox->Xmax - ElementBox->Xmin;
+  double y = ElementBox->Ymax - ElementBox->Ymin;
+  double z = ElementBox->Zmax - ElementBox->Zmin;
+  double diag = sqrt(x * x + y * y + z * z);
+  // make box 1% bigger
+  const double c = 0.01 * diag;
+  ElementBox->Xmin -= c;
+  ElementBox->Xmax += c;
+  ElementBox->Ymin -= c;
+  ElementBox->Ymax += c;
+  ElementBox->Zmin -= c;
+  ElementBox->Zmax += c;
 }
 
 /* ------------------------------------------------------------------------ */
@@ -47,11 +59,11 @@ static void ComputeElementBox(struct Element *Element,
 /* ------------------------------------------------------------------------ */
 
 static int PointInElementBox(struct ElementBox ElementBox, double x, double y,
-                             double z, double tol)
+                             double z)
 {
-  if(x > ElementBox.Xmax + tol || x < ElementBox.Xmin - tol ||
-     y > ElementBox.Ymax + tol || y < ElementBox.Ymin - tol ||
-     z > ElementBox.Zmax + tol || z < ElementBox.Zmin - tol) {
+  if(x > ElementBox.Xmax || x < ElementBox.Xmin ||
+     y > ElementBox.Ymax || y < ElementBox.Ymin ||
+     z > ElementBox.Zmax || z < ElementBox.Zmin) {
     return (0);
   }
   else {
@@ -140,7 +152,7 @@ int PointInElement(struct Element *Element, List_T *ExcludeRegion_L, double x,
   Get_NodesCoordinatesOfElement(Element);
   ComputeElementBox(Element, &ElementBox);
 
-  if(!PointInElementBox(ElementBox, x, y, z, tol)) { return (0); }
+  if(!PointInElementBox(ElementBox, x, y, z)) { return (0); }
 
   xyz2uvwInAnElement(Element, x, y, z, u, v, w);
 
@@ -463,6 +475,7 @@ void InWhichElement(struct Grid *Grid, List_T *ExcludeRegion_L,
     tol = Current.GeoData->CharacteristicLength * 1.e-4; /* instead of 5.e-3 */
   else
     tol = Current.GeoData->CharacteristicLength * 1.e-8;
+
   if(LastGeoElement) {
     Element->GeoElement = LastGeoElement;
     if(PointInElement(Element, ExcludeRegion_L, x, y, z, u, v, w, tol)) {
@@ -509,10 +522,10 @@ void InWhichElement(struct Grid *Grid, List_T *ExcludeRegion_L,
         *(struct Geo_Element **)List_Pointer(Brick_P->p[dim], i);
       if(PointInElement(Element, ExcludeRegion_L, x, y, z, u, v, w, tol)) {
         /*
-        Message::Info("xyz(%g,%g,%g) -> Selected Element %d uvw(%g,%g,%g)
-        (%g,%g,%g)->(%g,%g,%g)", x, y, z, Element->Num, *u, *v, *w,
-            Element->x[0], Element->y[0], Element->z[0],
-            Element->x[1], Element->y[1], Element->z[1]);
+        Message::Info("xyz(%g,%g,%g) -> Selected Element %d uvw(%g,%g,%g) "
+                      "(%g,%g,%g)->(%g,%g,%g)", x, y, z, Element->Num, *u, *v, *w,
+                      Element->x[0], Element->y[0], Element->z[0],
+                      Element->x[1], Element->y[1], Element->z[1]);
         */
         LastGeoElement = Element->GeoElement;
         return;
