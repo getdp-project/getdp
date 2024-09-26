@@ -7,6 +7,7 @@
 //   Jean-Francois Remacle
 //
 
+#include <math.h>
 #include "ProData.h"
 #include "GeoData.h"
 #include "Get_Geometry.h"
