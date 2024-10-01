@@ -340,12 +340,12 @@ static void Init_SearchGrid(struct Grid *Grid)
       Iz2 = (int)((double)Grid->Nz * (ElementBox.Zmax - Grid->Zmin) /
                   (Grid->Zmax - Grid->Zmin));
 
-      Ix1 = std::max(Ix1, 0);
-      Ix2 = std::min(Ix2, Grid->Nx - 1);
-      Iy1 = std::max(Iy1, 0);
-      Iy2 = std::min(Iy2, Grid->Ny - 1);
-      Iz1 = std::max(Iz1, 0);
-      Iz2 = std::min(Iz2, Grid->Nz - 1);
+      Ix1 = (Ix1 < 0) ? 0 : ((Ix1 > Grid->Nx - 1) ? Grid->Nx - 1 : Ix1);
+      Ix2 = (Ix2 < 0) ? 0 : ((Ix2 > Grid->Nx - 1) ? Grid->Nx - 1 : Ix2);
+      Iy1 = (Iy1 < 0) ? 0 : ((Iy1 > Grid->Ny - 1) ? Grid->Ny - 1 : Iy1);
+      Iy2 = (Iy2 < 0) ? 0 : ((Iy2 > Grid->Ny - 1) ? Grid->Ny - 1 : Iy2);
+      Iz1 = (Iz1 < 0) ? 0 : ((Iz1 > Grid->Nz - 1) ? Grid->Nz - 1 : Iz1);
+      Iz2 = (Iz2 < 0) ? 0 : ((Iz2 > Grid->Nz - 1) ? Grid->Nz - 1 : Iz2);
 
       for(i = Ix1; i <= Ix2; i++) {
         for(j = Iy1; j <= Iy2; j++) {
