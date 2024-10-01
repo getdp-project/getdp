@@ -442,13 +442,10 @@ static int InWhichBrick(struct Grid *pGrid, double X, double Y, double Z)
     (int)((double)pGrid->Ny * (Y - pGrid->Ymin) / (pGrid->Ymax - pGrid->Ymin));
   Iz =
     (int)((double)pGrid->Nz * (Z - pGrid->Zmin) / (pGrid->Zmax - pGrid->Zmin));
-  Ix = std::min(Ix, pGrid->Nx - 1);
-  Iy = std::min(Iy, pGrid->Ny - 1);
-  Iz = std::min(Iz, pGrid->Nz - 1);
 
-  if(Ix < 0) Ix = 0;
-  if(Iy < 0) Iy = 0;
-  if(Iz < 0) Iz = 0;
+  Ix = (Ix < 0) ? 0 : ((Ix > pGrid->Nx - 1) ? pGrid->Nx - 1 : Ix);
+  Iy = (Iy < 0) ? 0 : ((Iy > pGrid->Ny - 1) ? pGrid->Ny - 1 : Iy);
+  Iz = (Iz < 0) ? 0 : ((Iz > pGrid->Nz - 1) ? pGrid->Nz - 1 : Iz);
 
   return (Ix + Iy * pGrid->Nx + Iz * pGrid->Nx * pGrid->Ny);
 }
