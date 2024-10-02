@@ -178,7 +178,6 @@ static void Init_SearchGrid(struct Grid *Grid)
   struct Element Element;
   struct ElementBox ElementBox;
   struct Brick Brick, *Brick_P;
-  double Xc, Yc, Zc;
   int NbrGeoElements, iElm;
   int Ix1, Ix2, Iy1, Iy2, Iz1, Iz2;
   int i, j, k, index;
