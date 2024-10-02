@@ -153,7 +153,9 @@ int PointInElement(struct Element *Element, List_T *ExcludeRegion_L, double x,
   Get_NodesCoordinatesOfElement(Element);
   ComputeElementBox(Element, &ElementBox);
 
-  if(!PointInElementBox(ElementBox, x, y, z)) { return (0); }
+  if(!PointInElementBox(ElementBox, x, y, z)) {
+    return (0);
+  }
 
   xyz2uvwInAnElement(Element, x, y, z, u, v, w);
 
@@ -192,117 +194,34 @@ static void Init_SearchGrid(struct Grid *Grid)
   Grid->Zmin = Current.GeoData->Zmin;
   Grid->Zmax = Current.GeoData->Zmax;
 
-#define NBB 20
-#define FACT 0.1
+  double x = Grid->Xmax - Grid->Xmin;
+  double y = Grid->Ymax - Grid->Ymin;
+  double z = Grid->Zmax - Grid->Zmin;
+  double diag = sqrt(x * x + y * y + z * z);
 
-  if(Grid->Xmin != Grid->Xmax && Grid->Ymin != Grid->Ymax &&
-     Grid->Zmin != Grid->Zmax) {
-    Grid->Nx = Grid->Ny = Grid->Nz = NBB;
-
-    Xc = Grid->Xmax - Grid->Xmin;
-    Yc = Grid->Ymax - Grid->Ymin;
-    Zc = Grid->Zmax - Grid->Zmin;
-
-    Grid->Xmin -= FACT * Xc;
-    Grid->Ymin -= FACT * Yc;
-    Grid->Zmin -= FACT * Zc;
-    Grid->Xmax += FACT * Xc;
-    Grid->Ymax += FACT * Yc;
-    Grid->Zmax += FACT * Zc;
-  }
-
-  else if(Grid->Xmin != Grid->Xmax && Grid->Ymin != Grid->Ymax) {
-    Grid->Nx = Grid->Ny = NBB;
-    Grid->Nz = 1;
-
-    Xc = Grid->Xmax - Grid->Xmin;
-    Yc = Grid->Ymax - Grid->Ymin;
-
-    Grid->Xmin -= FACT * Xc;
-    Grid->Ymin -= FACT * Xc;
-    Grid->Zmin -= 1.;
-    Grid->Xmax += FACT * Xc;
-    Grid->Ymax += FACT * Xc;
-    Grid->Zmax += 1.;
-  }
-  else if(Grid->Xmin != Grid->Xmax && Grid->Zmin != Grid->Zmax) {
-    Grid->Nx = Grid->Nz = NBB;
-    Grid->Ny = 1;
-
-    Xc = Grid->Xmax - Grid->Xmin;
-    Zc = Grid->Zmax - Grid->Zmin;
-
-    Grid->Xmin -= FACT * Xc;
-    Grid->Ymin -= 1.;
-    Grid->Zmin -= FACT * Zc;
-    Grid->Xmax += FACT * Xc;
-    Grid->Ymax += 1.;
-    Grid->Zmax += FACT * Zc;
-  }
-  else if(Grid->Ymin != Grid->Ymax && Grid->Zmin != Grid->Zmax) {
-    Grid->Nx = 1;
-    Grid->Ny = Grid->Nz = NBB;
-
-    Yc = Grid->Ymax - Grid->Ymin;
-    Zc = Grid->Zmax - Grid->Zmin;
-
-    Grid->Xmin -= 1.;
-    Grid->Ymin -= FACT * Yc;
-    Grid->Zmin -= FACT * Zc;
-    Grid->Xmax += 1.;
-    Grid->Ymax += FACT * Yc;
-    Grid->Zmax += FACT * Zc;
-  }
-
-  else if(Grid->Xmin != Grid->Xmax) {
-    Grid->Nx = NBB;
-    Grid->Ny = Grid->Nz = 1;
-
-    Xc = Grid->Xmax - Grid->Xmin;
-
-    Grid->Xmin -= FACT * Xc;
-    Grid->Ymin -= 1.;
-    Grid->Zmin -= 1.;
-    Grid->Xmax += FACT * Xc;
-    Grid->Ymax += 1.;
-    Grid->Zmax += 1.;
-  }
-  else if(Grid->Ymin != Grid->Ymax) {
-    Grid->Nx = Grid->Nz = 1;
-    Grid->Ny = NBB;
-
-    Yc = Grid->Ymax - Grid->Ymin;
-
-    Grid->Xmin -= 1.;
-    Grid->Ymin -= FACT * Yc;
-    Grid->Zmin -= 1.;
-    Grid->Xmax += 1.;
-    Grid->Ymax += FACT * Yc;
-    Grid->Zmax += 1.;
-  }
-  else if(Grid->Zmin != Grid->Zmax) {
-    Grid->Nx = Grid->Ny = 1;
-    Grid->Nz = NBB;
-
-    Zc = Grid->Zmax - Grid->Zmin;
-
-    Grid->Xmin -= 1.;
-    Grid->Ymin -= 1.;
-    Grid->Zmin -= FACT * Zc;
-    Grid->Xmax += 1.;
-    Grid->Ymax += 1.;
-    Grid->Zmax += FACT * Zc;
-  }
-
-  else {
+  if(diag < 1e-16) {
+    Message::Warning("Bounding box too small %g", diag);
     Grid->Nx = Grid->Ny = Grid->Nz = 1;
-
-    Grid->Xmin -= 1.;
-    Grid->Ymin -= 1.;
-    Grid->Zmin -= 1.;
-    Grid->Xmax += 1.;
-    Grid->Ymax += 1.;
-    Grid->Zmax += 1.;
+    Grid->Xmin -= 1;
+    Grid->Xmax += 1;
+    Grid->Ymin -= 1;
+    Grid->Ymax += 1;
+    Grid->Zmin -= 1;
+    Grid->Zmax += 1;
+  }
+  else {
+    const int NBB = 25;
+    Grid->Nx = (int)(x / diag * NBB) + 1;
+    Grid->Ny = (int)(y / diag * NBB) + 1;
+    Grid->Nz = (int)(z / diag * NBB) + 1;
+    // make box 1% bigger
+    const double c = 0.01 * diag;
+    Grid->Xmin -= c * diag;
+    Grid->Xmax += c * diag;
+    Grid->Ymin -= c * diag;
+    Grid->Ymax += c * diag;
+    Grid->Zmin -= c * diag;
+    Grid->Zmax += c * diag;
   }
 
   Message::Info("Initializing rapid search grid...");
