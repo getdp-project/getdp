@@ -10001,7 +10001,7 @@ MultiFExpr :
       Message::Barrier();
       FILE *File;
       $$ = List_Create(100, 100, sizeof(double));
-      if(!(File = FOpen(Fix_RelativePath($3).c_str(), "rb"))){
+      if(!(File = FOpen(Fix_RelativePath($3).c_str(), "r"))){
         vyyerror(1, "Could not open file '%s'", $3);
       }
       else{
@@ -10015,8 +10015,8 @@ MultiFExpr :
             break;
           }
           else{
-            char dummy[1024];
-            if(fscanf(File, "%s", dummy))
+            char dummy[65];
+            if(fscanf(File, "%64s", dummy) == 1)
               vyyerror(1, "Ignoring '%s' in file '%s'", dummy, $3);
           }
         }
