@@ -1447,6 +1447,16 @@ void Pos_PrintOnRegion(struct PostQuantity *NCPQ_P, struct PostQuantity *CPQ_P,
         else if(PostStream)
           fprintf(PostStream, "%s\n", sstream.str().c_str());
       }
+      else if(!PSO_P->NoTitle && PSO_P->Format == FORMAT_VALUE_ONLY) {
+        std::ostringstream sstream;
+        sstream << PQ_P->Name;
+        for(i = 0; i < Nbr_Region; i++) {
+          List_Read(Region_L, i, &Num_Region);
+          sstream << "_" << Num_Region;
+        }
+        sstream << PSO_P->Comma;
+        fprintf(PostStream, "%s", sstream.str().c_str());
+      }
     }
     else if(Group_P->FunctionType == NODESOF) {
       if(!Group_P->ExtendedList) Generate_ExtendedGroup(Group_P);
@@ -1459,8 +1469,12 @@ void Pos_PrintOnRegion(struct PostQuantity *NCPQ_P, struct PostQuantity *CPQ_P,
       return;
     }
   }
-  else
+  else {
     Nbr_Region = 1;
+    if(!PSO_P->NoTitle && PSO_P->Format == FORMAT_VALUE_ONLY) {
+      fprintf(PostStream, "%s%s", PQ_P->Name, PSO_P->Comma);
+    }
+  }
 
   for(iTime = 0; iTime < NbrTimeStep; iTime++) {
     Pos_InitAllSolutions(PSO_P->TimeStep_L, iTime);

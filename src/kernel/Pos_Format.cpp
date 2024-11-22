@@ -1384,11 +1384,11 @@ void Unv_PrintHeader(FILE *PostStream, char *name, double Time, int TimeStep,
                        double &NXUnv_UnitFactor) NX
 #undef NX
 
-  /* ------------------------------------------------------------------------ */
-  /*  F o r m a t _ P o s t F o r m a t                                       */
-  /* ------------------------------------------------------------------------ */
+/* ------------------------------------------------------------------------ */
+/*  F o r m a t _ P o s t F o r m a t                                       */
+/* ------------------------------------------------------------------------ */
 
-  void Format_PostFormat(struct PostSubOperation *PSO_P)
+void Format_PostFormat(struct PostSubOperation *PSO_P)
 {
   if(!PostStream || PSO_P->Type == POP_EXPRESSION) return;
 
