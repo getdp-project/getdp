@@ -645,10 +645,8 @@ void Dof_ReadFilePRE(struct DofData *DofData_P)
     if(p.first > 0 && !p.second.empty())
       DofData_P->PartitionSplit.push_back(*(p.second.rbegin()));
   }
-  for(auto &p : partitions) {
-    if(p.first <= 0 && !p.second.empty())
-      DofData_P->PartitionSplit.push_back(*(p.second.rbegin()));
-  }
+  DofData_P->PartitionSplit.push_back(DofData_P->NbrDof);
+
   if(DofData_P->PartitionSplit.size() > 1) {
     std::ostringstream sstream;
     for(auto p : DofData_P->PartitionSplit) sstream << p << " ";
@@ -1364,9 +1362,9 @@ void Dof_NumberUnknownDof(void)
   else
     List_Action(CurrentDofData->DofList, GetUnknownDofsWithoutNum);
 
-  int N = 0;
+  CurrentDofData->PartitionSplit.push_back(0);
   // number dofs by partition and keep track of last dof in each partition
-  CurrentDofData->PartitionSplit.push_back(N);
+  int N = 0;
   for(auto &p : UnknownDofs) {
     if(p.first > 0) {
       Message::Debug("Numbering %lu dofs in partition %d", p.second.size(),
@@ -1386,9 +1384,9 @@ void Dof_NumberUnknownDof(void)
         d->Case.Unknown.NumDof = ++N;
         CurrentDofData->NonLocalEquations.push_back(N);
       }
-      CurrentDofData->PartitionSplit.push_back(N);
     }
   }
+  CurrentDofData->PartitionSplit.push_back(CurrentDofData->NbrDof);
   UnknownDofs.clear();
 
   if(CurrentDofData->PartitionSplit.size() > 1) {
