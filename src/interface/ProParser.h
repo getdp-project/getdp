@@ -511,7 +511,7 @@ void skipUntil_test(const char *skip, const char *until, const char *until2,
                     int l_until2_sub, int *type_until2);
 void Print_Constants();
 void Print_Struct();
-int Print_ListOfDouble(char *format, List_T *list, char *buffer);
+int Print_ListOfDouble(const char *format, List_T *list, std::string &buffer);
 Constant *Get_ParserConstant(char *name);
 void Read_Table(const std::string &FileName, const std::string &TableName,
                 List_T *TableData=nullptr);

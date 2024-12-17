@@ -5185,13 +5185,25 @@ OperationTerm :
       Operation_P->DefineSystemIndex = i;
       Operation_P->Case.GetNorm.VariableName = $6;
       Operation_P->Case.GetNorm.NormType = L2NORM;
-      /*
-      NormType = Get_DefineForString(ErrorNorm_Type, $xx, &FlagError);
+    }
+
+  | GetOperation '[' String__Index ',' '$' String__Index ',' tSTRING ']' tEND
+    { Operation_P = (struct Operation*)
+	List_Pointer(Operation_L, List_Nbr(Operation_L)-1);
+      Operation_P->Type = $1;
+      int i;
+      if((i = List_ISearchSeq(Resolution_S.DefineSystem, $3,
+			       fcmp_DefineSystem_Name)) < 0)
+	vyyerror(0, "Unknown System: %s", $3);
+      Free($3);
+      Operation_P->DefineSystemIndex = i;
+      Operation_P->Case.GetNorm.VariableName = $6;
+      Operation_P->Case.GetNorm.NormType =
+        Get_DefineForString(ErrorNorm_Type, $8, &FlagError);
       if(FlagError){
-        Get_Valid_SXD($xx, ErrorNorm_Type);
-        vyyerror(0, "Unknown error norm type for residual calculation");
+        Get_Valid_SXD($8, ErrorNorm_Type);
+        vyyerror(0, "Unknown error norm type");
       }
-      */
     }
 
   | tCreateSolution '[' String__Index ']' tEND
@@ -8830,14 +8842,14 @@ Affectation :
 
   | Printf LP CharExprNoVar ',' RecursiveListOfFExpr RP tEND
     {
-      char tmpstr[256];
+      std::string tmpstr;
       int i = Print_ListOfDouble($3, $5, tmpstr);
       if(i < 0)
 	vyyerror(0, "Too few arguments in Printf");
       else if(i > 0)
 	vyyerror(0, "Too many arguments (%d) in Printf", i);
       else
-	Message::Direct($1, tmpstr);
+	Message::Direct($1, tmpstr.c_str());
       Free($3);
       List_Delete($5);
     }
@@ -8850,14 +8862,14 @@ Affectation :
 	vyyerror(0, "Unable to open file '%s'", tmp.c_str());
       }
       else{
-        char tmpstr[256];
+        std::string tmpstr;
         int i = Print_ListOfDouble($3, $5, tmpstr);
         if(i < 0)
           vyyerror(0, "Too few arguments in Printf");
         else if(i > 0)
           vyyerror(0, "Too many arguments (%d) in Printf", i);
         else
-          fprintf(fp, "%s\n", $3);
+          fprintf(fp, "%s\n", tmpstr.c_str());
 	fclose(fp);
       }
       Free($3);
@@ -9989,7 +10001,7 @@ MultiFExpr :
       Message::Barrier();
       FILE *File;
       $$ = List_Create(100, 100, sizeof(double));
-      if(!(File = FOpen(Fix_RelativePath($3).c_str(), "rb"))){
+      if(!(File = FOpen(Fix_RelativePath($3).c_str(), "r"))){
         vyyerror(1, "Could not open file '%s'", $3);
       }
       else{
@@ -10003,8 +10015,8 @@ MultiFExpr :
             break;
           }
           else{
-            char dummy[1024];
-            if(fscanf(File, "%s", dummy))
+            char dummy[65];
+            if(fscanf(File, "%64s", dummy) == 1)
               vyyerror(1, "Ignoring '%s' in file '%s'", dummy, $3);
           }
         }
@@ -10220,19 +10232,18 @@ CharExprNoVar :
 
   | tSprintf LP CharExpr ',' RecursiveListOfFExpr RP
     {
-      char tmpstr[256];
-      int i = Print_ListOfDouble($3,$5,tmpstr);
-      if(i<0){
+      std::string tmpstr;
+      int i = Print_ListOfDouble($3, $5, tmpstr);
+      if(i < 0){
 	vyyerror(0, "Too few arguments in Sprintf");
 	$$ = $3;
       }
-      else if(i>0){
+      else if(i > 0){
 	vyyerror(0, "Too many arguments (%d) in Sprintf", i);
 	$$ = $3;
       }
       else{
-	$$ = (char*)Malloc((strlen(tmpstr)+1)*sizeof(char));
-	strcpy($$, tmpstr);
+        $$ = strSave(tmpstr.c_str());
 	Free($3);
       }
       List_Delete($5);
@@ -10966,38 +10977,40 @@ int  Check_NameOfStructExist(const char *Struct, List_T *List_L, void *data,
 
 /* P r i n t _ C o n s t a n t  */
 
-int Print_ListOfDouble(char *format, List_T *list, char *buffer)
+int Print_ListOfDouble(const char *format, List_T *list, std::string &buffer)
 {
+  buffer = format;
+
+  int numFormats = 0;
+  for(std::size_t i = 0; i < strlen(format); i++) {
+    if(format[i] == '%') numFormats++;
+  }
+
   // if format does not contain formatting characters, dump the list (useful for
   // quick debugging of lists)
-  int numFormats = 0;
-  for(unsigned int i = 0; i < strlen(format); i++)
-    if(format[i] == '%') numFormats++;
   if(!numFormats){
-    strcpy(buffer, format);
     for(int i = 0; i < List_Nbr(list); i++){
       double d;
       List_Read(list, i, &d);
       char tmp[256];
       sprintf(tmp, " [%d]%g", i, d);
-      strcat(buffer, tmp);
+      buffer += tmp;
     }
     return 0;
   }
 
   char tmp1[256], tmp2[256];
   int j = 0, k = 0;
-  buffer[j] = '\0';
 
   while(j < (int)strlen(format) && format[j] != '%') j++;
-  strncpy(buffer, format, j);
-  buffer[j] = '\0';
+  buffer.resize(j);
+
   for(int i = 0; i < List_Nbr(list); i++){
     k = j;
     j++;
     if(j < (int)strlen(format)){
       if(format[j] == '%'){
-	strcat(buffer, "%");
+	buffer += "%";
 	j++;
       }
       while(j < (int)strlen(format) && format[j] != '%') j++;
@@ -11005,7 +11018,7 @@ int Print_ListOfDouble(char *format, List_T *list, char *buffer)
 	strncpy(tmp1, &(format[k]), j-k);
 	tmp1[j-k] = '\0';
 	sprintf(tmp2, tmp1, *(double*)List_Pointer(list, i));
-	strcat(buffer, tmp2);
+	buffer += tmp2;
       }
     }
     else
