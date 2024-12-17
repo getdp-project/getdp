@@ -1437,7 +1437,7 @@ void Pos_PrintOnRegion(struct PostQuantity *NCPQ_P, struct PostQuantity *CPQ_P,
           sstream << "// ";
         else
           sstream << "# ";
-        sstream << PQ_P->Name << " on";
+        sstream << (PSO_P->ValueName ? PSO_P->ValueName : PQ_P->Name) << " on";
         for(i = 0; i < Nbr_Region; i++) {
           List_Read(Region_L, i, &Num_Region);
           sstream << " " << Num_Region;
@@ -1449,7 +1449,7 @@ void Pos_PrintOnRegion(struct PostQuantity *NCPQ_P, struct PostQuantity *CPQ_P,
       }
       else if(!PSO_P->NoTitle && PSO_P->Format == FORMAT_VALUE_ONLY) {
         std::ostringstream sstream;
-        sstream << PQ_P->Name;
+        sstream << (PSO_P->ValueName ? PSO_P->ValueName : PQ_P->Name);
         for(i = 0; i < Nbr_Region; i++) {
           List_Read(Region_L, i, &Num_Region);
           sstream << "_" << Num_Region;
@@ -1472,7 +1472,8 @@ void Pos_PrintOnRegion(struct PostQuantity *NCPQ_P, struct PostQuantity *CPQ_P,
   else {
     Nbr_Region = 1;
     if(!PSO_P->NoTitle && PSO_P->Format == FORMAT_VALUE_ONLY) {
-      fprintf(PostStream, "%s%s", PQ_P->Name, PSO_P->Comma);
+      fprintf(PostStream, "%s%s", (PSO_P->ValueName ? PSO_P->ValueName :
+                                   PQ_P->Name), PSO_P->Comma);
     }
   }
 
