@@ -229,6 +229,36 @@ void F_GetVariable(F_ARG)
   Cal_GetValueSaved(V, tmp);
 }
 
+void F_ValueFromMap(F_ARG)
+{
+  if(!Fct->String) {
+    Message::Error("Missing map name: use ValueFromMap[key]{name}");
+    return;
+  }
+  if(Fct->NbrArguments != 1 || A->Type != SCALAR) {
+    Message::Error("ValueFromMap requires a single scalar argument");
+    return;
+  }
+
+  std::map<int, std::vector<double> > &table(GetDPNumbersMap[Fct->String]);
+  int key = (int)A->Val[0];
+  std::vector<double> &val(table[key]);
+  if(val.size() == 0) {
+    Message::Error("No entry found in map '%s' for key '%d'",
+                   Fct->String, key);
+    return;
+  }
+  if(val.size() == 1) {
+    V->Val[0] = val[0];
+    V->Type = SCALAR;
+    return;
+  }
+  else {
+    Message::Error("ValueFromMap should updated to handle values of size %lu",
+                   val.size());
+  }
+}
+
 void F_ValueFromTable(F_ARG)
 {
   if(!Fct->String) {

@@ -4095,11 +4095,19 @@ Same @code{ValueFromIndex}, but with 3 scalar values per @var{entity}.
 @code{[ @var{expression} ]@{ @var{char-expression} @}}
 
 Accesses the map @var{char-expression} created by a @code{NodeTable} or
-@code{ElementTable} @code{PostOperation}. If the map is not available
-(e.g. in pre-processing), or if the entity is not found in the map, use
-@var{expression} as default value. Useful to specify nodal or
-element-wise constraints, where @var{entity} is the node (mesh vertex)
-or element number (tag).
+@code{ElementTable} @code{PostOperation}, or by the @code{ReadTable}
+operation, at the key corresponding to the current entity (node or
+element tag). If the map is not available (e.g. in pre-processing), or
+if the entity key is not found in the map, use @var{expression} as
+default value. Useful e.g. to specify nodal or element-wise constraints,
+where @var{entity} is the node (mesh vertex) or element number (tag).
+
+@item ValueFromMap
+@code{[ @var{expression} ]@{ @var{char-expression} @}}
+
+Accesses the map @var{char-expression} created by a @code{NodeTable} or
+@code{ElementTable} @code{PostOperation}, or by the @code{ReadTable}
+operation, at the key @var{expression} specified as argument.
 
 @end ftable
 
