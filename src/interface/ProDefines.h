@@ -96,6 +96,7 @@ struct StringXDefine1Nbr Jacobian_Type[] = {
 struct StringXDefine Integration_Type[] = {{"Gauss", GAUSS},
                                            {"GaussLegendre", GAUSSLEGENDRE},
                                            {"Analytic", ANALYTIC},
+                                           {"Collocation", COLLOCATION},
                                            {NULL, GAUSS}};
 
 struct StringXDefine Integration_SubType[] = {{"Standard", STANDARD},
@@ -551,6 +552,18 @@ struct DefineXFunction FunctionForGaussLegendre[] = {
 #endif
   {0, 0}};
 
+struct DefineXFunction FunctionForCollocation[] = {
+#if defined(HAVE_KERNEL)
+  {POINT_ELEMENT, (CAST)Gauss_Point},
+  {LINE, (CAST)Collocation_Line},
+  {TRIANGLE, (CAST)Collocation_Triangle},
+#else
+  {POINT_ELEMENT, NULL},
+  {LINE, NULL},
+  {TRIANGLE, NULL},
+#endif
+  {0, 0}};
+
 #define POI POINT_ELEMENT
 #define LIN LINE | LINE_2 | LINE_3 | LINE_4
 #define TRI TRIANGLE | TRIANGLE_2 | TRIANGLE_3 | TRIANGLE_4
@@ -638,7 +651,7 @@ struct StringX3Function3Nbr BF_Function[] = {
   {"BF_Edge", (CAST)BF_Edge, (CAST)BF_CurlEdge, (CAST)BF_Zero, 0.5, ALL, 1},
   {"BF_Edge_1E", (CAST)BF_Edge, (CAST)BF_CurlEdge, (CAST)BF_Zero, 0.5, ALL, 1},
   {"BF_Edge_2E", (CAST)BF_Edge_2E, (CAST)BF_CurlEdge_2E, (CAST)BF_Zero, 1.,
-   LIN | TRI | TET, 0},
+   LIN | TRI | TET | QUA, 0},
   {"BF_Edge_2F", (CAST)BF_Edge_2F, (CAST)BF_CurlEdge_2F, (CAST)BF_Zero, 1., ALL,
    0},
   {"BF_Edge_2V", (CAST)BF_Edge_2V, (CAST)BF_CurlEdge_2V, (CAST)BF_Zero, 1., ALL,
@@ -646,11 +659,11 @@ struct StringX3Function3Nbr BF_Function[] = {
   {"BF_Edge_3E", (CAST)BF_Edge_3E, (CAST)BF_CurlEdge_3E, (CAST)BF_Zero, 1.5,
    LIN | TRI | TET, 0},
   {"BF_Edge_3F_a", (CAST)BF_Edge_3F_a, (CAST)BF_CurlEdge_3F_a, (CAST)BF_Zero,
-   1.5, LIN | TRI | TET, 0},
+   1.5, LIN | TRI | TET | QUA, 0},
   {"BF_Edge_3F_b", (CAST)BF_Edge_3F_b, (CAST)BF_CurlEdge_3F_b, (CAST)BF_Zero,
-   1.5, LIN | TRI | TET, 0},
+   1.5, LIN | TRI | TET | QUA, 0},
   {"BF_Edge_3F_c", (CAST)BF_Edge_3F_c, (CAST)BF_CurlEdge_3F_c, (CAST)BF_Zero,
-   1.5, LIN | TRI | TET, 0},
+   1.5, LIN | TRI | TET, 0}, // not implemented for quads yet
   {"BF_Edge_3V", (CAST)BF_Edge_3V, (CAST)BF_CurlEdge_3V, (CAST)BF_Zero, 1.5,
    LIN | TRI | TET, 0},
   {"BF_Edge_4E", (CAST)BF_Edge_4E, (CAST)BF_CurlEdge_4E, (CAST)BF_Zero, 2., ALL,
@@ -664,7 +677,7 @@ struct StringX3Function3Nbr BF_Function[] = {
   {"BF_CurlEdge_1E", (CAST)BF_CurlEdge, (CAST)BF_Zero, (CAST)BF_Edge, 0., ALL,
    0},
   {"BF_CurlEdge_2E", (CAST)BF_CurlEdge_2E, (CAST)BF_Zero, (CAST)BF_Edge_2E, 0.,
-   LIN | TRI | TET, 0},
+   LIN | TRI | TET | QUA, 0},
   {"BF_CurlEdge_2F", (CAST)BF_CurlEdge_2F, (CAST)BF_Zero, (CAST)BF_Edge_2F, 0.,
    ALL, 0},
   {"BF_CurlEdge_2V", (CAST)BF_CurlEdge_2V, (CAST)BF_Zero, (CAST)BF_Edge_2V, 0.,
@@ -672,9 +685,9 @@ struct StringX3Function3Nbr BF_Function[] = {
   {"BF_CurlEdge_3E", (CAST)BF_CurlEdge_3E, (CAST)BF_Zero, (CAST)BF_Edge_3E, 1.,
    LIN | TRI | TET, 0},
   {"BF_CurlEdge_3F_a", (CAST)BF_CurlEdge_3F_a, (CAST)BF_Zero,
-   (CAST)BF_Edge_3F_a, 1., LIN | TRI | TET, 0},
+   (CAST)BF_Edge_3F_a, 1., LIN | TRI | TET | QUA, 0},
   {"BF_CurlEdge_3F_b", (CAST)BF_CurlEdge_3F_b, (CAST)BF_Zero,
-   (CAST)BF_Edge_3F_b, 1., LIN | TRI | TET, 0},
+   (CAST)BF_Edge_3F_b, 1., LIN | TRI | TET | QUA, 0},
   {"BF_CurlEdge_3F_c", (CAST)BF_CurlEdge_3F_c, (CAST)BF_Zero,
    (CAST)BF_Edge_3F_c, 1., LIN | TRI | TET, 0},
   {"BF_CurlEdge_3V", (CAST)BF_CurlEdge_3V, (CAST)BF_Zero, (CAST)BF_Edge_3V, 1.,

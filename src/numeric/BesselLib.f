@@ -386,10 +386,12 @@ C     ON FIRST CALL, IF NO DATA UNCOMMENTED, TEST MACHINE TYPES.
             IF (LARGE(2) .EQ. 64 .AND. SMALL(2) .EQ. 0) THEN
                CRAY1(1) = 67291416
                DO 10 J = 1, 20
- 10               CRAY1(J+1) = CRAY1(J) + CRAY1(J)
+                  CRAY1(J+1) = CRAY1(J) + CRAY1(J)
+ 10            CONTINUE
                CRAY1(22) = CRAY1(21) + 321322
                DO 20 J = 22, 37
- 20               CRAY1(J+1) = CRAY1(J) + CRAY1(J)
+                  CRAY1(J+1) = CRAY1(J) + CRAY1(J)
+ 20            CONTINUE
                IF (CRAY1(38) .EQ. SMALL(1)) THEN
 *                  *** CRAY ***
                   CALL I1MCRY(SMALL(1), J, 8285, 8388608, 0)
@@ -917,7 +919,7 @@ c***first executable statement  dgamln
       return
 c
 c
-   70 continue     
+   70 continue
       dgamln = d1mach(7)
       ierr=1
       return
@@ -4429,9 +4431,9 @@ c     complex ci,csgn,cy,z,zn
       data hpi /1.57079632679489662d0/
 
 c      write(*,*)'zr, zi, fnu, kode, n, nz',zr, zi, fnu, kode, n,nz
-c      write(*,*)'cyr',(cyr(i),i=1,n) 
-c      write(*,*)'cyi',(cyi(i),i=1,n) 
-      
+c      write(*,*)'cyr',(cyr(i),i=1,n)
+c      write(*,*)'cyi',(cyi(i),i=1,n)
+
 c
       ierr = 0
       nz=0
@@ -4670,7 +4672,7 @@ c     complex cwrk,cy,c1,c2,ex,hci,z,zu,zv
      * d1mach, ascle, rtol, atol, aa, bb, tol
       integer i, ierr, k, kode, k1, k2, n, nz, nz1, nz2, i1mach
       dimension cyr(n), cyi(n), cwrkr(n), cwrki(n)
-c     
+c
       ierr = 0
       nz=0
       if (zr.eq.0.0d0 .and. zi.eq.0.0d0) ierr=1
@@ -7858,9 +7860,3 @@ c-----------------------------------------------------------------------
       end
 c-----------------------------------------------------------------------
 c-----------------------------------------------------------------------
-
-
-
-
-
-

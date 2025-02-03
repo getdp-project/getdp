@@ -829,6 +829,11 @@ void Message::AddOnelabNumberChoice(std::string name,
                                     const char *label, bool visible,
                                     bool closed)
 {
+#if 0 // debug
+  printf("add number choice %s: ", name.c_str());
+  for(auto v : value) printf("%g ", v);
+  printf("\n");
+#endif
   if(_onelabClient) {
     std::vector<onelab::number> ps;
     // optimized exchange (without growing choice vector)
@@ -1145,28 +1150,6 @@ void Message::ExchangeOnelabParameter(Constant *c, fmap &fopt, cmap &copt)
       ps[0].setMin(-onelab::parameter::maxNumber());
     }
     if(noRange && fopt.count("Step")) ps[0].setStep(fopt["Step"][0]);
-    // if no range/min/max/step info is provided, try to compute a reasonnable
-    // range and step (this makes the gui much nicer to use)
-    if(c->Type == VAR_FLOAT && noRange && !fopt.count("Range") &&
-       !fopt.count("Step") && !fopt.count("Min") && !fopt.count("Max")) {
-      bool isInteger = (floor(c->Value.Float) == c->Value.Float);
-      double fact = isInteger ? 10. : 100.;
-      if(c->Value.Float > 0) {
-        ps[0].setMin(c->Value.Float / fact);
-        ps[0].setMax(c->Value.Float * fact);
-        ps[0].setStep((ps[0].getMax() - ps[0].getMin()) / 100.);
-      }
-      else if(c->Value.Float < 0) {
-        ps[0].setMin(c->Value.Float * fact);
-        ps[0].setMax(c->Value.Float / fact);
-        ps[0].setStep((ps[0].getMax() - ps[0].getMin()) / 100.);
-      }
-      if(c->Value.Float && isInteger) {
-        ps[0].setMin((int)ps[0].getMin());
-        ps[0].setMax((int)ps[0].getMax());
-        ps[0].setStep((int)ps[0].getStep());
-      }
-    }
     if(noChoices && fopt.count("Choices")) {
       ps[0].setChoices(fopt["Choices"]);
       if(copt.count("Choices")) ps[0].setChoiceLabels(copt["Choices"]);

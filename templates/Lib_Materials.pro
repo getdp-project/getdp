@@ -47,7 +47,7 @@ Function{
   // Aluminum
   Materials() += Str[ "Aluminum" ];
   Aluminum_relative_magnetic_permeability = 1;
-  Aluminum_electric_conductivity = 3.77e76;
+  Aluminum_electric_conductivity = 3.77e7;
   Aluminum_elastic_poisson_ratio = 0.32;
   Aluminum_elastic_young_modulus = 69e9;
   Aluminum_mass_density = 2700;

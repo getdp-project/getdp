@@ -7,6 +7,7 @@
 //   Jean-Francois Remacle
 //
 
+#include <math.h>
 #include "ProData.h"
 #include "GeoData.h"
 #include "Get_Geometry.h"
@@ -40,6 +41,18 @@ static void ComputeElementBox(struct Element *Element,
     ElementBox->Zmin = std::min(ElementBox->Zmin, Element->z[i]);
     ElementBox->Zmax = std::max(ElementBox->Zmax, Element->z[i]);
   }
+  double x = ElementBox->Xmax - ElementBox->Xmin;
+  double y = ElementBox->Ymax - ElementBox->Ymin;
+  double z = ElementBox->Zmax - ElementBox->Zmin;
+  double diag = sqrt(x * x + y * y + z * z);
+  // make box 1% bigger
+  const double c = 0.01 * diag;
+  ElementBox->Xmin -= c;
+  ElementBox->Xmax += c;
+  ElementBox->Ymin -= c;
+  ElementBox->Ymax += c;
+  ElementBox->Zmin -= c;
+  ElementBox->Zmax += c;
 }
 
 /* ------------------------------------------------------------------------ */
@@ -47,11 +60,11 @@ static void ComputeElementBox(struct Element *Element,
 /* ------------------------------------------------------------------------ */
 
 static int PointInElementBox(struct ElementBox ElementBox, double x, double y,
-                             double z, double tol)
+                             double z)
 {
-  if(x > ElementBox.Xmax + tol || x < ElementBox.Xmin - tol ||
-     y > ElementBox.Ymax + tol || y < ElementBox.Ymin - tol ||
-     z > ElementBox.Zmax + tol || z < ElementBox.Zmin - tol) {
+  if(x > ElementBox.Xmax || x < ElementBox.Xmin ||
+     y > ElementBox.Ymax || y < ElementBox.Ymin ||
+     z > ElementBox.Zmax || z < ElementBox.Zmin) {
     return (0);
   }
   else {
@@ -140,7 +153,9 @@ int PointInElement(struct Element *Element, List_T *ExcludeRegion_L, double x,
   Get_NodesCoordinatesOfElement(Element);
   ComputeElementBox(Element, &ElementBox);
 
-  if(!PointInElementBox(ElementBox, x, y, z, tol)) { return (0); }
+  if(!PointInElementBox(ElementBox, x, y, z)) {
+    return (0);
+  }
 
   xyz2uvwInAnElement(Element, x, y, z, u, v, w);
 
@@ -163,7 +178,6 @@ static void Init_SearchGrid(struct Grid *Grid)
   struct Element Element;
   struct ElementBox ElementBox;
   struct Brick Brick, *Brick_P;
-  double Xc, Yc, Zc;
   int NbrGeoElements, iElm;
   int Ix1, Ix2, Iy1, Iy2, Iz1, Iz2;
   int i, j, k, index;
@@ -179,117 +193,34 @@ static void Init_SearchGrid(struct Grid *Grid)
   Grid->Zmin = Current.GeoData->Zmin;
   Grid->Zmax = Current.GeoData->Zmax;
 
-#define NBB 20
-#define FACT 0.1
+  double x = Grid->Xmax - Grid->Xmin;
+  double y = Grid->Ymax - Grid->Ymin;
+  double z = Grid->Zmax - Grid->Zmin;
+  double diag = sqrt(x * x + y * y + z * z);
 
-  if(Grid->Xmin != Grid->Xmax && Grid->Ymin != Grid->Ymax &&
-     Grid->Zmin != Grid->Zmax) {
-    Grid->Nx = Grid->Ny = Grid->Nz = NBB;
-
-    Xc = Grid->Xmax - Grid->Xmin;
-    Yc = Grid->Ymax - Grid->Ymin;
-    Zc = Grid->Zmax - Grid->Zmin;
-
-    Grid->Xmin -= FACT * Xc;
-    Grid->Ymin -= FACT * Yc;
-    Grid->Zmin -= FACT * Zc;
-    Grid->Xmax += FACT * Xc;
-    Grid->Ymax += FACT * Yc;
-    Grid->Zmax += FACT * Zc;
-  }
-
-  else if(Grid->Xmin != Grid->Xmax && Grid->Ymin != Grid->Ymax) {
-    Grid->Nx = Grid->Ny = NBB;
-    Grid->Nz = 1;
-
-    Xc = Grid->Xmax - Grid->Xmin;
-    Yc = Grid->Ymax - Grid->Ymin;
-
-    Grid->Xmin -= FACT * Xc;
-    Grid->Ymin -= FACT * Xc;
-    Grid->Zmin -= 1.;
-    Grid->Xmax += FACT * Xc;
-    Grid->Ymax += FACT * Xc;
-    Grid->Zmax += 1.;
-  }
-  else if(Grid->Xmin != Grid->Xmax && Grid->Zmin != Grid->Zmax) {
-    Grid->Nx = Grid->Nz = NBB;
-    Grid->Ny = 1;
-
-    Xc = Grid->Xmax - Grid->Xmin;
-    Zc = Grid->Zmax - Grid->Zmin;
-
-    Grid->Xmin -= FACT * Xc;
-    Grid->Ymin -= 1.;
-    Grid->Zmin -= FACT * Zc;
-    Grid->Xmax += FACT * Xc;
-    Grid->Ymax += 1.;
-    Grid->Zmax += FACT * Zc;
-  }
-  else if(Grid->Ymin != Grid->Ymax && Grid->Zmin != Grid->Zmax) {
-    Grid->Nx = 1;
-    Grid->Ny = Grid->Nz = NBB;
-
-    Yc = Grid->Ymax - Grid->Ymin;
-    Zc = Grid->Zmax - Grid->Zmin;
-
-    Grid->Xmin -= 1.;
-    Grid->Ymin -= FACT * Yc;
-    Grid->Zmin -= FACT * Zc;
-    Grid->Xmax += 1.;
-    Grid->Ymax += FACT * Yc;
-    Grid->Zmax += FACT * Zc;
-  }
-
-  else if(Grid->Xmin != Grid->Xmax) {
-    Grid->Nx = NBB;
-    Grid->Ny = Grid->Nz = 1;
-
-    Xc = Grid->Xmax - Grid->Xmin;
-
-    Grid->Xmin -= FACT * Xc;
-    Grid->Ymin -= 1.;
-    Grid->Zmin -= 1.;
-    Grid->Xmax += FACT * Xc;
-    Grid->Ymax += 1.;
-    Grid->Zmax += 1.;
-  }
-  else if(Grid->Ymin != Grid->Ymax) {
-    Grid->Nx = Grid->Nz = 1;
-    Grid->Ny = NBB;
-
-    Yc = Grid->Ymax - Grid->Ymin;
-
-    Grid->Xmin -= 1.;
-    Grid->Ymin -= FACT * Yc;
-    Grid->Zmin -= 1.;
-    Grid->Xmax += 1.;
-    Grid->Ymax += FACT * Yc;
-    Grid->Zmax += 1.;
-  }
-  else if(Grid->Zmin != Grid->Zmax) {
-    Grid->Nx = Grid->Ny = 1;
-    Grid->Nz = NBB;
-
-    Zc = Grid->Zmax - Grid->Zmin;
-
-    Grid->Xmin -= 1.;
-    Grid->Ymin -= 1.;
-    Grid->Zmin -= FACT * Zc;
-    Grid->Xmax += 1.;
-    Grid->Ymax += 1.;
-    Grid->Zmax += FACT * Zc;
-  }
-
-  else {
+  if(diag < 1e-16) {
+    Message::Warning("Bounding box too small %g", diag);
     Grid->Nx = Grid->Ny = Grid->Nz = 1;
-
-    Grid->Xmin -= 1.;
-    Grid->Ymin -= 1.;
-    Grid->Zmin -= 1.;
-    Grid->Xmax += 1.;
-    Grid->Ymax += 1.;
-    Grid->Zmax += 1.;
+    Grid->Xmin -= 1;
+    Grid->Xmax += 1;
+    Grid->Ymin -= 1;
+    Grid->Ymax += 1;
+    Grid->Zmin -= 1;
+    Grid->Zmax += 1;
+  }
+  else {
+    const int NBB = 25;
+    Grid->Nx = (int)(x / diag * NBB) + 1;
+    Grid->Ny = (int)(y / diag * NBB) + 1;
+    Grid->Nz = (int)(z / diag * NBB) + 1;
+    // make box 1% bigger
+    const double c = 0.01 * diag;
+    Grid->Xmin -= c * diag;
+    Grid->Xmax += c * diag;
+    Grid->Ymin -= c * diag;
+    Grid->Ymax += c * diag;
+    Grid->Zmin -= c * diag;
+    Grid->Zmax += c * diag;
   }
 
   Message::Info("Initializing rapid search grid...");
@@ -327,12 +258,12 @@ static void Init_SearchGrid(struct Grid *Grid)
       Iz2 = (int)((double)Grid->Nz * (ElementBox.Zmax - Grid->Zmin) /
                   (Grid->Zmax - Grid->Zmin));
 
-      Ix1 = std::max(Ix1, 0);
-      Ix2 = std::min(Ix2, Grid->Nx - 1);
-      Iy1 = std::max(Iy1, 0);
-      Iy2 = std::min(Iy2, Grid->Ny - 1);
-      Iz1 = std::max(Iz1, 0);
-      Iz2 = std::min(Iz2, Grid->Nz - 1);
+      Ix1 = (Ix1 < 0) ? 0 : ((Ix1 > Grid->Nx - 1) ? Grid->Nx - 1 : Ix1);
+      Ix2 = (Ix2 < 0) ? 0 : ((Ix2 > Grid->Nx - 1) ? Grid->Nx - 1 : Ix2);
+      Iy1 = (Iy1 < 0) ? 0 : ((Iy1 > Grid->Ny - 1) ? Grid->Ny - 1 : Iy1);
+      Iy2 = (Iy2 < 0) ? 0 : ((Iy2 > Grid->Ny - 1) ? Grid->Ny - 1 : Iy2);
+      Iz1 = (Iz1 < 0) ? 0 : ((Iz1 > Grid->Nz - 1) ? Grid->Nz - 1 : Iz1);
+      Iz2 = (Iz2 < 0) ? 0 : ((Iz2 > Grid->Nz - 1) ? Grid->Nz - 1 : Iz2);
 
       for(i = Ix1; i <= Ix2; i++) {
         for(j = Iy1; j <= Iy2; j++) {
@@ -429,13 +360,10 @@ static int InWhichBrick(struct Grid *pGrid, double X, double Y, double Z)
     (int)((double)pGrid->Ny * (Y - pGrid->Ymin) / (pGrid->Ymax - pGrid->Ymin));
   Iz =
     (int)((double)pGrid->Nz * (Z - pGrid->Zmin) / (pGrid->Zmax - pGrid->Zmin));
-  Ix = std::min(Ix, pGrid->Nx - 1);
-  Iy = std::min(Iy, pGrid->Ny - 1);
-  Iz = std::min(Iz, pGrid->Nz - 1);
 
-  if(Ix < 0) Ix = 0;
-  if(Iy < 0) Iy = 0;
-  if(Iz < 0) Iz = 0;
+  Ix = (Ix < 0) ? 0 : ((Ix > pGrid->Nx - 1) ? pGrid->Nx - 1 : Ix);
+  Iy = (Iy < 0) ? 0 : ((Iy > pGrid->Ny - 1) ? pGrid->Ny - 1 : Iy);
+  Iz = (Iz < 0) ? 0 : ((Iz > pGrid->Nz - 1) ? pGrid->Nz - 1 : Iz);
 
   return (Ix + Iy * pGrid->Nx + Iz * pGrid->Nx * pGrid->Ny);
 }
@@ -463,6 +391,7 @@ void InWhichElement(struct Grid *Grid, List_T *ExcludeRegion_L,
     tol = Current.GeoData->CharacteristicLength * 1.e-4; /* instead of 5.e-3 */
   else
     tol = Current.GeoData->CharacteristicLength * 1.e-8;
+
   if(LastGeoElement) {
     Element->GeoElement = LastGeoElement;
     if(PointInElement(Element, ExcludeRegion_L, x, y, z, u, v, w, tol)) {
@@ -509,10 +438,10 @@ void InWhichElement(struct Grid *Grid, List_T *ExcludeRegion_L,
         *(struct Geo_Element **)List_Pointer(Brick_P->p[dim], i);
       if(PointInElement(Element, ExcludeRegion_L, x, y, z, u, v, w, tol)) {
         /*
-        Message::Info("xyz(%g,%g,%g) -> Selected Element %d uvw(%g,%g,%g)
-        (%g,%g,%g)->(%g,%g,%g)", x, y, z, Element->Num, *u, *v, *w,
-            Element->x[0], Element->y[0], Element->z[0],
-            Element->x[1], Element->y[1], Element->z[1]);
+        Message::Info("xyz(%g,%g,%g) -> Selected Element %d uvw(%g,%g,%g) "
+                      "(%g,%g,%g)->(%g,%g,%g)", x, y, z, Element->Num, *u, *v, *w,
+                      Element->x[0], Element->y[0], Element->z[0],
+                      Element->x[1], Element->y[1], Element->z[1]);
         */
         LastGeoElement = Element->GeoElement;
         return;

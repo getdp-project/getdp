@@ -144,8 +144,8 @@ Integration {
   }
 }
 
-// Same FunctionSpace for both static and dynamic formulations
 FunctionSpace {
+  // Magnetic vector potential (2D)
   { Name Hcurl_a_2D; Type Form1P; // 1-form (circulations) on edges
                                   // perpendicular to the plane of study
     BasisFunction {

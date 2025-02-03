@@ -88,6 +88,11 @@ static int SolverInitialized = 0;
 #define PCFactorSetMatSolverPackage PCFactorSetMatSolverType
 #endif
 
+#if(PETSC_VERSION_MAJOR == 3) && (PETSC_VERSION_MINOR > 19)
+#undef PETSC_NULL
+#define PETSC_NULL PETSC_NULLPTR
+#endif
+
 void LinAlg_InitializeSolver(int *argc, char ***argv)
 {
   if(SolverInitialized) return;

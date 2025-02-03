@@ -249,11 +249,13 @@ void Free_ProblemStructure()
       Free_Group((Group *)List_Pointer(Problem_S.Group, i));
     List_Delete(Problem_S.Group);
   }
+  Problem_S.GroupIndices.clear();
   if(Problem_S.Expression) {
     for(int i = 0; i < List_Nbr(Problem_S.Expression); i++)
       Free_Expression((Expression *)List_Pointer(Problem_S.Expression, i));
     List_Delete(Problem_S.Expression);
   }
+  Problem_S.ExpressionIndices.clear();
   if(Problem_S.FunctionSpace) {
     for(int i = 0; i < List_Nbr(Problem_S.FunctionSpace); i++)
       Free_FunctinSpace(

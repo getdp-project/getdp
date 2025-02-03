@@ -14,7 +14,8 @@ static double lp1[1] = {2.000000000000000e+00};
 
 /* 2 integration points */
 
-static double lx2[2] = {-5.773502691896257e-01, 5.773502691896257e-01};
+//static double lx2[2] = {-5.773502691896257e-01, 5.773502691896257e-01};
+static double lx2[2] = {-1, 1};
 static double lp2[2] = {1.000000000000000e+00, 1.000000000000000e+00};
 
 /* 3 integration points */

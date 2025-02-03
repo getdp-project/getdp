@@ -1136,7 +1136,8 @@ void GenEle_OnPositiveSideOf::add_Facets(
 
 List_T *GenEle_OnPositiveSideOf::select_ElementsInBubbleNum()
 {
-  int num_bubble, nbrElementsInBubbleNum[2], nb_elements = 0;
+  int num_bubble, nbrElementsInBubbleNum[2];
+  //int nb_elements = 0;
   int num_bubble_selected = 1; // bubble #1 selected
   int num_bubble_other = 2; // bubble #2 not selected
 
@@ -1150,7 +1151,7 @@ List_T *GenEle_OnPositiveSideOf::select_ElementsInBubbleNum()
 
   for(std::list<K_ElementInBubble>::iterator it = _elementsInBubbles.begin();
       it != _elementsInBubbles.end(); ++it) {
-    nb_elements++;
+    //nb_elements++;
     num_bubble = it->second.bubble_P->get_numBubble();
     if(num_bubble == num_bubble_selected)
       nbrElementsInBubbleNum[0]++;

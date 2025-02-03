@@ -64,7 +64,27 @@ void BF_Edge_2E(struct Element *Element, int NumEntity, double u, double v,
   case QUADRANGLE_3:
   case QUADRANGLE_4:
     switch(NumEntity) {
-    default: Message::Error("BF_Edge_2E not ready for QUADRANGLE");
+    case 1:
+      s[0] = 0.75 * (1.0 - v) * u;
+      s[1] = 0.;
+      s[2] = 0.;
+      break;
+    case 2:
+      s[0] = 0.;
+      s[1] = 0.75 * (1.0 - u) * v;
+      s[2] = 0.;
+      break;
+    case 3:
+      s[0] = 0.;
+      s[1] = 0.75 * (1.0 + u) * v;
+      s[2] = 0.;
+      break;
+    case 4:
+      s[0] = 0.75 * (1.0 + v) * u;
+      s[1] = 0.;
+      s[2] = 0.;
+      break;
+    default: WrongNumEntity;
     }
     break;
 
@@ -174,13 +194,49 @@ void BF_Edge_2V(struct Element *Element, int NumEntity, double u, double v,
 /*  Edges  */
 /* ------- */
 
+#define WrongNumEntity Message::Error("Wrong Edge number in 'BF_CurlEdge_2E'")
+
 void BF_CurlEdge_2E(struct Element *Element, int NumEntity, double u, double v,
                     double w, double s[])
 {
-  s[0] = 0.;
-  s[1] = 0.;
-  s[2] = 0.;
+  switch(Element->Type) {
+  case QUADRANGLE:
+  case QUADRANGLE_2:
+  case QUADRANGLE_2_8N:
+  case QUADRANGLE_3:
+  case QUADRANGLE_4:
+    switch(NumEntity) {
+    case 1:
+      s[0] = 0.;
+      s[1] = 0.;
+      s[2] = 0.75 * u;
+      break;
+    case 2:
+      s[0] = 0.;
+      s[1] = 0.;
+      s[2] = - 0.75 * v;
+      break;
+    case 3:
+      s[0] = 0.;
+      s[1] = 0.;
+      s[2] = 0.75 * v;
+      break;
+    case 4:
+      s[0] = 0.;
+      s[1] = 0.;
+      s[2] = - 0.75 * u;
+      break;
+    default: WrongNumEntity;
+    }
+    break;
+  default: // for all other defined element types
+    s[0] = 0.;
+    s[1] = 0.;
+    s[2] = 0.;
+  }
 }
+
+#undef WrongNumEntity
 
 /* ------- */
 /*  Faces  */

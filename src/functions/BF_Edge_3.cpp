@@ -117,7 +117,28 @@ void BF_Edge_3F(struct Element *Element, int NumEntity, int Index, double u,
   case QUADRANGLE_3:
   case QUADRANGLE_4:
     switch(NumEntity) {
-    default: Message::Error("BF_Edge_3F not ready for QUADRANGLE");
+    case 1:
+      // WARNING: this should be generalized for 3D elements (hexahedrons), by using the Get_FacetFunctionIndex function
+      // the 2D basis functions should be the restriction of the 3D basis functions on each facet
+      // for now, the BF_Edge_3F_c function is not implemented
+      //switch(Get_FacetFunctionIndex(Element, NumEntity, Index)) {
+      switch(Index) {
+      case 1: // BF_Edge_3F_a
+        s[0] = 45./16. * (1 - u) * (1 - v*v);
+        s[1] = 45./16. * (1 - v) * (1 - u*u);
+        s[2] = 0.;
+        break;
+      case 2: // BF_Edge_3F_b
+        s[0] = 45./16. * (1 + u) * (v*v - 1);
+        s[1] = 45./16. * (1 - v) * (1 - u*u);
+        s[2] = 0.;
+        break;
+      case 3: // BF_Edge_3F_c
+        Message::Error("You should never end up here!");
+        break;
+      }
+      break;
+    default: WrongNumEntity;
     }
     break;
 
@@ -336,7 +357,28 @@ void BF_CurlEdge_3F(struct Element *Element, int NumEntity, int Index, double u,
   case QUADRANGLE_3:
   case QUADRANGLE_4:
     switch(NumEntity) {
-    default: Message::Error("BF_CurlEdge_3F not ready for QUADRANGLE");
+    case 1:
+      // WARNING: this should be generalized for 3D elements (hexahedrons), by using the Get_FacetFunctionIndex function
+      // the 2D basis functions should be the restriction of the 3D basis functions on each facet
+      // for now, the BF_CurlEdge_3F_c function is not implemented
+      //switch(Get_FacetFunctionIndex(Element, NumEntity, Index)) {
+      switch(Index) {
+      case 1: // BF_CurlEdge_3F_a
+        s[0] = 0.;
+        s[1] = 0.;
+        s[2] = 45/8 * (v - u);
+        break;
+      case 2: // BF_CurlEdge_3F_b
+        s[0] = 0.;
+        s[1] = 0.;
+        s[2] = - 45/8 * (v + u);
+        break;
+      case 3: // BF_CurlEdge_3F_c
+        Message::Error("You should never end up here!");
+        break;
+      }
+      break;
+    default: WrongNumEntity;
     }
     break;
 

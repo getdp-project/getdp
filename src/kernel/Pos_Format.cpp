@@ -1167,8 +1167,11 @@ static void Tabular_PrintElement(struct PostSubOperation *PSO_P, int Format,
             TableList.push_back(Value[i].Val[MAX_DIM * k + j]);
           }
           else {
-            fprintf(PostStream, " %s_%d_%d = %.16g", PSO_P->ValueName, j,
-                    PSO_P->ValueIndex, Value[i].Val[MAX_DIM * k + j]);
+            if(PSO_P->ValueName)
+              fprintf(PostStream, " %s_%d_%d = %.16g", PSO_P->ValueName, j,
+                      PSO_P->ValueIndex, Value[i].Val[MAX_DIM * k + j]);
+            else
+              fprintf(PostStream, " %.16g", Value[i].Val[MAX_DIM * k + j]);
             TableList.push_back(Value[i].Val[MAX_DIM * k + j]);
             if(j < Size - 1) fprintf(PostStream, "\n");
           }
@@ -1381,11 +1384,11 @@ void Unv_PrintHeader(FILE *PostStream, char *name, double Time, int TimeStep,
                        double &NXUnv_UnitFactor) NX
 #undef NX
 
-  /* ------------------------------------------------------------------------ */
-  /*  F o r m a t _ P o s t F o r m a t                                       */
-  /* ------------------------------------------------------------------------ */
+/* ------------------------------------------------------------------------ */
+/*  F o r m a t _ P o s t F o r m a t                                       */
+/* ------------------------------------------------------------------------ */
 
-  void Format_PostFormat(struct PostSubOperation *PSO_P)
+void Format_PostFormat(struct PostSubOperation *PSO_P)
 {
   if(!PostStream || PSO_P->Type == POP_EXPRESSION) return;
 
@@ -1574,6 +1577,20 @@ void Format_PostHeader(struct PostSubOperation *PSO_P, int NbTimeStep,
 /* ------------------------------------------------------------------------ */
 /*  F o r m a t _ P o s t F o o t e r                                       */
 /* ------------------------------------------------------------------------ */
+
+static void pruneHarmonics(std::vector<double> &v, List_T *harmonics)
+{
+  std::vector<double> vh;
+  std::vector<int> har;
+  for(int i = 0; i < List_Nbr(harmonics); i++)
+    har.push_back((int)*(double *)List_Pointer(harmonics, i));
+  for(std::size_t i = 0; i < v.size(); i += Current.NbrHar) {
+    for(std::size_t j = 0; j < har.size(); j++) {
+      vh.push_back(v[i + har[j]]);
+    }
+  }
+  v = vh;
+}
 
 void Format_PostFooter(struct PostSubOperation *PSO_P, int Store,
                        bool SendToServer)
@@ -1893,10 +1910,13 @@ void Format_PostFooter(struct PostSubOperation *PSO_P, int Store,
       std::vector<double> v(TableList.begin(), TableList.end());
       GetDPNumbers[CurrentName] = v;
       if(SendToServer && PSO_P->SendToServer &&
-         strcmp(PSO_P->SendToServer, "No"))
+         strcmp(PSO_P->SendToServer, "No")) {
+        if(PSO_P->Format == FORMAT_VALUE_ONLY && PSO_P->SendToServerList)
+          pruneHarmonics(v, PSO_P->SendToServerList);
         Message::AddOnelabNumberChoice(PSO_P->SendToServer, v, PSO_P->Color,
                                        PSO_P->Units, PSO_P->Label,
                                        PSO_P->Visible, PSO_P->Closed);
+      }
     }
   } break;
   case FORMAT_LOOP_ERROR:
@@ -1921,14 +1941,16 @@ void Format_PostFooter(struct PostSubOperation *PSO_P, int Store,
         List_Read(PostOpResults_L, i, &valr);
         LinAlg_SetDoubleInVector(valr, &Solution_S.x, i);
       }
+      LinAlg_AssembleVector(&Solution_S.x);
       List_Add(Solutions_L, &Solution_S);
     }
-    else
+    else {
       for(int i = 0; i < List_Nbr(PostOpResults_L); i++) {
         List_Read(PostOpResults_L, i, &valr);
         LinAlg_SetDoubleInVector(valr, &Solution_P->x, i);
       }
-
+      LinAlg_AssembleVector(&Solution_P->x);
+    }
     List_Delete(PostOpResults_L);
     PostOpResults_L = NULL;
     break;
@@ -2103,8 +2125,13 @@ void Format_PostElement(struct PostSubOperation *PSO_P, int Contour, int Store,
   default: Message::Error("Unknown format in Format_PostElement");
   }
 
-  if(PE->NbrNodes == 1 && PSO_P->Format != FORMAT_NODE_TABLE &&
-     PSO_P->Format != FORMAT_ELEMENT_TABLE) {
+  if(PE->NbrNodes == 1 &&
+     PSO_P->Format != FORMAT_NODE_TABLE &&
+     PSO_P->Format != FORMAT_ELEMENT_TABLE &&
+     PSO_P->Format != FORMAT_SPACE_TABLE &&
+     PSO_P->Format != FORMAT_TIME_TABLE &&
+     PSO_P->Format != FORMAT_SIMPLE_SPACE_TABLE &&
+     PSO_P->Format != FORMAT_VALUE_ONLY) {
     if(PSO_P->SendToServer && strcmp(PSO_P->SendToServer, "No")) {
       std::vector<double> v;
       Export_Value(&PE->Value[0], v, PSO_P->SendToServerList);

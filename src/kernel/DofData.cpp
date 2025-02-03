@@ -679,6 +679,8 @@ void Dof_WriteFileRES_ExtendMH(char *Name_File, struct DofData *DofData_P,
     LinAlg_SetDoubleInVector(d, &x, inew);
   }
 
+  LinAlg_AssembleVector(&x);
+
   Format ? LinAlg_WriteVector(File_RES, &x) : LinAlg_PrintVector(File_RES, &x);
 
   fprintf(File_RES, "$EndSolution\n");
@@ -727,6 +729,8 @@ void Dof_WriteFileRES_MHtoTime(char *Name_File, struct DofData *DofData_P,
       }
       LinAlg_SetDoubleInVector(d, &x, i);
     }
+
+    LinAlg_AssembleVector(&x);
 
     Format ? LinAlg_WriteVector(File_RES, &x) :
              LinAlg_PrintVector(File_RES, &x);
