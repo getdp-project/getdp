@@ -42,6 +42,10 @@ If(export && FileExists[exportFile])
   RenameFile[exportFile, StrCat[exportFile, "_", Date["%F-%R"]]];
 EndIf
 
+If(export)
+  Printf(Sprintf("modelDim = %g;", modelDim)) >> Str[exportFile];
+EndIf
+
 // interactive definition of groups
 Group {
   If(export)
