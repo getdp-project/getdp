@@ -35,6 +35,7 @@ Group {
 
     // Boundaries:
     Sur_Dir_Mag // Dirichlet boundary conditions
+    Sur_Per_Mag // Periodic boundary conditions
     Sur_Neu_Mag // Non-homogeneous Neumann boundary conditions
   ];
 }
@@ -108,7 +109,8 @@ Integration {
 Constraint {
   { Name GaugeCondition_a ; Type Assign ;
     Case {
-      { Region Vol_Mag ; SubRegion Sur_Dir_Mag ; Value 0. ; }
+      { Region Vol_Mag ; SubRegion Region[{Sur_Dir_Mag, Sur_Per_Mag}] ;
+        Value 0. ; }
     }
   }
 }
