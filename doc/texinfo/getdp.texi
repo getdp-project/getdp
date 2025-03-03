@@ -4391,7 +4391,8 @@ for 2-D regions in axisymmetrical geometries.
 Volume Jacobian with spherical shell transformation,
 for @var{n}-D regions in @var{n}-D geometries, @var{n} = 2 or 3. 
 For @var{n}=2, the value of @var{center-Z} has no effect and the 
-transformation is in the @var{XY} plane.
+transformation is in the @var{XY} plane. An external radius of 0 
+can be used for the Kelvin (inversion) transformation.
 
 @i{Parameters}: @var{radius-internal}, @var{radius-external}
                <, @var{center-X}, @var{center-Y}, @var{center-Z},
@@ -4401,6 +4402,8 @@ transformation is in the @var{XY} plane.
 Volume Jacobian with cylindrical shell transformation, for @var{n}-D
 regions in @var{n}-D geometries, @var{n} = 2 or 3. For @var{n}=2,
 @code{VolCylShell} with @var{axis}=3 is identical to @code{VolSphShell}. 
+An external radius of 0 can be used for the Kelvin (inversion) 
+transformation. 
 
 @i{Parameters}: @var{radius-internal}, @var{radius-external}
                <, @var{axis}, @var{center-X}, @var{center-Y}, 
