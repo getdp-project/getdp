@@ -4389,7 +4389,9 @@ for 2-D regions in axisymmetrical geometries.
 
 @item VolSphShell
 Volume Jacobian with spherical shell transformation,
-for @var{n}-D regions in @var{n}-D geometries, @var{n} = 2 or 3.
+for @var{n}-D regions in @var{n}-D geometries, @var{n} = 2 or 3. 
+For @var{n}=2, the value of @var{center-Z} has no effect and the 
+transformation is in the @var{XY} plane.
 
 @i{Parameters}: @var{radius-internal}, @var{radius-external}
                <, @var{center-X}, @var{center-Y}, @var{center-Z},
@@ -4398,12 +4400,11 @@ for @var{n}-D regions in @var{n}-D geometries, @var{n} = 2 or 3.
 @item VolCylShell
 Volume Jacobian with cylindrical shell transformation, for @var{n}-D
 regions in @var{n}-D geometries, @var{n} = 2 or 3. For @var{n}=2,
-@code{VolCylShell} is identical to @code{VolSphShell}. For @var{n}=3,
-the axis of the cylinder is supposed to be along the @var{z} axis.
+@code{VolCylShell} with @var{axis}=3 is identical to @code{VolSphShell}. 
 
 @i{Parameters}: @var{radius-internal}, @var{radius-external}
-               <, @var{center-X}, @var{center-Y}, @var{center-Z},
-                  @var{power}, @var{1/infinity} >.
+               <, @var{axis}, @var{center-X}, @var{center-Y}, 
+			      @var{center-Z}, @var{power}, @var{1/infinity} >.
 
 @item VolAxiSphShell
 Same as @code{VolAxi}, but with spherical shell transformation.
