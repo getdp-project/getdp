@@ -4401,9 +4401,9 @@ can be used for the Kelvin (inversion) transformation.
 @item VolCylShell
 Volume Jacobian with cylindrical shell transformation, for @var{n}-D
 regions in @var{n}-D geometries, @var{n} = 2 or 3. For @var{n}=2,
-@code{VolCylShell} with @var{axis}=3 is identical to @code{VolSphShell}. 
-An external radius of 0 can be used for the Kelvin (inversion) 
-transformation. 
+@code{VolCylShell} reverts to @code{VolSphShell} and the @var{axis} 
+parameter below has no effect. An external radius of 0 can be used 
+for the Kelvin (inversion) transformation. 
 
 @i{Parameters}: @var{radius-internal}, @var{radius-external}
                <, @var{axis}, @var{center-X}, @var{center-Y}, 
