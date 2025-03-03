@@ -758,7 +758,7 @@ double Transformation(int Dim, int Type, struct Element *Element,
         R, minAB, maxAB);
     }
 
-    if(B == R) {
+    if(B == R || R == 0.) {
       Jac->c11 = 1.;
       Jac->c12 = 0.;
       Jac->c13 = 0.;
@@ -823,24 +823,30 @@ double Transformation(int Dim, int Type, struct Element *Element,
     switch(Axis) {
     case 1:
       R = sqrt(SQU(Y - Cy) + SQU(Z - Cz));
-      YR = (Y - Cy) / R;
-      ZR = (Z - Cz) / R;
-      dRdy = (Y - Cy) / R;
-      dRdz = (Z - Cz) / R;
+      if (R != 0.) {
+        YR = (Y - Cy) / R;
+        ZR = (Z - Cz) / R;
+        dRdy = (Y - Cy) / R;
+        dRdz = (Z - Cz) / R;
+      }
       break;
     case 2:
       R = sqrt(SQU(X - Cx) + SQU(Z - Cz));
-      XR = (X - Cx) / R;
-      ZR = (Z - Cz) / R;
-      dRdx = (X - Cx) / R;
-      dRdz = (Z - Cz) / R;
+      if (R != 0.) {
+        XR = (X - Cx) / R;
+        ZR = (Z - Cz) / R;
+        dRdx = (X - Cx) / R;
+        dRdz = (Z - Cz) / R;
+      }
       break;
     case 3:
       R = sqrt(SQU(X - Cx) + SQU(Y - Cy));
-      XR = (X - Cx) / R;
-      YR = (Y - Cy) / R;
-      dRdx = (X - Cx) / R;
-      dRdy = (Y - Cy) / R;
+      if (R != 0.) {
+        XR = (X - Cx) / R;
+        YR = (Y - Cy) / R;
+        dRdx = (X - Cx) / R;
+        dRdy = (Y - Cy) / R;
+      }
       break;
     default:
       Message::Error("Bad axis specification : 1 for X, 2 for Y, 3 for Z");
@@ -851,7 +857,7 @@ double Transformation(int Dim, int Type, struct Element *Element,
         R, minAB, maxAB);
     }
 
-    if(B == R) {
+    if(B == R || R == 0.) {
       Jac->c11 = 1.;
       Jac->c12 = 0.;
       Jac->c13 = 0.;
@@ -915,14 +921,18 @@ double Transformation(int Dim, int Type, struct Element *Element,
     if(Type == JACOBIAN_SPH) {
       if(Dim == DIM_2D) {
         R = sqrt(SQU(X - Cx) + SQU(Y - Cy));
-        dRdx = (X - Cx) / R;
-        dRdy = (Y - Cy) / R;
+        if (R != 0.) {
+          dRdx = (X - Cx) / R;
+          dRdy = (Y - Cy) / R;
+        }
       }
       else {
         R = sqrt(SQU(X - Cx) + SQU(Y - Cy) + SQU(Z - Cz));
-        dRdx = (X - Cx) / R;
-        dRdy = (Y - Cy) / R;
-        dRdz = (Z - Cz) / R;
+        if (R != 0.) {
+          dRdx = (X - Cx) / R;
+          dRdy = (Y - Cy) / R;
+          dRdz = (Z - Cz) / R;
+        }
       }
     }
     else {
@@ -956,7 +966,7 @@ double Transformation(int Dim, int Type, struct Element *Element,
         R, minAB, maxAB);
     }
 
-    if(B == R) {
+    if(B == R || R == 0.) {
       Jac->c11 = 1.;
       Jac->c12 = 0.;
       Jac->c13 = 0.;
