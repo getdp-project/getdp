@@ -633,8 +633,8 @@ double Transformation(int Dim, int Type, struct Element *Element,
   double DetJac = 0.;
 
   /*
-    A          = interior radius
-    B          = exterior radius
+    A          = interior radius (positive)
+    B          = exterior radius (non-negative; can be 0 for Kelvin transform)
     Ca         = position of axis
     Cx, Cy, Cz = coord of centre
     Axis       = direction of the transformation
@@ -736,8 +736,8 @@ double Transformation(int Dim, int Type, struct Element *Element,
   
   /* used for bounds checking only, to allow inversion-type
      transforms to go through (i.e. when B < A) */
-  minAB = std::min(fabs(A), fabs(B));
-  maxAB = std::max(fabs(A), fabs(B));
+  minAB = std::min(A, B);
+  maxAB = std::max(A, B);
 
   if(Type == JACOBIAN_VOL_UNI_DIR_SHELL) {
     /* R is the distance from the plane whose normal vector is parallel to the
@@ -752,13 +752,11 @@ double Transformation(int Dim, int Type, struct Element *Element,
       Message::Error("Bad axis specification: 1 for X, 2 for Y and 3 for Z");
     }
 
-    if((R > maxAB + 1.e-2 * maxAB) ||
-       (R < minAB - 1.e-2 * minAB)) {
-      Message::Error("Bad parameters for unidirectional transformation Jacobian: %g not in [%g,%g]",
-        R, minAB, maxAB);
+    if ((R > maxAB + 1.e-2 * maxAB) || (R < minAB - 1.e-2 * minAB)) {
+      Message::Error("Bad parameters for unidirectional transformation Jacobian: %g not in [%g,%g]", R, minAB, maxAB);
     }
 
-    if(B == R || R == 0.) {
+    if (B == R || R == 0.) {
       Jac->c11 = 1.;
       Jac->c12 = 0.;
       Jac->c13 = 0.;
@@ -851,13 +849,11 @@ double Transformation(int Dim, int Type, struct Element *Element,
     default:
       Message::Error("Bad axis specification : 1 for X, 2 for Y, 3 for Z");
     }
-    if((R > maxAB + 1.e-2 * maxAB) ||
-       (R < minAB - 1.e-2 * minAB)) {
-      Message::Error("Bad parameters for cylindrical transformation Jacobian: %g not in [%g,%g]",
-        R, minAB, maxAB);
+    if ((R > maxAB + 1.e-2 * maxAB) || (R < minAB - 1.e-2 * minAB)) {
+      Message::Error("Bad parameters for cylindrical transformation Jacobian: %g not in [%g,%g]", R, minAB, maxAB);
     }
 
-    if(B == R || R == 0.) {
+    if (B == R || R == 0.) {
       Jac->c11 = 1.;
       Jac->c12 = 0.;
       Jac->c13 = 0.;
@@ -960,13 +956,11 @@ double Transformation(int Dim, int Type, struct Element *Element,
       }
     }
 
-    if((R > maxAB + 1.e-2 * maxAB) ||
-       (R < minAB - 1.e-2 * minAB)) {
-      Message::Error("Bad parameters for transformation Jacobian: %g not in [%g,%g]",
-        R, minAB, maxAB);
+    if ((R > maxAB + 1.e-2 * maxAB) || (R < minAB - 1.e-2 * minAB)) {
+      Message::Error("Bad parameters for transformation Jacobian: %g not in [%g,%g]", R, minAB, maxAB);
     }
 
-    if(B == R || R == 0.) {
+    if (B == R || R == 0.) {
       Jac->c11 = 1.;
       Jac->c12 = 0.;
       Jac->c13 = 0.;
