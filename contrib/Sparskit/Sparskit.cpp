@@ -1628,28 +1628,24 @@ void get_element_in_matrix (Matrix *M, int row, int col, double *V){
     a    = (double*) M->S.a->array;
     ai   = (int*) M->S.ai->array;
 
-    for(i=0; i<M->N; i++){  /* lignes */
-      found=0;
-      for(k=jptr[i]-1;k<jptr[i+1]-1;k++){ /*colonne */
-         if(ai[k]-1==col) {
-	   V[i]=a[k]; found=1; break;
-	 }
-	 else if (ai[k]-1 > col) {
-	   break;
-	 }
-       }
-      if (!found) V[i]=0;
-      /* printf(" V[%d] = %g \n",i, V[i]); */
+    *V = 0.;
+    for (k = jptr[row]-1; k < jptr[row+1]-1; k++){
+      if (ai[k]-1 == col) {
+        *V = a[k]; 
+        break;
+      }
+      else if (ai[k]-1 > col) {
+        break;
+      }
     }
     break;
+
   case DENSE :
     if(M->notranspose){
-	*V = M->F.a[(M->N)*col+row];
+      *V = M->F.a[(M->N)*col + row];
     }
     else{
-      for(i=0; i<M->N; i++){
-	*V = M->F.a[(M->N)*row+col];
-      }
+      *V = M->F.a[(M->N)*row + col];
     }
     break;
   }
