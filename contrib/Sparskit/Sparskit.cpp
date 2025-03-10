@@ -1610,16 +1610,15 @@ void get_column_in_matrix (Matrix *M, int col, double *V){
 
 void get_element_in_matrix (Matrix *M, int row, int col, double *V){
 
-  int     k, i, *ai, *jptr ;
+  int     k, *ai, *jptr ;
   double  *a;
-  int found;
 
   switch (M->T) {
   case SPARSE :
     /* csr_format transpose!
        donc la matrice arrivant dans cette routine doit
        bel et bien etre la transposee !!! */
-    if(M->changed){
+    if (M->changed) {
       csr_format (&M->S, M->N);
       restore_format (&M->S);
       M->changed = 0 ;
@@ -1641,10 +1640,10 @@ void get_element_in_matrix (Matrix *M, int row, int col, double *V){
     break;
 
   case DENSE :
-    if(M->notranspose){
+    if (M->notranspose) {
       *V = M->F.a[(M->N)*col + row];
     }
-    else{
+    else {
       *V = M->F.a[(M->N)*row + col];
     }
     break;
