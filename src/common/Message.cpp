@@ -796,7 +796,9 @@ void Message::InitializeOnelab(std::string name, std::string sockname)
       std::vector<onelab::string> ps;
       _onelabClient->get(ps, name + "/Action");
       if(ps.size()) {
+        ps[0].setVisible(false);
         Info("Performing ONELAB '%s'", ps[0].getValue().c_str());
+        _onelabClient->set(ps[0]);
         if(ps[0].getValue() == "initialize") Exit(0);
       }
     }
