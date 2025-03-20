@@ -254,7 +254,7 @@ void F_ValueFromMap(F_ARG)
     return;
   }
   else {
-    Message::Error("ValueFromMap should updated to handle values of size %lu",
+    Message::Error("ValueFromMap should updated to handle values of size %zu",
                    val.size());
   }
 }
