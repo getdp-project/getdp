@@ -1415,8 +1415,8 @@ static void _solve(gMatrix *A, gVector *B, gSolver *Solver, gVector *X,
     PCFactorGetMatrix(pc, &mat);
     PetscInt ival;
     MatMumpsGetInfo(mat, 1, &ival);
-    std::ostringstream sstream;
     if(ival < 0) {
+      std::ostringstream sstream;
       sstream << "MUMPS error " << ival;
       switch(ival) {
       case -6:
@@ -1432,7 +1432,7 @@ static void _solve(gMatrix *A, gVector *B, gSolver *Solver, gVector *X,
       Message::Error("%s", sstream.str().c_str());
     }
     else if(ival > 0) {
-      Message::Warning("%s", sstream.str().c_str());
+      Message::Warning("MUMPS warning %d", ival);
     }
   }
 
