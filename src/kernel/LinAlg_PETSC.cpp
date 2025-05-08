@@ -1429,7 +1429,7 @@ static void _solve(gMatrix *A, gVector *B, gSolver *Solver, gVector *X,
         sstream << " (matrix numerically singular or zero pivot)";
         break;
       }
-      Message::Error("%s", sstream.str().c_str());
+      Message::Warning("%s", sstream.str().c_str());
     }
     else if(ival > 0) {
       Message::Warning("MUMPS warning %d", ival);
