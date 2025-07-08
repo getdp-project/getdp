@@ -1449,6 +1449,12 @@ struct StringXFunction2Nbr F_Function[] =
    // F_Python
    {"Python", (CAST)F_Python, -1, -1},
 
+   // F_Superconductor
+   {"RhoPowerLaw", (CAST)F_ResistivityPowerLaw, 1, 3},
+   {"DRhoDJTimesJPowerLaw", (CAST)F_drhodj_times_j_PowerLaw, 1, 3},
+   {"DEDJPowerLaw", (CAST)F_dedj_PowerLaw, 1, 3},
+   {"Lambda_CurrentSharingHom", (CAST)F_LambdaCurrentSharingHom, 5, 4},
+
    // GF_XXX : Green Functions
    {"Laplace", (CAST)GF_Laplace, 1, 0},
    {"GradLaplace", (CAST)GF_GradLaplace, 1, 0},

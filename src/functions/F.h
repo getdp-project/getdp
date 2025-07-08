@@ -479,4 +479,10 @@ void F_Octave(F_ARG);
 /* F_Python */
 void F_Python(F_ARG);
 
+/* F_Superconductor */
+void F_ResistivityPowerLaw(F_ARG);
+void F_drhodj_times_j_PowerLaw(F_ARG);
+void F_dedj_PowerLaw(F_ARG);
+void F_LambdaCurrentSharingHom(F_ARG);
+
 #endif
