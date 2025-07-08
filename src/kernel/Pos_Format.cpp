@@ -2024,6 +2024,9 @@ void Format_PostElement(struct PostSubOperation *PSO_P, int Contour, int Store,
     return;
   }
 
+  struct Element *old = Current.Element;
+  Current.Element = nullptr; // to force expression evaluator to use Current.{x,y,z}
+
   if(PSO_P->ChangeOfCoordinates[0] >= 0) {
     for(i = 0; i < PE->NbrNodes; i++) {
       Current.x = PE->x[i];
@@ -2059,6 +2062,8 @@ void Format_PostElement(struct PostSubOperation *PSO_P, int Contour, int Store,
       }
     }
   }
+
+  Current.Element = old;
 
   switch(PSO_P->Format) {
   case FORMAT_GMSH_PARSED:

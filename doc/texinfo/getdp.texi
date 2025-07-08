@@ -4095,11 +4095,19 @@ Same @code{ValueFromIndex}, but with 3 scalar values per @var{entity}.
 @code{[ @var{expression} ]@{ @var{char-expression} @}}
 
 Accesses the map @var{char-expression} created by a @code{NodeTable} or
-@code{ElementTable} @code{PostOperation}. If the map is not available
-(e.g. in pre-processing), or if the entity is not found in the map, use
-@var{expression} as default value. Useful to specify nodal or
-element-wise constraints, where @var{entity} is the node (mesh vertex)
-or element number (tag).
+@code{ElementTable} @code{PostOperation}, or by the @code{ReadTable}
+operation, at the key corresponding to the current entity (node or
+element tag). If the map is not available (e.g. in pre-processing), or
+if the entity key is not found in the map, use @var{expression} as
+default value. Useful e.g. to specify nodal or element-wise constraints,
+where @var{entity} is the node (mesh vertex) or element number (tag).
+
+@item ValueFromMap
+@code{[ @var{expression} ]@{ @var{char-expression} @}}
+
+Accesses the map @var{char-expression} created by a @code{NodeTable} or
+@code{ElementTable} @code{PostOperation}, or by the @code{ReadTable}
+operation, at the key @var{expression} specified as argument.
 
 @end ftable
 
@@ -4381,7 +4389,10 @@ for 2-D regions in axisymmetrical geometries.
 
 @item VolSphShell
 Volume Jacobian with spherical shell transformation,
-for @var{n}-D regions in @var{n}-D geometries, @var{n} = 2 or 3.
+for @var{n}-D regions in @var{n}-D geometries, @var{n} = 2 or 3. 
+For @var{n}=2, the value of @var{center-Z} has no effect and the 
+transformation is in the @var{XY} plane. An external radius of 0 
+can be used for the Kelvin (inversion) transformation.
 
 @i{Parameters}: @var{radius-internal}, @var{radius-external}
                <, @var{center-X}, @var{center-Y}, @var{center-Z},
@@ -4390,12 +4401,13 @@ for @var{n}-D regions in @var{n}-D geometries, @var{n} = 2 or 3.
 @item VolCylShell
 Volume Jacobian with cylindrical shell transformation, for @var{n}-D
 regions in @var{n}-D geometries, @var{n} = 2 or 3. For @var{n}=2,
-@code{VolCylShell} is identical to @code{VolSphShell}. For @var{n}=3,
-the axis of the cylinder is supposed to be along the @var{z} axis.
+@code{VolCylShell} reverts to @code{VolSphShell} and the @var{axis} 
+parameter below has no effect (and should be omitted). An external 
+radius of 0 can be used for the Kelvin (inversion) transformation. 
 
 @i{Parameters}: @var{radius-internal}, @var{radius-external}
-               <, @var{center-X}, @var{center-Y}, @var{center-Z},
-                  @var{power}, @var{1/infinity} >.
+               <, @var{axis}, @var{center-X}, @var{center-Y}, 
+			      @var{center-Z}, @var{power}, @var{1/infinity} >.
 
 @item VolAxiSphShell
 Same as @code{VolAxi}, but with spherical shell transformation.

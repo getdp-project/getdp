@@ -3,7 +3,7 @@
 # See the LICENSE.txt file for license information. Please report all
 # issues on https://gitlab.onelab.info/getdp/getdp/issues.
 
-cmake_minimum_required(VERSION 3.3 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.5 FATAL_ERROR)
 
 # if CMAKE_BUILD_TYPE is specified use it; otherwise set the default
 # build type to "RelWithDebInfo" ("-O2 -g" with gcc) prior to calling
@@ -102,13 +102,7 @@ if(ENABLE_PRIVATE_API)
     ${CMAKE_CURRENT_BINARY_DIR}/src/common/GetDPVersion.h)
 endif()
 
-if(${CMAKE_MAJOR_VERSION} GREATER 2)
-  string(TIMESTAMP DATE "%Y%m%d")
-else()
-  execute_process(COMMAND date "+%Y%m%d" OUTPUT_VARIABLE DATE
-                  OUTPUT_STRIP_TRAILING_WHITESPACE)
-endif()
-
+string(TIMESTAMP DATE "%Y%m%d")
 if(NOT DATE)
   set(DATE "unknown")
 endif()

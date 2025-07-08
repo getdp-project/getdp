@@ -627,13 +627,14 @@ double Transformation(int Dim, int Type, struct Element *Element,
   double X = 0., Y = 0., Z = 0.;
   double p = 1., L = 0.;
   double Ca = 0., Cx = 0., Cy = 0., Cz = 0., A = 0., B = 0., R = 0.;
+  double minAB = 0., maxAB = 0.;
   double theta = 0., XR = 0., YR = 0., ZR = 0., f = 0., dRdx = 0., dRdy = 0.,
          dRdz = 0.;
   double DetJac = 0.;
 
   /*
-    A          = interior radius
-    B          = exterior radius
+    A          = interior radius (positive)
+    B          = exterior radius (non-negative; can be 0 for Kelvin transform)
     Ca         = position of axis
     Cx, Cy, Cz = coord of centre
     Axis       = direction of the transformation
@@ -732,6 +733,11 @@ double Transformation(int Dim, int Type, struct Element *Element,
     Message::Error("Unknown type of transformation Jacobian");
 
   if(L) B = (B * B - A * A * L) / (B - A * L);
+  
+  /* used for bounds checking only, to allow inversion-type
+     transforms to go through (i.e. when B < A) */
+  minAB = std::min(A, B);
+  maxAB = std::max(A, B);
 
   if(Type == JACOBIAN_VOL_UNI_DIR_SHELL) {
     /* R is the distance from the plane whose normal vector is parallel to the
@@ -746,15 +752,11 @@ double Transformation(int Dim, int Type, struct Element *Element,
       Message::Error("Bad axis specification: 1 for X, 2 for Y and 3 for Z");
     }
 
-    if((fabs(R) > fabs(B) + 1.e-2 * fabs(B)) ||
-       (fabs(R) < fabs(A) - 1.e-2 * fabs(A))) {
-      Message::Error(
-        "Bad parameters for unidirectional transformation Jacobian:"
-        "Rint=%g, Rext=%g, R=%g",
-        A, B, R);
+    if ((R > maxAB + 1.e-2 * maxAB) || (R < minAB - 1.e-2 * minAB)) {
+      Message::Error("Bad parameters for unidirectional transformation Jacobian: %g not in [%g,%g]", R, minAB, maxAB);
     }
 
-    if(B == R) {
+    if (B == R || R == 0.) {
       Jac->c11 = 1.;
       Jac->c12 = 0.;
       Jac->c13 = 0.;
@@ -819,36 +821,39 @@ double Transformation(int Dim, int Type, struct Element *Element,
     switch(Axis) {
     case 1:
       R = sqrt(SQU(Y - Cy) + SQU(Z - Cz));
-      YR = (Y - Cy) / R;
-      ZR = (Z - Cz) / R;
-      dRdy = (Y - Cy) / R;
-      dRdz = (Z - Cz) / R;
+      if (R != 0.) {
+        YR = (Y - Cy) / R;
+        ZR = (Z - Cz) / R;
+        dRdy = (Y - Cy) / R;
+        dRdz = (Z - Cz) / R;
+      }
       break;
     case 2:
       R = sqrt(SQU(X - Cx) + SQU(Z - Cz));
-      XR = (X - Cx) / R;
-      ZR = (Z - Cz) / R;
-      dRdx = (X - Cx) / R;
-      dRdz = (Z - Cz) / R;
+      if (R != 0.) {
+        XR = (X - Cx) / R;
+        ZR = (Z - Cz) / R;
+        dRdx = (X - Cx) / R;
+        dRdz = (Z - Cz) / R;
+      }
       break;
     case 3:
       R = sqrt(SQU(X - Cx) + SQU(Y - Cy));
-      XR = (X - Cx) / R;
-      YR = (Y - Cy) / R;
-      dRdx = (X - Cx) / R;
-      dRdy = (Y - Cy) / R;
+      if (R != 0.) {
+        XR = (X - Cx) / R;
+        YR = (Y - Cy) / R;
+        dRdx = (X - Cx) / R;
+        dRdy = (Y - Cy) / R;
+      }
       break;
     default:
       Message::Error("Bad axis specification : 1 for X, 2 for Y, 3 for Z");
     }
-    if((fabs(R) > fabs(B) + 1.e-2 * fabs(B)) ||
-       (fabs(R) < fabs(A) - 1.e-2 * fabs(A))) {
-      Message::Error("Bad parameters for cylindrical transformation Jacobian:"
-                     "Rint=%g, Rext=%g, R=%g",
-                     A, B, R);
+    if ((R > maxAB + 1.e-2 * maxAB) || (R < minAB - 1.e-2 * minAB)) {
+      Message::Error("Bad parameters for cylindrical transformation Jacobian: %g not in [%g,%g]", R, minAB, maxAB);
     }
 
-    if(B == R) {
+    if (B == R || R == 0.) {
       Jac->c11 = 1.;
       Jac->c12 = 0.;
       Jac->c13 = 0.;
@@ -912,14 +917,18 @@ double Transformation(int Dim, int Type, struct Element *Element,
     if(Type == JACOBIAN_SPH) {
       if(Dim == DIM_2D) {
         R = sqrt(SQU(X - Cx) + SQU(Y - Cy));
-        dRdx = (X - Cx) / R;
-        dRdy = (Y - Cy) / R;
+        if (R != 0.) {
+          dRdx = (X - Cx) / R;
+          dRdy = (Y - Cy) / R;
+        }
       }
       else {
         R = sqrt(SQU(X - Cx) + SQU(Y - Cy) + SQU(Z - Cz));
-        dRdx = (X - Cx) / R;
-        dRdy = (Y - Cy) / R;
-        dRdz = (Z - Cz) / R;
+        if (R != 0.) {
+          dRdx = (X - Cx) / R;
+          dRdy = (Y - Cy) / R;
+          dRdz = (Z - Cz) / R;
+        }
       }
     }
     else {
@@ -947,14 +956,11 @@ double Transformation(int Dim, int Type, struct Element *Element,
       }
     }
 
-    if((fabs(R) > fabs(B) + 1.e-2 * fabs(B)) ||
-       (fabs(R) < fabs(A) - 1.e-2 * fabs(A))) {
-      Message::Error(
-        "Bad parameters for transformation Jacobian: %g not in [%g,%g]", R, A,
-        B);
+    if ((R > maxAB + 1.e-2 * maxAB) || (R < minAB - 1.e-2 * minAB)) {
+      Message::Error("Bad parameters for transformation Jacobian: %g not in [%g,%g]", R, minAB, maxAB);
     }
 
-    if(B == R) {
+    if (B == R || R == 0.) {
       Jac->c11 = 1.;
       Jac->c12 = 0.;
       Jac->c13 = 0.;

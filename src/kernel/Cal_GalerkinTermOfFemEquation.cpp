@@ -423,12 +423,6 @@ int Cal_vBFxDof(struct EquationTerm *EquationTerm_P,
 
   if(EquationTerm_P->Case.LocalTerm.Term.DofInTrace) {
     E = Current.Element->ElementTrace;
-    Current.x = Current.y = Current.z = 0.;
-    for(i = 0; i < Current.Element->GeoElement->NbrNodes; i++) {
-      Current.x += Current.Element->x[i] * Current.Element->n[i];
-      Current.y += Current.Element->y[i] * Current.Element->n[i];
-      Current.z += Current.Element->z[i] * Current.Element->n[i];
-    }
     // TODO we might want to make this a parameter
     double tol = Current.GeoData->CharacteristicLength * 1.e-4;
     if(!PointInElement(E, nullptr, Current.x, Current.y, Current.z, &Current.ut,
@@ -669,7 +663,8 @@ void Cal_GalerkinTermOfFemEquation(struct Element *Element,
     (double (*)(struct Element *, MATRIX3x3 *))Get_JacobianFunction(
       Element->JacobianCase->TypeJacobian, Element->Type, &Type_Dimension);
 
-  if(FI->Flag_ChangeCoord) Get_NodesCoordinatesOfElement(Element);
+  // always get node coordinates so that we can compute current.{x, y, z}
+  Get_NodesCoordinatesOfElement(Element);
 
   if(Element->JacobianCase->CoefficientIndex < 0) { FI->CoefJac = 1.; }
   else {
@@ -678,15 +673,11 @@ void Cal_GalerkinTermOfFemEquation(struct Element *Element,
     FI->CoefJac = CoefPhys.Val[0];
   }
 
-  /*  ------------------------------------------------------------------------
-   */
-  /*  ------------------------------------------------------------------------
-   */
+  /*  ---------------------------------------------------------------------- */
+  /*  ---------------------------------------------------------------------- */
   /*  C o m p u t a t i o n   o f   E l e m e n t a r y   m a t r i x */
-  /*  ------------------------------------------------------------------------
-   */
-  /*  ------------------------------------------------------------------------
-   */
+  /*  ---------------------------------------------------------------------- */
+  /*  ---------------------------------------------------------------------- */
 
   /* Loop on source elements (> 1 only if integral quantity) */
 
@@ -791,9 +782,16 @@ void Cal_GalerkinTermOfFemEquation(struct Element *Element,
         Get_IntPoint(Nbr_IntPoints, i_IntPoint, &Current.u, &Current.v,
                      &Current.w, &weight);
 
-        if(FI->Flag_ChangeCoord) {
-          Get_BFGeoElement(Element, Current.u, Current.v, Current.w);
+        Get_BFGeoElement(Element, Current.u, Current.v, Current.w);
 
+        Current.x = Current.y = Current.z = 0.;
+        for(i = 0; i < Element->GeoElement->NbrNodes; i++) {
+          Current.x += Element->x[i] * Element->n[i];
+          Current.y += Element->y[i] * Element->n[i];
+          Current.z += Element->z[i] * Element->n[i];
+        }
+
+        if(FI->Flag_ChangeCoord) {
           Element->DetJac = Get_Jacobian(Element, &Element->Jac);
 
           if(FI->Flag_InvJac)

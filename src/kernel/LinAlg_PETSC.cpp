@@ -14,6 +14,7 @@
 #include <complex>
 #include <string>
 #include <cstring>
+#include <sstream>
 #include <stdio.h>
 #include "GetDPConfig.h"
 #include "LinAlg.h"
@@ -1345,6 +1346,8 @@ static void _solve(gMatrix *A, gVector *B, gSolver *Solver, gVector *X,
 
   if(kspIndex != 0) Message::Info("Using solver index %d", kspIndex);
 
+  PC pc;
+
   if(!Solver->ksp[kspIndex]) {
     _try(KSPCreate(MyComm, &Solver->ksp[kspIndex]));
 #if(PETSC_VERSION_MAJOR == 3) && (PETSC_VERSION_MINOR >= 5)
@@ -1355,7 +1358,6 @@ static void _solve(gMatrix *A, gVector *B, gSolver *Solver, gVector *X,
 #endif
     _try(KSPMonitorSet(Solver->ksp[kspIndex], _myKspMonitor, PETSC_NULL,
                        PETSC_NULL));
-    PC pc;
     _try(KSPGetPC(Solver->ksp[kspIndex], &pc));
 
     // set some default options: use direct solver (PARDISO, MUMPS, UMFPACK, or
@@ -1382,31 +1384,6 @@ static void _solve(gMatrix *A, gVector *B, gSolver *Solver, gVector *X,
     // override the default options with the ones from the option database (if
     // any)
     _try(KSPSetFromOptions(Solver->ksp[kspIndex]));
-
-    if(view) {
-#if(PETSC_VERSION_MAJOR == 3) && (PETSC_VERSION_MINOR >= 4)
-      const char *ksptype = "";
-      _try(KSPGetType(Solver->ksp[kspIndex], &ksptype));
-      const char *pctype = "";
-      _try(PCGetType(pc, &pctype));
-#else
-      const KSPType ksptype;
-      _try(KSPGetType(Solver->ksp[kspIndex], &ksptype));
-      const PCType pctype;
-      _try(PCGetType(pc, &pctype));
-#endif
-
-#if(PETSC_VERSION_MAJOR == 3) && (PETSC_VERSION_MINOR >= 9)
-      MatSolverType stype;
-      _try(PCFactorGetMatSolverType(pc, &stype));
-#elif(PETSC_VERSION_MAJOR > 2)
-      const MatSolverPackage stype;
-      _try(PCFactorGetMatSolverPackage(pc, &stype));
-#else
-      const char *stype = "";
-#endif
-      Message::Info("N: %ld - %s %s %s", long(i), ksptype, pctype, stype);
-    }
   }
   else if(precond) {
 #if(PETSC_VERSION_MAJOR == 3) && (PETSC_VERSION_MINOR >= 5)
@@ -1416,15 +1393,69 @@ static void _solve(gMatrix *A, gVector *B, gSolver *Solver, gVector *X,
     _try(KSPSetOperators(Solver->ksp[kspIndex], A->M, A->M,
                          DIFFERENT_NONZERO_PATTERN));
 #endif
+    _try(KSPGetPC(Solver->ksp[kspIndex], &pc));
   }
   else {
 #if(PETSC_VERSION_MAJOR == 3) && (PETSC_VERSION_MINOR >= 5)
     _try(KSPSetReusePreconditioner(Solver->ksp[kspIndex], PETSC_TRUE));
     _try(KSPSetOperators(Solver->ksp[kspIndex], A->M, A->M));
 #endif
+    _try(KSPGetPC(Solver->ksp[kspIndex], &pc));
+  }
+
+#if(PETSC_VERSION_MAJOR == 3) && (PETSC_VERSION_MINOR >= 4)
+  const char *ksptype = "";
+  _try(KSPGetType(Solver->ksp[kspIndex], &ksptype));
+  const char *pctype = "";
+  _try(PCGetType(pc, &pctype));
+#else
+  const KSPType ksptype;
+  _try(KSPGetType(Solver->ksp[kspIndex], &ksptype));
+  const PCType pctype;
+  _try(PCGetType(pc, &pctype));
+#endif
+
+#if(PETSC_VERSION_MAJOR == 3) && (PETSC_VERSION_MINOR >= 9)
+  MatSolverType stype;
+  _try(PCFactorGetMatSolverType(pc, &stype));
+#elif(PETSC_VERSION_MAJOR > 2)
+  const MatSolverPackage stype;
+  _try(PCFactorGetMatSolverPackage(pc, &stype));
+#else
+  const char *stype = "";
+#endif
+
+  if(view) {
+    Message::Info("N: %ld - %s %s %s", long(i), ksptype, pctype, stype);
   }
 
   _try(KSPSolve(Solver->ksp[kspIndex], B->V, X->V));
+
+  if(stype && !strcmp(stype, "mumps")) {
+    Mat mat;
+    PCFactorGetMatrix(pc, &mat);
+    PetscInt ival;
+    MatMumpsGetInfo(mat, 1, &ival);
+    if(ival < 0) {
+      std::ostringstream sstream;
+      sstream << "MUMPS error " << ival;
+      switch(ival) {
+      case -6:
+        sstream << " (matrix singular in structure)";
+        break;
+      case -8: case -9: case -17: case -20:
+        sstream << " (work array too small: increase -mat_mumps_icntl_14)";
+        break;
+      case -10:
+        sstream << " (matrix numerically singular or zero pivot)";
+        break;
+      }
+      Message::Warning("%s", sstream.str().c_str());
+    }
+    else if(ival > 0) {
+      Message::Warning("MUMPS warning %d", ival);
+    }
+  }
 
   // copy result on all procs
   _fillseq(X);

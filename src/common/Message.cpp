@@ -797,7 +797,15 @@ void Message::InitializeOnelab(std::string name, std::string sockname)
       _onelabClient->get(ps, name + "/Action");
       if(ps.size()) {
         Info("Performing ONELAB '%s'", ps[0].getValue().c_str());
+        ps[0].setVisible(false);
+        _onelabClient->set(ps[0]);
         if(ps[0].getValue() == "initialize") Exit(0);
+      }
+      else {
+        onelab::string o4(name + "/Action", "");
+        o4.setVisible(false);
+        o4.setAttribute("Persistent", "1");
+        _onelabClient->set(o4);
       }
     }
   }
