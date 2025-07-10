@@ -12,6 +12,29 @@
 #include "TreeUtils.h"
 #include "LinAlg.h"
 
+#include <tuple>
+#include <unordered_map>
+#include <functional>
+
+// Hash combine helper (similar to Boost's hash_combine)
+inline void hash_combine(std::size_t& seed, std::size_t value) {
+    seed ^= value + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+}
+
+// Specialization of std::hash for tuple<int, int, int>
+namespace std {
+    template <>
+    struct hash<std::tuple<int, int, int>> {
+        std::size_t operator()(const std::tuple<int, int, int>& t) const {
+            std::size_t seed = 0;
+            hash_combine(seed, std::hash<int>()(std::get<0>(t)));
+            hash_combine(seed, std::hash<int>()(std::get<1>(t)));
+            hash_combine(seed, std::hash<int>()(std::get<2>(t)));
+            return seed;
+        }
+    };
+}
+
 #define DOF_PRE 1
 #define DOF_RES 2
 #define DOF_TMP 3
@@ -93,6 +116,7 @@ struct DofData {
   int NbrAnyDof, NbrDof;
   Tree_T *DofTree;
   List_T *DofList;
+  std::unordered_map<std::tuple<int, int, int>, struct Dof*> DofMap;
 
   int *DummyDof;
 

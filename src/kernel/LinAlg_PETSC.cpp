@@ -278,6 +278,8 @@ void LinAlg_CreateMatrix(gMatrix *M, gSolver *Solver, int n, int m, bool silent)
   _try(MatSetOption(M->M, MAT_NEW_NONZERO_ALLOCATION_ERR, PETSC_FALSE));
 #endif
 
+  //  _try(MatSetOption(M->M, MAT_SYMMETRIC, PETSC_TRUE));
+
   // override the default options with the ones from the option
   // database (if any)
   _try(MatSetFromOptions(M->M));

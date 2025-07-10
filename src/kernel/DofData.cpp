@@ -535,8 +535,10 @@ void Dof_ReadFilePRE(struct DofData *DofData_P)
 
     DofData_P->DofList =
       List_Create(DofData_P->NbrAnyDof, 1, sizeof(struct Dof));
-    Tree_Delete(DofData_P->DofTree);
-    DofData_P->DofTree = NULL;
+
+    // PERF
+    //Tree_Delete(DofData_P->DofTree);
+    //DofData_P->DofTree = NULL;
 
     for(i = 0; i < DofData_P->NbrAnyDof; i++) {
       if(fscanf(File_PRE, "%d %d %d %d", &Dof.NumType, &Dof.Entity,
@@ -616,6 +618,7 @@ void Dof_ReadFilePRE(struct DofData *DofData_P)
       }
 
       List_Add(DofData_P->DofList, &Dof);
+      Tree_Add(DofData_P->DofTree, &Dof); // PERF
     }
   }
 
@@ -1028,6 +1031,12 @@ void Dof_TransferDofTreeToList(struct DofData *DofData_P)
     DofData_P->DofList = Tree2List(DofData_P->DofTree);
     Tree_Delete(DofData_P->DofTree);
     DofData_P->DofTree = NULL;
+
+    DofData_P->DofMap.clear();
+    for(int i = 0; i < List_Nbr(DofData_P->DofList); i++) {
+      struct Dof *Dof_P = (struct Dof *)List_Pointer(DofData_P->DofList, i);
+      DofData_P->DofMap[std::tuple<int, int, int>(Dof_P->NumType, Dof_P->Entity, Dof_P->Harmonic)] = Dof_P;
+    }
     DofData_P->NbrAnyDof = List_Nbr(DofData_P->DofList);
   }
 
@@ -1399,6 +1408,9 @@ void Dof_DefineAssociateDof(int E1, int E2, int D1, int D2, int NbrHar,
 
 struct Dof *Dof_GetDofStruct(struct DofData *DofData_P, int D1, int D2, int D3)
 {
+  // PERF
+  if(!DofData_P->DofMap.empty()) return DofData_P->DofMap[std::tuple<int, int, int>(D1, D2, D3)];
+
   struct Dof Dof;
 
   Dof.NumType = D1;
