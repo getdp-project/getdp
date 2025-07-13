@@ -152,7 +152,7 @@ struct DofData {
   // this should be added to each gMatrix, but the current implementation makes
   // it cumbersome, so it contains the combined non zero pattern for all the
   // matrices in the DofData
-  std::set<std::pair<int, int>> SparsityPattern;
+  std::set<std::pair<int, int>> *SparsityPattern;
 };
 
 int fcmp_Dof(const void *a, const void *b);
