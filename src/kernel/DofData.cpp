@@ -107,6 +107,7 @@ void Dof_InitDofData(struct DofData *DofData_P, int Num, int ResolutionIndex,
 
   DofData_P->DummyDof = NULL;
 
+  DofData_P->ElementRanks = new std::unordered_multimap<int, int>();
   DofData_P->SparsityPattern = new std::set<std::pair<int, int>>();
 }
 
@@ -222,6 +223,7 @@ void Dof_FreeDofData(struct DofData *DofData_P)
     }
   }
 
+  delete DofData_P->ElementRanks;
   delete DofData_P->SparsityPattern;
 
   // TODO: handle MH data and CorrectionSolutions
@@ -1584,7 +1586,7 @@ void Dof_AssembleInMat(struct Dof *Equ_P, struct Dof *Dof_P, int NbrHar,
       for(int i = 1; i < (int)Current.DofData->PartitionSplit.size(); i++){
         if(n >= Current.DofData->PartitionSplit[i - 1] &&
            n < Current.DofData->PartitionSplit[i]) {
-          Current.DofData->ElementRanks.insert({ele, i - 1});
+          Current.DofData->ElementRanks->insert({ele, i - 1});
           break;
         }
       }
@@ -1593,7 +1595,7 @@ void Dof_AssembleInMat(struct Dof *Equ_P, struct Dof *Dof_P, int NbrHar,
         for(int i = 1; i < (int)Current.DofData->PartitionSplit.size(); i++){
           if(n >= Current.DofData->PartitionSplit[i - 1] &&
              n < Current.DofData->PartitionSplit[i]) {
-            Current.DofData->ElementRanks.insert({ele, i - 1});
+            Current.DofData->ElementRanks->insert({ele, i - 1});
             break;
           }
         }
@@ -1770,7 +1772,7 @@ void Dof_AssembleInVec(struct Dof *Equ_P, struct Dof *Dof_P, int NbrHar,
       for(int i = 1; i < (int)Current.DofData->PartitionSplit.size(); i++){
         if(n >= Current.DofData->PartitionSplit[i - 1] &&
            n < Current.DofData->PartitionSplit[i]) {
-          Current.DofData->ElementRanks.insert({ele, i - 1});
+          Current.DofData->ElementRanks->insert({ele, i - 1});
           break;
         }
       }
@@ -1779,7 +1781,7 @@ void Dof_AssembleInVec(struct Dof *Equ_P, struct Dof *Dof_P, int NbrHar,
         for(int i = 1; i < (int)Current.DofData->PartitionSplit.size(); i++){
           if(n >= Current.DofData->PartitionSplit[i - 1] &&
              n < Current.DofData->PartitionSplit[i]) {
-            Current.DofData->ElementRanks.insert({ele, i - 1});
+            Current.DofData->ElementRanks->insert({ele, i - 1});
             break;
           }
         }
