@@ -110,7 +110,8 @@ struct Group {
   List_T *ExtendedList, *ExtendedSuppList, *ExtendedSuppList2;
   int InitialListGroupIndex, InitialSuppListGroupIndex,
     InitialSuppList2GroupIndex;
-  std::unordered_multimap<int, TwoInt> ExtendedListForSearch;
+  //std::unordered_multimap<int, TwoInt> ExtendedListForSearch;
+  std::multimap<int, TwoInt> ExtendedListForSearch;
   struct MovingBand2D *MovingBand2D;
   GeoElementRTree *ElementRTree;
 };
