@@ -106,8 +106,6 @@ void Dof_InitDofData(struct DofData *DofData_P, int Num, int ResolutionIndex,
   DofData_P->CorrectionSolutions.AllSolutions = NULL;
 
   DofData_P->DummyDof = NULL;
-
-  DofData_P->SparsityPattern = new std::set<std::pair<int, int>>();
 }
 
 /* ------------------------------------------------------------------------ */
@@ -221,8 +219,6 @@ void Dof_FreeDofData(struct DofData *DofData_P)
       LinAlg_DestroyVector(&DofData_P->b3);
     }
   }
-
-  delete DofData_P->SparsityPattern;
 
   // TODO: handle MH data and CorrectionSolutions
 }
@@ -1386,6 +1382,7 @@ void Dof_NumberUnknownDof(void)
       }
     }
   }
+
   CurrentDofData->PartitionSplit.push_back(CurrentDofData->NbrDof);
   UnknownDofs.clear();
 
@@ -1575,15 +1572,39 @@ void Dof_AssembleInMat(struct Dof *Equ_P, struct Dof *Dof_P, int NbrHar,
   case DOF_UNKNOWN:
   case DOF_FIXEDWITHASSOCIATE:
 
+    if(Current.TypeAssembly == ASSEMBLY_SPARSITY_PATTERN &&
+       Current.Element->GeoElement &&
+       Current.DofData->PartitionSplit.size() > 1) {
+      int ele = Current.Element->GeoElement->Num;
+      int n = Equ_P->Case.Unknown.NumDof - 1;
+      for(int i = 1; i < (int)Current.DofData->PartitionSplit.size(); i++){
+        if(n >= Current.DofData->PartitionSplit[i - 1] &&
+           n < Current.DofData->PartitionSplit[i]) {
+          Current.DofData->ElementRanks.insert({ele, i - 1});
+          break;
+        }
+      }
+      if(NbrHar > 1 && gSCALAR_SIZE == 1) {
+        n = (Equ_P + 1)->Case.Unknown.NumDof - 1;
+        for(int i = 1; i < (int)Current.DofData->PartitionSplit.size(); i++){
+          if(n >= Current.DofData->PartitionSplit[i - 1] &&
+             n < Current.DofData->PartitionSplit[i]) {
+            Current.DofData->ElementRanks.insert({ele, i - 1});
+            break;
+          }
+        }
+      }
+    }
+
     switch(Dof_P->Type) {
     case DOF_UNKNOWN:
       if(Current.DofData->Flag_RHS) break;
       if(Current.TypeAssembly == ASSEMBLY_SPARSITY_PATTERN) {
-        Current.DofData->SparsityPattern->insert
+        Current.DofData->SparsityPattern.insert
           (std::make_pair(Equ_P->Case.Unknown.NumDof - 1,
                           Dof_P->Case.Unknown.NumDof - 1));
         if(NbrHar > 1 && gSCALAR_SIZE == 1) {
-          Current.DofData->SparsityPattern->insert
+          Current.DofData->SparsityPattern.insert
             (std::make_pair((Equ_P + 1)->Case.Unknown.NumDof - 1,
                             (Dof_P + 1)->Case.Unknown.NumDof - 1));
         }
@@ -1736,6 +1757,30 @@ void Dof_AssembleInVec(struct Dof *Equ_P, struct Dof *Dof_P, int NbrHar,
   switch(Equ_P->Type) {
   case DOF_UNKNOWN:
   case DOF_FIXEDWITHASSOCIATE:
+
+    if(Current.TypeAssembly == ASSEMBLY_SPARSITY_PATTERN &&
+       Current.Element->GeoElement &&
+       Current.DofData->PartitionSplit.size() > 1) {
+      int ele = Current.Element->GeoElement->Num;
+      int n = Equ_P->Case.Unknown.NumDof - 1;
+      for(int i = 1; i < (int)Current.DofData->PartitionSplit.size(); i++){
+        if(n >= Current.DofData->PartitionSplit[i - 1] &&
+           n < Current.DofData->PartitionSplit[i]) {
+          Current.DofData->ElementRanks.insert({ele, i - 1});
+          break;
+        }
+      }
+      if(NbrHar > 1 && gSCALAR_SIZE == 1) {
+        n = (Equ_P + 1)->Case.Unknown.NumDof - 1;
+        for(int i = 1; i < (int)Current.DofData->PartitionSplit.size(); i++){
+          if(n >= Current.DofData->PartitionSplit[i - 1] &&
+             n < Current.DofData->PartitionSplit[i]) {
+            Current.DofData->ElementRanks.insert({ele, i - 1});
+            break;
+          }
+        }
+      }
+    }
 
     switch(Dof_P->Type) {
     case DOF_UNKNOWN:

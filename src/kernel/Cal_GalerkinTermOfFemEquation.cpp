@@ -413,13 +413,12 @@ int Cal_vBFxDof(struct EquationTerm *EquationTerm_P,
   double u, v, w;
   struct Value CoefPhys;
   struct Element *E;
-  int i, j;
 
   // initialize vBFxDof to zero; this allows to perform e.g. [0, {d u}] without
   // having to explicitly use [Vector[0,0,0], {d u}] ; if this is too slow, we
   // should check vBFxDof[j].Type against FI->Type_FormEqu before calling
   // FI->Cal_Productx to report errors
-  for(j = 0; j < Nbr_Dof; j++) Cal_ZeroValue(&vBFxDof[j]);
+  for(int j = 0; j < Nbr_Dof; j++) Cal_ZeroValue(&vBFxDof[j]);
 
   if(EquationTerm_P->Case.LocalTerm.Term.DofInTrace) {
     E = Current.Element->ElementTrace;
@@ -445,7 +444,7 @@ int Cal_vBFxDof(struct EquationTerm *EquationTerm_P,
   if(!FI->SymmetricalMatrix) {
     switch(FI->Type_DefineQuantityDof) {
     case LOCALQUANTITY:
-      for(j = 0; j < Nbr_Dof; j++) {
+      for(int j = 0; j < Nbr_Dof; j++) {
         xFunctionBFDof[j](
           E, QuantityStorageDof_P->BasisFunction[j].NumEntityInElement + 1, u,
           v, w, vBFuDof[j]);
@@ -482,7 +481,7 @@ int Cal_vBFxDof(struct EquationTerm *EquationTerm_P,
     }
   }
   else {
-    for(j = 0; j < Nbr_Dof; j++) {
+    for(int j = 0; j < Nbr_Dof; j++) {
       ((void (*)(struct Element *, double *,
                  double *))FI->xChangeOfCoordinatesDof)(
         Current.Element, vBFxEqu[j], vBFxDof[j].Val);
@@ -501,7 +500,7 @@ int Cal_vBFxDof(struct EquationTerm *EquationTerm_P,
         Problem_S.Expression,
         EquationTerm_P->Case.LocalTerm.Term.ExpressionIndexForCanonical),
       QuantityStorage_P0, Current.u, Current.v, Current.w, &CoefPhys);
-    for(j = 0; j < Nbr_Dof; j++)
+    for(int j = 0; j < Nbr_Dof; j++)
       Cal_ProductValue(&CoefPhys, &vBFxDof[j], &vBFxDof[j]);
   }
   else
@@ -712,6 +711,7 @@ void Cal_GalerkinTermOfFemEquation(struct Element *Element,
       } /* if NextElement */
     } /* if INTEGRALQUANTITY */
 
+    // FIXME: This could (should?) be remove once -sparsity has been validated
 #if 1
     if(Message::GetCommSize() > 1) {
       // if all the equations lead to matrix entries and they are all outside

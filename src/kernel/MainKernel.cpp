@@ -67,8 +67,8 @@ static void Info(int level, char *arg0)
       "  -order num                restrict maximum interpolation order\n"
       "  -cache                    cache network computations to disk\n"
 #if defined(HAVE_PETSC)
-      "  -sparsity                 compute exact sparsity pattern before each assembly\n"
-      "  -sparsity-once            compute exact sparsity pattern once per system\n"
+      "  -sparsity                 compute exact sparsity pattern once per system\n"
+      "  -sparsity-all             always compute exact sparsity pattern\n"
 #endif
       "Linear solver options:\n"
 #if defined(HAVE_PETSC)
@@ -169,7 +169,7 @@ static void Get_Options(int argc, char *argv[], int *sargc, char **sargv,
         Flag_SPARSITY_PATTERN = 1;
         i++;
       }
-      else if(!strcmp(argv[i] + 1, "sparsity-once")) {
+      else if(!strcmp(argv[i] + 1, "sparsity-all")) {
         Flag_SPARSITY_PATTERN = 2;
         i++;
       }

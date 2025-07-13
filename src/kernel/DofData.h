@@ -8,6 +8,7 @@
 
 #include <vector>
 #include <set>
+#include <unordered_map>
 #include "ListUtils.h"
 #include "TreeUtils.h"
 #include "LinAlg.h"
@@ -71,9 +72,7 @@ struct Dof {
 
 /* temporary */
 #define DOF_FIXED_SOLVE 4 /* waiting to be fixed by a resolution */
-#define DOF_FIXEDWITHASSOCIATE_SOLVE                                           \
-  6 /* waiting to be fixed by a resolution                                     \
-     */
+#define DOF_FIXEDWITHASSOCIATE_SOLVE 6 /* waiting to be fixed by a resolution */
 
 struct CorrectionSolutions {
   List_T *Solutions;
@@ -146,12 +145,14 @@ struct DofData {
   gMatrix A_MH_moving;
   gVector b_MH_moving;
 
-  std::vector<int> NonLocalEquations; // dof nums
-  std::vector<int> PartitionSplit; // dof num starting each partition
+  std::vector<int> NonLocalEquations; // equ nums of non-local equations
+  std::vector<int> PartitionSplit; // equ num starting each partition
+  std::unordered_multimap<int, int> ElementRanks; // element x MPI rank(s)
 
   // this should be added to each gMatrix, but the current implementation makes
-  // it cumbersome
-  std::set<std::pair<int, int>> *SparsityPattern;
+  // it cumbersome, so it contains the combined non zero pattern for all the
+  // matrices in the DofData
+  std::set<std::pair<int, int>> SparsityPattern;
 };
 
 int fcmp_Dof(const void *a, const void *b);

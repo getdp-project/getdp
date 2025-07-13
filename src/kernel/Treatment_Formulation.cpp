@@ -429,6 +429,19 @@ void Treatment_FemFormulation(struct Formulation *Formulation_P)
     Element.Type = Element.GeoElement->Type;
     Current.Region = Element.Region = Element.GeoElement->Region;
 
+    if(Message::GetCommSize() > 1 && Current.DofData->ElementRanks.size() &&
+       Current.TypeAssembly != ASSEMBLY_SPARSITY_PATTERN) {
+      auto range = Current.DofData->ElementRanks.equal_range(Element.Num);
+      bool skip = true;
+      for(auto it = range.first; it != range.second; ++it) {
+        if(it->second == Message::GetCommRank()) {
+          skip = false;
+          break;
+        }
+      }
+      if(skip) continue;
+    }
+
     /* ---------------------------- */
     /* 2.1.  Loop on equation terms */
     /* ---------------------------- */

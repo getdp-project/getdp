@@ -226,12 +226,12 @@ void LinAlg_CreateMatrix(gMatrix *M, gSolver *Solver, int n, int m, bool silent)
   PetscInt prealloc = 100.;
   std::vector<PetscInt> nnz;
 
-  if(Message::GetCommSize() == 1 && Current.DofData->SparsityPattern &&
-     Current.DofData->SparsityPattern->size() > 1) {
+  if(Message::GetCommSize() == 1 && //Current.DofData->SparsityPattern &&
+     Current.DofData->SparsityPattern.size() > 1) {
     // we add 1 to account for the diagonal element enforced below in seqaij
     // matrices
     nnz.resize(n, 1);
-    for(auto p : *Current.DofData->SparsityPattern) nnz[p.first]++;
+    for(auto p : Current.DofData->SparsityPattern) nnz[p.first]++;
   }
   else {
     // use heuristics

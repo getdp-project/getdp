@@ -445,8 +445,8 @@ void Generate_System(struct DefineSystem *DefineSystem_P,
 
   static std::set<std::string> sparsity_done;
 
-  if(Flag_SPARSITY_PATTERN == 1 || // each time
-     (Flag_SPARSITY_PATTERN == 2 && !sparsity_done.count(DefineSystem_P->Name))) { // once
+  if(Flag_SPARSITY_PATTERN == 2 || // each time
+     (Flag_SPARSITY_PATTERN == 1 && !sparsity_done.count(DefineSystem_P->Name))) { // once
     sparsity_done.insert(DefineSystem_P->Name);
     Message::Info("Computing exact sparsity patterns");
     // do a first "fake" assembly pass to compute the exact sparsity patterns
