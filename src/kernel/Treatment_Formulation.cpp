@@ -411,6 +411,20 @@ void Treatment_FemFormulation(struct Formulation *Formulation_P)
 
   Message::ResetProgressMeter();
 
+  bool partitioned = false;
+  if(Message::GetCommSize() > 1 && Current.DofData->ElementRanks->size() &&
+     Current.TypeAssembly != ASSEMBLY_SPARSITY_PATTERN) {
+    if(Current.DofData->PartitionSplit.size() == Message::GetCommSize() + 1 ||
+       Current.DofData->PartitionSplit.size() == Message::GetCommSize() + 2) {
+      partitioned = true;
+    }
+    else {
+      Message::Warning("Number of ranks %d not compatible with partition "
+                       "split - reverting to full assembly",
+                       Message::GetCommSize());
+    }
+  }
+
   for(i_Element = 0; i_Element < Nbr_Element; i_Element++) {
     if(Generate_Group) {
       Element.Region = Geo_GetGeoElement(i_Element)->Region;
@@ -429,9 +443,7 @@ void Treatment_FemFormulation(struct Formulation *Formulation_P)
     Element.Type = Element.GeoElement->Type;
     Current.Region = Element.Region = Element.GeoElement->Region;
 
-    if(Message::GetCommSize() > 1 && Current.DofData->ElementRanks &&
-       Current.DofData->ElementRanks->size() &&
-       Current.TypeAssembly != ASSEMBLY_SPARSITY_PATTERN) {
+    if(partitioned) {
       auto range = Current.DofData->ElementRanks->equal_range(Element.Num);
       bool skip = true;
       for(auto it = range.first; it != range.second; ++it) {

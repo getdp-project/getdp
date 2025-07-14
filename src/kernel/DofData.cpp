@@ -28,7 +28,7 @@
 
 // define this to revert to the old numbering of Dofs, that does not take mesh
 // partitions into account
-//#define OLD_DOF_NUMBERING
+#define OLD_DOF_NUMBERING
 
 #define TWO_PI 6.2831853071795865
 
@@ -1381,10 +1381,12 @@ void Dof_NumberUnknownDof(void)
   // number remaining (global and non-partitioned) dofs
   for(auto &p : UnknownDofs) {
     if(p.first <= 0) {
-      Message::Debug("Numbering %lu global dofs", p.second.size());
+      Message::Debug("Numbering %lu global or non-partitioned dofs",
+                     p.second.size());
       for(auto &d : p.second) {
         d->Case.Unknown.NumDof = ++N;
-        CurrentDofData->NonLocalEquations.push_back(N);
+        if(p.first < 0)
+          CurrentDofData->NonLocalEquations.push_back(N);
       }
     }
   }
@@ -1408,9 +1410,9 @@ static void NumberUnknownDof(void *a, void *b)
   struct Dof *Dof_P = (struct Dof *)a;
   if(Dof_P->Type == DOF_UNKNOWN || Dof_P->Type == DOF_UNKNOWN_INIT) {
     if(Dof_P->Case.Unknown.NumDof == -1)
-      Dof_P->Case.Unknown.NumDof = ++N);
+      Dof_P->Case.Unknown.NumDof = ++_N;
     if(Dof_P->Case.Unknown.PartitionOrNonLocal == -1)
-      CurrentDofData->NonLocalEquations.push_back(N);
+      CurrentDofData->NonLocalEquations.push_back(_N);
   }
 }
 

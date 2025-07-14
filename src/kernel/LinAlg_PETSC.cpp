@@ -154,14 +154,30 @@ void LinAlg_CreateSolver(gSolver *Solver, const char *SolverDataFileName)
   }
 }
 
+static bool _usePartitions()
+{
+  int nrank = Message::GetCommSize();
+
+  if(nrank == 1)
+    return false; // sequential
+
+  if(Current.DofData->PartitionSplit.size() == nrank + 1)
+    return true; // local equations only
+
+  if(Current.DofData->PartitionSplit.size() == nrank + 2)
+    return true; // local equations + non-partitioned/global equations
+
+  return false; // partitioning does not match the number of ranks
+}
+
 static int _getLocalSize()
 {
   int s = PETSC_DECIDE;
 
-  if(Message::GetCommSize() > 1 &&
-     Current.DofData->PartitionSplit.size() > Message::GetCommSize()) {
+  if(_usePartitions()) {
     int r = Message::GetCommRank();
     if(r == Message::GetCommSize() - 1) {
+      // add any non-partitioned/global equations in the last partition
       s = *Current.DofData->PartitionSplit.rbegin() -
         Current.DofData->PartitionSplit[r];
     }
@@ -223,26 +239,62 @@ static void _fillseq(gVector *V)
 
 void LinAlg_CreateMatrix(gMatrix *M, gSolver *Solver, int n, int m, bool silent)
 {
-  PetscInt prealloc = 100.;
-  std::vector<PetscInt> nnz;
-
-  if(Message::GetCommSize() == 1 && Current.DofData->SparsityPattern &&
-     Current.DofData->SparsityPattern->size() > 1) {
-    // we add 1 to account for the diagonal element enforced below in seqaij
-    // matrices
+  if(Current.DofData->SparsityPattern->size() && Message::GetCommSize() == 1) {
+    // we add 1 to account for the diagonal element enforced below
+    std::vector<PetscInt> nnz;
     nnz.resize(n, 1);
     for(auto p : *Current.DofData->SparsityPattern) {
       nnz[p.first]++;
     }
+    _try(MatCreateSeqAIJ(PETSC_COMM_SELF, n, m, 0, &nnz[0], &M->M));
+    // PETSc (I)LU does not like matrices with empty (non assembled) diagonals
+    for(int i = 0; i < n; i++) {
+      PetscInt ti = i;
+      PetscScalar d = 0.;
+      _try(MatSetValues(M->M, 1, &ti, 1, &ti, &d, INSERT_VALUES));
+    }
+    _try(MatAssemblyBegin(M->M, MAT_FLUSH_ASSEMBLY));
+    _try(MatAssemblyEnd(M->M, MAT_FLUSH_ASSEMBLY));
+  }
+  else if(Current.DofData->SparsityPattern->size() && _usePartitions()) {
+    PetscInt nloc = _getLocalSize();
+    PetscInt mloc = nloc;
+    std::vector<PetscInt> d_nnz, o_nnz;
+    d_nnz.resize(nloc, 1);
+    o_nnz.resize(nloc, 0);
+    int r = Message::GetCommRank();
+    int istart = Current.DofData->PartitionSplit[r];
+    int iend = (r == Message::GetCommSize() - 1) ?
+      *Current.DofData->PartitionSplit.rbegin() :
+      Current.DofData->PartitionSplit[r + 1];
+    for(auto p : *Current.DofData->SparsityPattern) {
+      if(p.first >= istart && p.first < iend) {
+        int i = p.first - istart;
+        if(p.second >= istart && p.second < iend)
+          d_nnz[i]++;
+        else
+          o_nnz[i]++;
+      }
+    }
+#if((PETSC_VERSION_MAJOR == 3) && (PETSC_VERSION_MINOR >= 3))
+    _try(MatCreateAIJ(MyComm, nloc, mloc, n, m, 0, &d_nnz[0],
+                      0, &o_nnz[0], &M->M));
+#else
+    _try(MatCreateMPIAIJ(MyComm, nloc, mloc, n, m, 0, &d_nnz[0],
+                         0, &o_nnz[0], &M->M));
+#endif
   }
   else {
     // use heuristics
-    PetscInt prealloc_full = n;
+    PetscInt nloc = (Message::GetCommSize() > 1) ? _getLocalSize() : n;
+    PetscInt mloc = nloc;
+    PetscInt prealloc = 100.;
+    PetscInt prealloc_full = mloc;
     int nonloc = Current.DofData->NonLocalEquations.size();
 
-    // heuristic for preallocation of global rows: don't prelloc more than 500 Mb
+    // heuristic for global rows: don't prelloc more than 500 Mb
     double limit = 500. * 1024. * 1024. / (gSCALAR_SIZE * sizeof(double));
-    double estim = (double)nonloc * (double)n;
+    double estim = (double)nonloc * (double)mloc;
     if(estim > limit) {
       prealloc_full = (int)(limit / nonloc);
       Message::Debug("Heuristic PETSc prealloc_full changed to %d", prealloc_full);
@@ -254,44 +306,39 @@ void LinAlg_CreateMatrix(gMatrix *M, gSolver *Solver, int n, int m, bool silent)
     PetscOptionsGetInt(PETSC_NULL, "-petsc_prealloc_full", &prealloc_full,
                        &set_prealloc_full);
 
-    // prealloc cannot be bigger than the number of rows!
-    prealloc = (prealloc > n) ? n : prealloc;
-    prealloc_full = (prealloc_full > n) ? n : prealloc_full;
+    // prealloc cannot be bigger than the number of columns!
+    prealloc = (prealloc > mloc) ? mloc : prealloc;
+    prealloc_full = (prealloc_full > mloc) ? mloc : prealloc_full;
 
     if(!silent && set_prealloc)
       Message::Info("Setting PETSc prealloc to %d", prealloc);
     if(!silent && set_prealloc_full)
       Message::Info("Setting PETSc prealloc_full to %d", prealloc_full);
 
-    nnz.resize(n, prealloc);
-
-    // preallocate non local equations as full lines (this is not optimal, but
-    // preallocating too few elements leads to horrible assembly performance:
-    // petsc really sucks at dynamic reallocation in the AIJ matrix format)
-    for(int i = 0; i < nonloc; i++)
-      nnz[Current.DofData->NonLocalEquations[i] - 1] = prealloc_full;
-  }
-
-  if(Message::GetCommSize() > 1) { // FIXME: use nnz
-    int localsize = _getLocalSize();
-#if((PETSC_VERSION_MAJOR == 3) && (PETSC_VERSION_MINOR >= 3))
-    _try(MatCreateAIJ(MyComm, localsize, localsize, n, m, prealloc,
-                      PETSC_NULL, prealloc, PETSC_NULL, &M->M));
-#else
-    _try(MatCreateMPIAIJ(MyComm, localsize, localsize, n, m, prealloc,
-                         PETSC_NULL, prealloc, PETSC_NULL, &M->M));
-#endif
-  }
-  else {
-    _try(MatCreateSeqAIJ(PETSC_COMM_SELF, n, m, 0, &nnz[0], &M->M));
-    // PETSc (I)LU does not like matrices with empty (non assembled) diagonals
-    for(int i = 0; i < n; i++) {
-      PetscInt ti = i;
-      PetscScalar d = 0.;
-      _try(MatSetValues(M->M, 1, &ti, 1, &ti, &d, INSERT_VALUES));
+    if(Message::GetCommSize() == 1) {
+      std::vector<PetscInt> nnz;
+      nnz.resize(n, prealloc);
+      for(int i = 0; i < nonloc; i++)
+        nnz[Current.DofData->NonLocalEquations[i] - 1] = prealloc_full;
+      _try(MatCreateSeqAIJ(PETSC_COMM_SELF, n, m, 0, &nnz[0], &M->M));
+      // PETSc (I)LU does not like matrices with empty (non assembled) diagonals
+      for(int i = 0; i < n; i++) {
+        PetscInt ti = i;
+        PetscScalar d = 0.;
+        _try(MatSetValues(M->M, 1, &ti, 1, &ti, &d, INSERT_VALUES));
+      }
+      _try(MatAssemblyBegin(M->M, MAT_FLUSH_ASSEMBLY));
+      _try(MatAssemblyEnd(M->M, MAT_FLUSH_ASSEMBLY));
     }
-    _try(MatAssemblyBegin(M->M, MAT_FLUSH_ASSEMBLY));
-    _try(MatAssemblyEnd(M->M, MAT_FLUSH_ASSEMBLY));
+    else {
+#if((PETSC_VERSION_MAJOR == 3) && (PETSC_VERSION_MINOR >= 3))
+      _try(MatCreateAIJ(MyComm, nloc, mloc, n, m, prealloc, PETSC_NULL,
+                        prealloc, PETSC_NULL, &M->M));
+#else
+      _try(MatCreateMPIAIJ(MyComm, nloc, mloc, n, m, prealloc, PETSC_NULL,
+                           prealloc, PETSC_NULL, &M->M));
+#endif
+    }
   }
 
 #if((PETSC_VERSION_MAJOR == 3) && (PETSC_VERSION_MINOR >= 3))

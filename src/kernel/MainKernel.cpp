@@ -67,8 +67,9 @@ static void Info(int level, char *arg0)
       "  -order num                restrict maximum interpolation order\n"
       "  -cache                    cache network computations to disk\n"
 #if defined(HAVE_PETSC)
-      "  -sparsity                 compute exact sparsity pattern once per system\n"
-      "  -sparsity-all             always compute exact sparsity pattern\n"
+      "  -sparsity                 compute sparsity and parallel layout once "
+      "per system\n"
+      "  -sparsity-all             always compute sparsity and parallel layout\n"
 #endif
       "Linear solver options:\n"
 #if defined(HAVE_PETSC)
