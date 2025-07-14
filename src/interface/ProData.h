@@ -8,7 +8,6 @@
 
 #include <string>
 #include <map>
-#include <unordered_map>
 #include <vector>
 #include "GetDPConfig.h"
 #include "ListUtils.h"
@@ -110,7 +109,7 @@ struct Group {
   List_T *ExtendedList, *ExtendedSuppList, *ExtendedSuppList2;
   int InitialListGroupIndex, InitialSuppListGroupIndex,
     InitialSuppList2GroupIndex;
-  //std::unordered_multimap<int, TwoInt> ExtendedListForSearch;
+  // TODO we might want to move to std::unordered_multimap
   std::multimap<int, TwoInt> ExtendedListForSearch;
   struct MovingBand2D *MovingBand2D;
   GeoElementRTree *ElementRTree;
