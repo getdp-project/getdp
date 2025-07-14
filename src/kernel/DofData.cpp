@@ -1464,6 +1464,7 @@ void Dof_DefineAssociateDof(int E1, int E2, int D1, int D2, int NbrHar,
           }
           Dof.Case.Unknown.NumDof = CurrentDofData->NbrDof;
           Dof.Case.Unknown.PartitionOrNonLocal = -1;
+          CurrentDofData->NonLocalEquations.push_back(Dof.Case.Unknown.NumDof);
           Tree_Add(CurrentDofData->DofTree, &Dof);
         }
         break;
@@ -1482,6 +1483,7 @@ void Dof_DefineAssociateDof(int E1, int E2, int D1, int D2, int NbrHar,
           }
           Dof.Case.Unknown.NumDof = CurrentDofData->NbrDof;
           Dof.Case.Unknown.PartitionOrNonLocal = -1;
+          CurrentDofData->NonLocalEquations.push_back(Dof.Case.Unknown.NumDof);
           Tree_Add(CurrentDofData->DofTree, &Dof);
         }
         break;
