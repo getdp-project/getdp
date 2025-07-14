@@ -28,7 +28,7 @@
 
 // define this to revert to the old numbering of Dofs, that does not take mesh
 // partitions into account
-#define OLD_DOF_NUMBERING
+//#define OLD_DOF_NUMBERING
 
 #define TWO_PI 6.2831853071795865
 
@@ -641,6 +641,7 @@ void Dof_ReadFilePRE(struct DofData *DofData_P)
   } while(String[0] != '$');
 
 #if !defined(OLD_DOF_NUMBERING)
+  DofData_P->PartitionSplit.clear();
   DofData_P->PartitionSplit.push_back(0);
   // add last dof num for each partition
   for(auto &p : partitions) {
@@ -649,7 +650,7 @@ void Dof_ReadFilePRE(struct DofData *DofData_P)
   }
   DofData_P->PartitionSplit.push_back(DofData_P->NbrDof);
 
-  if(DofData_P->PartitionSplit.size() > 1) {
+  if(DofData_P->PartitionSplit.size() > 2) {
     std::ostringstream sstream;
     for(auto p : DofData_P->PartitionSplit) sstream << p << " ";
     Message::Info("Dofs partitioning: %s", sstream.str().c_str());
@@ -1345,6 +1346,7 @@ void Dof_DefineUnknownDof(int D1, int D2, int NbrHar, int PartitionOrNonLocal)
 
 #if !defined(OLD_DOF_NUMBERING)
 
+// partition/global
 static std::map<int, std::vector<struct Dof *>> UnknownDofs;
 
 static void GetUnknownDofsWithoutNum(void *a, void *b)
@@ -1364,6 +1366,7 @@ void Dof_NumberUnknownDof(void)
   else
     List_Action(CurrentDofData->DofList, GetUnknownDofsWithoutNum);
 
+  CurrentDofData->PartitionSplit.clear();
   CurrentDofData->PartitionSplit.push_back(0);
   // number dofs by partition and keep track of last dof in each partition
   int N = 0;
@@ -1394,7 +1397,7 @@ void Dof_NumberUnknownDof(void)
   CurrentDofData->PartitionSplit.push_back(CurrentDofData->NbrDof);
   UnknownDofs.clear();
 
-  if(CurrentDofData->PartitionSplit.size() > 1) {
+  if(CurrentDofData->PartitionSplit.size() > 2) {
     std::ostringstream sstream;
     for(auto p : CurrentDofData->PartitionSplit) sstream << p << " ";
     Message::Info("Dofs partitioning: %s", sstream.str().c_str());
@@ -1582,7 +1585,7 @@ void Dof_AssembleInMat(struct Dof *Equ_P, struct Dof *Dof_P, int NbrHar,
 
     if(Current.TypeAssembly == ASSEMBLY_SPARSITY_PATTERN &&
        Current.Element->GeoElement &&
-       Current.DofData->PartitionSplit.size() > Message::GetCommSize()) {
+       Current.DofData->PartitionSplit.size() > Message::GetCommSize() + 1) {
       int ele = Current.Element->GeoElement->Num;
       int n = Equ_P->Case.Unknown.NumDof - 1;
       for(int i = 1; i < (int)Current.DofData->PartitionSplit.size(); i++){
@@ -1768,7 +1771,7 @@ void Dof_AssembleInVec(struct Dof *Equ_P, struct Dof *Dof_P, int NbrHar,
 
     if(Current.TypeAssembly == ASSEMBLY_SPARSITY_PATTERN &&
        Current.Element->GeoElement &&
-       Current.DofData->PartitionSplit.size() > Message::GetCommSize()) {
+       Current.DofData->PartitionSplit.size() > Message::GetCommSize() + 1) {
       int ele = Current.Element->GeoElement->Num;
       int n = Equ_P->Case.Unknown.NumDof - 1;
       for(int i = 1; i < (int)Current.DofData->PartitionSplit.size(); i++){

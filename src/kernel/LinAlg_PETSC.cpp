@@ -156,15 +156,13 @@ void LinAlg_CreateSolver(gSolver *Solver, const char *SolverDataFileName)
 
 static bool _usePartitions()
 {
-  int nrank = Message::GetCommSize();
-
-  if(nrank == 1)
+  if(Message::GetCommSize() == 1)
     return false; // sequential
 
-  if(Current.DofData->PartitionSplit.size() == nrank + 1)
+  if(Current.DofData->PartitionSplit.size() == Message::GetCommSize() + 1)
     return true; // local equations only
 
-  if(Current.DofData->PartitionSplit.size() == nrank + 2)
+  if(Current.DofData->PartitionSplit.size() == Message::GetCommSize() + 2)
     return true; // local equations + non-partitioned/global equations
 
   return false; // partitioning does not match the number of ranks
