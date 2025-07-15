@@ -1,5 +1,5 @@
 \input texinfo.tex @c -*-texinfo-*-
-@c GetDP - Copyright (C) 1997-2022 P. Dular and C. Geuzaine, University of Liege
+@c GetDP - Copyright (C) 1997-2025 P. Dular and C. Geuzaine, University of Liege
 @c
 @c See the LICENSE.txt file for license information. Please report all
 @c issues on https://gitlab.onelab.info/getdp/getdp/issues.
@@ -22,7 +22,7 @@
 @c %**start of header
 @setfilename getdp.info
 @include version.texi
-@set COPYRIGHT @copyright{} 1997-2022 P. Dular and C. Geuzaine, University of Liege
+@set COPYRIGHT @copyright{} 1997-2025 P. Dular and C. Geuzaine, University of Liege
 @settitle GetDP @value{GETDP-VERSION}
 @footnotestyle separate
 @setchapternewpage odd
@@ -4389,9 +4389,9 @@ for 2-D regions in axisymmetrical geometries.
 
 @item VolSphShell
 Volume Jacobian with spherical shell transformation,
-for @var{n}-D regions in @var{n}-D geometries, @var{n} = 2 or 3. 
-For @var{n}=2, the value of @var{center-Z} has no effect and the 
-transformation is in the @var{XY} plane. An external radius of 0 
+for @var{n}-D regions in @var{n}-D geometries, @var{n} = 2 or 3.
+For @var{n}=2, the value of @var{center-Z} has no effect and the
+transformation is in the @var{XY} plane. An external radius of 0
 can be used for the Kelvin (inversion) transformation.
 
 @i{Parameters}: @var{radius-internal}, @var{radius-external}
@@ -4401,12 +4401,12 @@ can be used for the Kelvin (inversion) transformation.
 @item VolCylShell
 Volume Jacobian with cylindrical shell transformation, for @var{n}-D
 regions in @var{n}-D geometries, @var{n} = 2 or 3. For @var{n}=2,
-@code{VolCylShell} reverts to @code{VolSphShell} and the @var{axis} 
-parameter below has no effect (and should be omitted). An external 
-radius of 0 can be used for the Kelvin (inversion) transformation. 
+@code{VolCylShell} reverts to @code{VolSphShell} and the @var{axis}
+parameter below has no effect (and should be omitted). An external
+radius of 0 can be used for the Kelvin (inversion) transformation.
 
 @i{Parameters}: @var{radius-internal}, @var{radius-external}
-               <, @var{axis}, @var{center-X}, @var{center-Y}, 
+               <, @var{axis}, @var{center-X}, @var{center-Y},
 			      @var{center-Z}, @var{power}, @var{1/infinity} >.
 
 @item VolAxiSphShell
