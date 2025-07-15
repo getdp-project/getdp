@@ -469,7 +469,7 @@ int Operation_ScatterVariables(struct Resolution *Resolution_P,
   }
 
   int numid = List_Nbr(Operation_P->Case.ScatterVariables.id);
-  int vid[numid]; // vector of id numbers of variable associated to a rank (vid)
+  std::vector<int> vid(numid); // vector of id numbers of variable associated to a rank (vid)
   for(int j = 0; j < numid; j++) {
     double idj;
     List_Read(Operation_P->Case.ScatterVariables.id, j, &idj);
@@ -506,7 +506,7 @@ int Operation_ScatterVariables(struct Resolution *Resolution_P,
     for(int i = 1; i < commsize; i++)
       viddispls[i] = viddispls[i - 1] + vnumid_gathered[i - 1];
   }
-  MPI_Gatherv(vid, numid, MPI_INT, vid_gathered, vnumid_gathered, viddispls,
+  MPI_Gatherv(&vid[0], numid, MPI_INT, vid_gathered, vnumid_gathered, viddispls,
               MPI_INT, Operation_P->Case.ScatterVariables.from, MPI_COMM_WORLD);
 
   /////////////////////////////////////////////////////////////////////////////////////
