@@ -960,7 +960,7 @@ static void _rationalEVP(struct DofData *DofData_P, int numEigenValues,
 #if(PETSC_VERSION_MAJOR == 3) && (PETSC_VERSION_MINOR >= 8)
   NEP nep;
   NEPType type;
-  int max_Nchar = 1000;
+  const int max_Nchar = 1000;
   char str_coefsNum[6][max_Nchar];
   char str_coefsDen[6][max_Nchar];
   char str_buff[50];

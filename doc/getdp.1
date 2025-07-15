@@ -1,4 +1,4 @@
-.TH GetDP 1 "27 April 2022" "3.5" "GetDP Manual Pages"
+.TH GetDP 1 "15 July 2025" "4.0" "GetDP Manual Pages"
 .UC 4
 .\" ********************************************************************
 .SH NAME
@@ -92,6 +92,15 @@ reads adaptation constraints from \fIfilename(s)\fP.
 .TP 4
 .B \-order \fIfloat\fP
 specifies maximum interpolation order.
+.TP 4
+.B \-cache
+cache network computations to disk
+.TP 4
+.B \-sparsity
+compute sparsity and parallel layout once per system
+.TP 4
+.B \-sparsity-all
+always compute sparsity and parallel layout
 .\" ********************************************************************
 .SH LINEAR SOLVER OPTIONS
 .TP 4
@@ -118,12 +127,21 @@ sets the verbosity level. A value of 0 means that no information will
 be displayed during processing. Higher values increase the amount of
 information displayed.
 .TP 4
+.B \-cpu
+report CPU times for all operations
+.TP 4
 .B \-p \fIint\fP
 sets the progress update rate. This controls the refreshment rate of
 the counter indicating the progress of the current computation.
 .TP 4
 .B \-onelab \fIname\fP \fIaddress\fP
 communicates with OneLab server through socket.
+.TP 4
+.B \-setnumber \fIname\fP \fIvalue\fP
+set constant number name=value
+.TP 4
+.B \-setstring \fIname\fP \fIvalue\fP
+set constant string name=value
 .TP 4
 .B \-version
 displays the version number.
