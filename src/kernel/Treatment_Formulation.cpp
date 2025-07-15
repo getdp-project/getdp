@@ -284,7 +284,7 @@ void Treatment_FemFormulation(struct Formulation *Formulation_P)
   struct GlobalQuantity *GlobalQuantity_P;
 
   int Nbr_DefineQuantity;
-  struct DefineQuantity *DefineQuantity_P0, *DefineQuantity_P;
+  struct DefineQuantity *DefineQuantity_P0, *DefineQuantity_P = nullptr;
 
   List_T *FemLocalTermActive_L;
   struct FemLocalTermActive FemLocalTermActive_S;
@@ -414,8 +414,8 @@ void Treatment_FemFormulation(struct Formulation *Formulation_P)
   bool partitioned = false;
   if(Message::GetCommSize() > 1 && Current.DofData->ElementRanks->size() &&
      Current.TypeAssembly != ASSEMBLY_SPARSITY_PATTERN) {
-    if(Current.DofData->PartitionSplit.size() == Message::GetCommSize() + 1 ||
-       Current.DofData->PartitionSplit.size() == Message::GetCommSize() + 2) {
+    if((int)Current.DofData->PartitionSplit.size() == Message::GetCommSize() + 1 ||
+       (int)Current.DofData->PartitionSplit.size() == Message::GetCommSize() + 2) {
       partitioned = true;
     }
     else {

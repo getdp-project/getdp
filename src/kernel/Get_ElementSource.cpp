@@ -111,7 +111,7 @@ int Get_InitElementTrace(struct Element *Element, int InIndex)
     std::vector<struct Geo_Element *> matches;
     if(Group_P->ElementRTree->find(Element->GeoElement, matches)) {
       Element->ElementTraceCandidates.resize(matches.size());
-      for(int i = 0; i < matches.size(); i++) {
+      for(std::size_t i = 0; i < matches.size(); i++) {
         Element->ElementTraceCandidates[i] =
           (struct Element *)Malloc(sizeof(struct Element));
         Element->ElementTraceCandidates[i]->GeoElement = matches[i];
@@ -146,7 +146,7 @@ int Get_NextElementTrace(Element *Element)
   if(!Element->ElementTrace || Element->ElementTraceCandidates.size() < 2)
     return 0;
   i_ElementTrace++;
-  if(i_ElementTrace >= Element->ElementTraceCandidates.size()) return 0;
+  if(i_ElementTrace >= (int)Element->ElementTraceCandidates.size()) return 0;
   Element->ElementTrace = Element->ElementTraceCandidates[i_ElementTrace];
   Message::Debug("Next element trace: %d -> %d", Element->Num,
                  Element->ElementTrace->Num);
