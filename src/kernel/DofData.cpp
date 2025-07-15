@@ -1587,7 +1587,7 @@ void Dof_AssembleInMat(struct Dof *Equ_P, struct Dof *Dof_P, int NbrHar,
 
     if(Current.TypeAssembly == ASSEMBLY_SPARSITY_PATTERN &&
        Current.Element->GeoElement &&
-       Current.DofData->PartitionSplit.size() > Message::GetCommSize() + 1) {
+       (int)Current.DofData->PartitionSplit.size() > Message::GetCommSize() + 1) {
       int ele = Current.Element->GeoElement->Num;
       int n = Equ_P->Case.Unknown.NumDof - 1;
       for(int i = 1; i < (int)Current.DofData->PartitionSplit.size(); i++){
@@ -1773,7 +1773,7 @@ void Dof_AssembleInVec(struct Dof *Equ_P, struct Dof *Dof_P, int NbrHar,
 
     if(Current.TypeAssembly == ASSEMBLY_SPARSITY_PATTERN &&
        Current.Element->GeoElement &&
-       Current.DofData->PartitionSplit.size() > Message::GetCommSize() + 1) {
+       (int)Current.DofData->PartitionSplit.size() > Message::GetCommSize() + 1) {
       int ele = Current.Element->GeoElement->Num;
       int n = Equ_P->Case.Unknown.NumDof - 1;
       for(int i = 1; i < (int)Current.DofData->PartitionSplit.size(); i++){

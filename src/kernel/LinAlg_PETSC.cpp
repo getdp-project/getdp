@@ -159,10 +159,10 @@ static bool _usePartitions()
   if(Message::GetCommSize() == 1)
     return false; // sequential
 
-  if(Current.DofData->PartitionSplit.size() == Message::GetCommSize() + 1)
+  if((int)Current.DofData->PartitionSplit.size() == Message::GetCommSize() + 1)
     return true; // local equations only
 
-  if(Current.DofData->PartitionSplit.size() == Message::GetCommSize() + 2)
+  if((int)Current.DofData->PartitionSplit.size() == Message::GetCommSize() + 2)
     return true; // local equations + non-partitioned/global equations
 
   return false; // partitioning does not match the number of ranks

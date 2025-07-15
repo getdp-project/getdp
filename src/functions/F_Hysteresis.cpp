@@ -3542,7 +3542,7 @@ void F_hrev_EB(F_ARG)
   params.w[params.idcell] = D->Case.Interpolation.x[6 + 2 * params.idcell];
   // End Creation of EB parameters structure
 
-  double hrk[3], xk[3];
+  double hrk[3] = {0., 0., 0.}, xk[3];
   switch(::FLAG_APPROACH) {
   case 1:
     for(int n = 0; n < 3; n++) xk[n] = (A + 1)->Val[n];
@@ -3597,7 +3597,7 @@ void F_Jrev_EB(F_ARG)
   params.w[params.idcell] = D->Case.Interpolation.x[6 + 2 * params.idcell];
   // End Creation of EB parameters structure
 
-  double Jk[3], xk[3];
+  double Jk[3] = {0., 0., 0.}, xk[3];
   switch(::FLAG_APPROACH) {
   case 1:
     for(int n = 0; n < 3; n++) Jk[n] = (A + 1)->Val[n];
