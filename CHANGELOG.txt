@@ -2,7 +2,7 @@
 support for high-order meshes; improved parsing speed of .pro files with many
 functions and groups; new -sparsity option to use exact sparsity pattern for
 PETSc matrices; improved performance of distributed (MPI) assembly; bug fixes
-(SaveMesh, adaptive time stepping with MPI), duplicate values in ONELAB
+(SaveMesh, adaptive time stepping with MPI, duplicate values in ONELAB
 parameter choices).
 
 3.5.0 (May 13, 2022): generalized Trace operator on non-conforming meshes; new
