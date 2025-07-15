@@ -38,7 +38,6 @@ set(SRC
         Pre_TermOfFemEquation.cpp
           Generate_Network.cpp
         Cal_GalerkinTermOfFemEquation.cpp
-        Cal_SmallFemTermOfFemEquation.cpp
         Cal_GlobalTermOfFemEquation.cpp
           Cal_IntegralQuantity.cpp
           Cal_AnalyticIntegration.cpp

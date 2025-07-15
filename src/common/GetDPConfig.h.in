@@ -27,7 +27,6 @@
 #cmakedefine HAVE_PEWE
 #cmakedefine HAVE_PYTHON
 #cmakedefine HAVE_SLEPC
-#cmakedefine HAVE_SMALLFEM
 #cmakedefine HAVE_SPARSKIT
 #cmakedefine HAVE_ZITSOL
 #cmakedefine HAVE_MULTIHARMONIC

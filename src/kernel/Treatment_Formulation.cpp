@@ -10,7 +10,6 @@
 #include "Get_ElementSource.h"
 #include "Pre_TermOfFemEquation.h"
 #include "Cal_GalerkinTermOfFemEquation.h"
-#include "Cal_SmallFemTermOfFemEquation.h"
 #include "Cal_GlobalTermOfFemEquation.h"
 #include "Cal_AssembleTerm.h"
 #include "Generate_Network.h"
@@ -594,10 +593,6 @@ void Treatment_FemFormulation(struct Formulation *Formulation_P)
             if(!Current.DofData->Flag_Only ||
                (Current.DofData->Flag_Only && Flag_Only)) {
               if(EquationTerm_P->Type == GALERKIN) {
-#if defined(HAVE_SMALLFEM)
-                Cal_SmallFemTermOfFemEquation(&Element, EquationTerm_P,
-                                              QuantityStorage_P0);
-#else
                 Cal_GalerkinTermOfFemEquation(&Element, EquationTerm_P,
                                               QuantityStorage_P0);
 
@@ -616,7 +611,6 @@ void Treatment_FemFormulation(struct Formulation *Formulation_P)
                   Cal_GalerkinTermOfFemEquation(&Element, EquationTerm_P,
                                                 QuantityStorage_P0);
                 }
-#endif
               }
               if(Current.DofData->Flag_Only && Flag_Only) {
                 Current.DofData->A = A;
