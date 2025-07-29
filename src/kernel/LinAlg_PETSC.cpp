@@ -1389,8 +1389,6 @@ static void _solve(gMatrix *A, gVector *B, gSolver *Solver, gVector *X,
     return;
   }
 
-  int view = !Solver->ksp[kspIndex];
-
   if(kspIndex != 0) Message::Info("Using solver index %d", kspIndex);
 
   PC pc;
@@ -1427,10 +1425,6 @@ static void _solve(gMatrix *A, gVector *B, gSolver *Solver, gVector *X,
     _try(PCFactorSetMatOrderingType(pc, MATORDERINGRCM));
 #endif
 #endif
-
-    // override the default options with the ones from the option database (if
-    // any)
-    _try(KSPSetFromOptions(Solver->ksp[kspIndex]));
   }
   else if(precond) {
 #if(PETSC_VERSION_MAJOR == 3) && (PETSC_VERSION_MINOR >= 5)
@@ -1449,6 +1443,10 @@ static void _solve(gMatrix *A, gVector *B, gSolver *Solver, gVector *X,
 #endif
     _try(KSPGetPC(Solver->ksp[kspIndex], &pc));
   }
+
+  // override the default options with the ones from the option database (if
+  // any)
+  _try(KSPSetFromOptions(Solver->ksp[kspIndex]));
 
 #if(PETSC_VERSION_MAJOR == 3) && (PETSC_VERSION_MINOR >= 4)
   const char *ksptype = "";
@@ -1472,9 +1470,7 @@ static void _solve(gMatrix *A, gVector *B, gSolver *Solver, gVector *X,
   const char *stype = "";
 #endif
 
-  if(view) {
-    Message::Info("N: %ld - %s %s %s", long(i), ksptype, pctype, stype);
-  }
+  Message::Info("N: %ld - %s %s %s", long(i), ksptype, pctype, stype);
 
   _try(KSPSolve(Solver->ksp[kspIndex], B->V, X->V));
 
@@ -1507,7 +1503,7 @@ static void _solve(gMatrix *A, gVector *B, gSolver *Solver, gVector *X,
   // copy result on all procs
   _fillseq(X);
 
-  if(view && Message::GetVerbosity() > 5) {
+  if(Message::GetVerbosity() > 5) {
     _try(KSPView(Solver->ksp[kspIndex], MyPetscViewer));
   }
 
@@ -1515,6 +1511,10 @@ static void _solve(gMatrix *A, gVector *B, gSolver *Solver, gVector *X,
   _try(KSPGetIterationNumber(Solver->ksp[kspIndex], &its));
   if(its > 1) Message::Info("%d iterations", its);
   Current.KSPIterations = its;
+
+  KSPConvergedReason reason;
+  _try(KSPGetConvergedReason(Solver->ksp[kspIndex], &reason));
+  Current.KSPConvergedReason = (double)reason;
 
   PetscTruth set, kspfree = PETSC_FALSE;
   PetscOptionsGetTruth(PETSC_NULL, "-kspfree", &kspfree, &set);
@@ -1623,12 +1623,9 @@ static void _solveNL(gMatrix *A, gVector *B, gMatrix *J, gVector *R,
     return;
   }
 
-  bool view = !Solver->snes[solverIndex];
-
   // either we are on sequential (!GetIsCommWorld) or in parallel with rank = 0
   // (GetIsCommWorld)
-  if(view)
-    Message::Info("N: %ld", (long)n);
+  Message::Info("N: %ld", (long)n);
 
   if(solverIndex != 0)
     Message::Info("Using nonlinear solver index %d", solverIndex);
@@ -1679,7 +1676,7 @@ static void _solveNL(gMatrix *A, gVector *B, gMatrix *J, gVector *R,
   // copy result on all procs
   _fillseq(X);
 
-  if(view && Message::GetVerbosity() > 5)
+  if(Message::GetVerbosity() > 5)
     _try(SNESView(Solver->snes[solverIndex], MyPetscViewer));
 
   PetscInt its;

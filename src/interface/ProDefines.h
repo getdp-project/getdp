@@ -333,6 +333,7 @@ struct StringXPointer Current_Value[] = {
   {"KSPIteration", &Current.KSPIteration},
   {"KSPResidual", &Current.KSPResidual},
   {"KSPSystemSize", &Current.KSPSystemSize},
+  {"KSPConvergedReason", &Current.KSPConvergedReason},
   {NULL, NULL}};
 
 struct StringXDefine PostQuantityTerm_EvaluationType[] = {
