@@ -3289,6 +3289,7 @@ void Treatment_Operation(struct Resolution *Resolution_P, List_T *Operation_L,
 
       if(Operation_P->Case.Print.Expressions) {
         List_T *list = 0;
+        int r = Message::GetCommRank();
         if(Operation_P->Case.Print.FormatString)
           list = List_Create(10, 10, sizeof(double));
         for(int i = 0; i < List_Nbr(Operation_P->Case.Print.Expressions); i++) {
@@ -3298,14 +3299,15 @@ void Treatment_Operation(struct Resolution *Resolution_P, List_T *Operation_L,
           if(list)
             List_Add(list, &Value.Val[0]);
           else
-            Print_Value(&Value, fp);
+            if(r == 0)
+              Print_Value(&Value, fp);
         }
         if(list) {
           std::string buffer;
           Print_ListOfDouble(Operation_P->Case.Print.FormatString, list,
                              buffer);
           Message::Direct(3, buffer.c_str());
-          if(fp != stdout) fprintf(fp, "%s\n", buffer.c_str());
+          if(fp != stdout && r == 0) fprintf(fp, "%s\n", buffer.c_str());
           List_Delete(list);
         }
       }
