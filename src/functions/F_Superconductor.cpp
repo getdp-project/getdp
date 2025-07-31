@@ -12,6 +12,7 @@
 #include <limits>
 #include "ProData.h"
 #include "F.h"
+#include "Cal_Value.h"
 #include "Message.h"
 
 #define MIN(a, b) (((a) < (b)) ? (a) : (b))
@@ -183,4 +184,143 @@ void F_LambdaCurrentSharingHom(F_ARG) {
 
  V->Val[0] = output;
  V->Type   = SCALAR;
+}
+
+// anisotropic resistivity tensor for homogenized stacks of HTS tapes
+// in the local coordinates of the tape, we use power-law resistivity along the tape and constant rho0 resistivity in the transverse direction
+// for now: only rotations around the z-axis are supported
+void F_AnisotropicResistivityTensorPowerLaw(F_ARG) {
+    double Jx = (double) (A)->Val[0];
+    double Jy = (double) (A)->Val[1];
+    double Jz = (double) (A)->Val[2];
+    double Jcrit = (double) (A + 1)->Val[0];
+    double n = (double) (A + 2)->Val[0];
+    double rho0 = (double) (A + 3)->Val[0]; //resistivity in perpendicular direction
+    double angle = (double) (A + 4)->Val[0]; // tape rotation angle around z-axis in radians (tape normal aligned with (1,0,0) is theta=0)
+
+    double Ecrit = (double) Fct->Para[0];
+
+    // rotation tensor
+    double cc, sc;
+    struct Value Rot;
+    cc = cos(angle);
+    sc = sin(angle);
+    Rot.Type = TENSOR;
+    Cal_ZeroValue(&Rot);
+    Rot.Val[0] = cc; 
+    Rot.Val[1] = -sc;
+    Rot.Val[2] = 0.0; 
+    Rot.Val[3] = sc;
+    Rot.Val[4] = cc;
+    Rot.Val[5] = 0.0;
+    Rot.Val[6] = 0.0;
+    Rot.Val[7] = 0.0;
+    Rot.Val[8] = 1.0;
+
+    double jNorm = sqrt(Jx * Jx + Jy * Jy + Jz * Jz);
+
+    double rhoPL;
+    if (Jcrit > 0) {
+        rhoPL = Ecrit/Jcrit * pow(jNorm/Jcrit, n - 1);
+    } else {
+        rhoPL = std::numeric_limits<double>::max();
+    }
+
+    // resistivity tensor in the local coordinates of the tape (normal along (1,0,0))
+    struct Value RhoTensor;
+    RhoTensor.Type = TENSOR_DIAG;
+    Cal_ZeroValue(&RhoTensor);
+    RhoTensor.Val[0] = rho0;
+    RhoTensor.Val[1] = rhoPL;
+    RhoTensor.Val[2] = rhoPL;
+
+    // rotate the resistivity tensor
+    Cal_RotateValue(&Rot, &RhoTensor, V);
+}
+
+void F_AnisotropicDEDJTensorPowerLaw(F_ARG) {
+    double Jx = (double) (A)->Val[0];
+    double Jy = (double) (A)->Val[1];
+    double Jz = (double) (A)->Val[2];
+    double Jcrit = (double) (A + 1)->Val[0];
+    double n = (double) (A + 2)->Val[0];
+    double rho0 = (double) (A + 3)->Val[0]; //resistivity in perpendicular direction
+    double angle = (double) (A + 4)->Val[0]; // tape rotation angle around z-axis in radians (tape normal aligned with (1,0,0) is theta=0)
+
+    double Ecrit = (double) Fct->Para[0];
+
+    // rotation tensor
+    double cc, sc;
+    struct Value Rot;
+    cc = cos(angle);
+    sc = sin(angle);
+    Rot.Type = TENSOR;
+    Cal_ZeroValue(&Rot);
+    Rot.Val[0] = cc; 
+    Rot.Val[1] = -sc;
+    Rot.Val[2] = 0.0; 
+    Rot.Val[3] = sc;
+    Rot.Val[4] = cc;
+    Rot.Val[5] = 0.0;
+    Rot.Val[6] = 0.0;
+    Rot.Val[7] = 0.0;
+    Rot.Val[8] = 1.0;
+
+    // in local coordinates
+    // (de_dj)i,j = (rho)i,j + ec/jc^3 * (n-1) * (Norm(Jlocal)/jc)^(n-3) * Jlocal_i * Jlocal_j
+    
+    // computing the first term
+    double jNorm = sqrt(Jx * Jx + Jy * Jy + Jz * Jz);
+
+    double rhoPL;
+    if (Jcrit > 0) {
+        rhoPL = Ecrit/Jcrit * pow(jNorm/Jcrit, n - 1);
+    } else {
+        rhoPL = std::numeric_limits<double>::max();
+    }
+
+    // compute the second term (first in local coordinates)
+
+    // J in global coordinates
+    struct Value JGlobal;
+    JGlobal.Type = VECTOR;
+    Cal_ZeroValue(&JGlobal);
+    JGlobal.Val[0] = Jx;
+    JGlobal.Val[1] = Jy;
+    JGlobal.Val[2] = Jz;
+
+    // rotate J to local coordinates
+    struct Value JLocal;
+    JLocal.Type = VECTOR;
+    Cal_ZeroValue(&JLocal);
+    Cal_RotateValue(&Rot, &JGlobal, &JLocal);
+    double JLocalX = 0.0; // no normal current in the local coordinates
+    double JLocalY = JLocal.Val[1];
+    double JLocalZ = JLocal.Val[2];
+
+    double jLocalNorm = sqrt(JLocalX * JLocalX + JLocalY * JLocalY + JLocalZ * JLocalZ);
+
+    double commonFactor;
+    if (jLocalNorm > 1e-10) {
+        commonFactor = Ecrit/pow(Jcrit, 3) * (n - 1) * pow(MIN(1E99, jLocalNorm)/Jcrit, n - 3);
+    } else {
+        commonFactor = 0.;
+    }
+
+    // de_dj tensor in the local coordinates of the tape (normal along (1,0,0))
+    struct Value DEDJLocal;
+    DEDJLocal.Type = TENSOR;
+    Cal_ZeroValue(&DEDJLocal);
+    DEDJLocal.Val[0] = rho0 + commonFactor * JLocalX * JLocalX; // t11
+    DEDJLocal.Val[1] = commonFactor * JLocalX * JLocalY; // t12
+    DEDJLocal.Val[2] = commonFactor * JLocalX * JLocalZ; // t13
+    DEDJLocal.Val[3] = commonFactor * JLocalY * JLocalX; // t21
+    DEDJLocal.Val[4] = rhoPL + commonFactor * JLocalY * JLocalY; // t22
+    DEDJLocal.Val[5] = commonFactor * JLocalY * JLocalZ; // t23
+    DEDJLocal.Val[6] = commonFactor * JLocalZ * JLocalX; // t31
+    DEDJLocal.Val[7] = commonFactor * JLocalZ * JLocalY; // t32
+    DEDJLocal.Val[8] = rhoPL + commonFactor * JLocalZ * JLocalZ; // t33
+
+    // finally, we need to rotate the tensor back to the global coordinates
+    Cal_RotateValue(&Rot, &DEDJLocal, V);
 }
