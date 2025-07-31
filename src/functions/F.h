@@ -214,6 +214,7 @@ void F_QuadraturePointIndex(F_ARG);
 void F_GetCpuTime(F_ARG);
 void F_GetWallClockTime(F_ARG);
 void F_GetMemory(F_ARG);
+void F_GetRank(F_ARG);
 void F_SetNumberRunTime(F_ARG);
 void F_SetNumberRunTimeWithChoices(F_ARG);
 void F_GetNumberRunTime(F_ARG);

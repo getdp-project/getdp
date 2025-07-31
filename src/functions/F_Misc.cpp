@@ -91,6 +91,12 @@ void F_GetMemory(F_ARG)
   V->Val[0] = val;
 }
 
+void F_GetRank(F_ARG)
+{
+  V->Type = SCALAR;
+  V->Val[0] = Message::GetCommRank();
+}
+
 void F_SetNumberRunTime(F_ARG)
 {
   double val = A->Val[0];

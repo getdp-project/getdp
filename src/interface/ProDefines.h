@@ -1264,6 +1264,7 @@ struct StringXFunction2Nbr F_Function[] =
    {"GetWallClockTime", (CAST)F_GetWallClockTime, 0, 0},
    {"Memory", (CAST)F_GetMemory, 0, 0},
    {"GetMemory", (CAST)F_GetMemory, 0, 0},
+   {"GetRank", (CAST)F_GetRank, 0, 0},
    {"SetNumberRunTime", (CAST)F_SetNumberRunTime, -1, -1},
    {"SetNumberRunTimeWithChoices", (CAST)F_SetNumberRunTimeWithChoices, -1, -1},
    {"GetNumberRunTime", (CAST)F_GetNumberRunTime, -1, -1},
