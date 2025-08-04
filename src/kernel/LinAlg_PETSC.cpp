@@ -621,14 +621,6 @@ void LinAlg_GetLocalVectorRange(gVector *V, int *low, int *high)
   *high = thigh;
 }
 
-static bool _isInLocalRange(gVector *V, int i)
-{
-  if(Message::GetCommSize() == 1) return true;
-  int imin, imax;
-  LinAlg_GetLocalVectorRange(V, &imin, &imax);
-  return (i >= imin && i < imax);
-}
-
 void LinAlg_GetMatrixSize(gMatrix *M, int *i, int *j)
 {
   PetscInt ti, tj;
@@ -645,14 +637,6 @@ void LinAlg_GetLocalMatrixRange(gMatrix *M, int *low, int *high)
   if(tlow > INT_MAX || thigh > INT_MAX) Message::Error("Problem too big");
   *low = tlow;
   *high = thigh;
-}
-
-static bool _isInLocalRange(gMatrix *M, int i)
-{
-  if(Message::GetCommSize() == 1) return true;
-  int imin, imax;
-  LinAlg_GetLocalMatrixRange(M, &imin, &imax);
-  return (i >= imin && i < imax);
 }
 
 void LinAlg_GetDoubleInScalar(double *d, gScalar *S)
@@ -726,14 +710,12 @@ void LinAlg_GetComplexInVector(double *d1, double *d2, gVector *V, int i, int j)
 
 void LinAlg_GetScalarInMatrix(gScalar *S, gMatrix *M, int i, int j)
 {
-  if(!_isInLocalRange(M, i)) return;
   PetscInt ti = i, tj = j;
   _try(MatGetValues(M->M, 1, &ti, 1, &tj, &S->s));
 }
 
 void LinAlg_GetDoubleInMatrix(double *d, gMatrix *M, int i, int j)
 {
-  if(!_isInLocalRange(M, i)) return;
   PetscInt ti = i, tj = j;
   _try(MatGetValues(M->M, 1, &ti, 1, &tj, (PetscScalar *)d));
 }
@@ -744,17 +726,13 @@ void LinAlg_GetComplexInMatrix(double *d1, double *d2, gMatrix *M, int i, int j,
 #if defined(PETSC_USE_COMPLEX)
   PetscScalar tmp;
   PetscInt ti = i, tj = j;
-  if(_isInLocalRange(M, i)) {
-    _try(MatGetValues(M->M, 1, &ti, 1, &tj, &tmp));
-    *d1 = real(tmp);
-    *d2 = imag(tmp);
-  }
+  _try(MatGetValues(M->M, 1, &ti, 1, &tj, &tmp));
+  *d1 = real(tmp);
+  *d2 = imag(tmp);
 #else
   PetscInt ti = i, tj = j, tk = k, tl = l;
-  if(_isInLocalRange(M, i))
-    _try(MatGetValues(M->M, 1, &ti, 1, &tj, (PetscScalar *)d1));
-  if(_isInLocalRange(M, k))
-    _try(MatGetValues(M->M, 1, &tk, 1, &tl, (PetscScalar *)d2));
+  _try(MatGetValues(M->M, 1, &ti, 1, &tj, (PetscScalar *)d1));
+  _try(MatGetValues(M->M, 1, &tk, 1, &tl, (PetscScalar *)d2));
 #endif
 }
 
@@ -781,14 +759,12 @@ void LinAlg_SetVector(gVector *V, double *v)
 
 void LinAlg_SetScalarInVector(gScalar *S, gVector *V, int i)
 {
-  if(!_isInLocalRange(V, i)) return;
   PetscInt ti = i;
   _try(VecSetValues(V->V, 1, &ti, &S->s, INSERT_VALUES));
 }
 
 void LinAlg_SetDoubleInVector(double d, gVector *V, int i)
 {
-  if(!_isInLocalRange(V, i)) return;
   PetscScalar tmp = d;
   PetscInt ti = i;
   _try(VecSetValues(V->V, 1, &ti, &tmp, INSERT_VALUES));
@@ -798,34 +774,26 @@ void LinAlg_SetComplexInVector(double d1, double d2, gVector *V, int i, int j)
 {
   PetscScalar tmp;
 #if defined(PETSC_USE_COMPLEX)
-  if(_isInLocalRange(V, i)) {
-    PetscInt ti = i;
-    tmp = d1 + PETSC_i * d2;
-    _try(VecSetValues(V->V, 1, &ti, &tmp, INSERT_VALUES));
-  }
+  PetscInt ti = i;
+  tmp = d1 + PETSC_i * d2;
+  _try(VecSetValues(V->V, 1, &ti, &tmp, INSERT_VALUES));
 #else
   PetscInt ti = i, tj = j;
-  if(_isInLocalRange(V, i)) {
-    tmp = d1;
-    _try(VecSetValues(V->V, 1, &ti, &tmp, INSERT_VALUES));
-  }
-  if(_isInLocalRange(V, j)) {
-    tmp = d2;
-    _try(VecSetValues(V->V, 1, &tj, &tmp, INSERT_VALUES));
-  }
+  tmp = d1;
+  _try(VecSetValues(V->V, 1, &ti, &tmp, INSERT_VALUES));
+  tmp = d2;
+  _try(VecSetValues(V->V, 1, &tj, &tmp, INSERT_VALUES));
 #endif
 }
 
 void LinAlg_SetScalarInMatrix(gScalar *S, gMatrix *M, int i, int j)
 {
-  if(!_isInLocalRange(M, i)) return;
   PetscInt ti = i, tj = j;
   _try(MatSetValues(M->M, 1, &ti, 1, &tj, &S->s, INSERT_VALUES));
 }
 
 void LinAlg_SetDoubleInMatrix(double d, gMatrix *M, int i, int j)
 {
-  if(!_isInLocalRange(M, i)) return;
   PetscInt ti = i, tj = j;
   _try(MatSetValues(M->M, 1, &ti, 1, &tj, (PetscScalar *)&d, INSERT_VALUES));
 }
@@ -836,28 +804,20 @@ void LinAlg_SetComplexInMatrix(double d1, double d2, gMatrix *M, int i, int j,
   PetscScalar tmp;
 #if defined(PETSC_USE_COMPLEX)
   PetscInt ti = i, tj = j;
-  if(_isInLocalRange(M, i)) {
-    tmp = d1 + PETSC_i * d2;
-    _try(MatSetValues(M->M, 1, &ti, 1, &tj, &tmp, INSERT_VALUES));
-  }
+  tmp = d1 + PETSC_i * d2;
+  _try(MatSetValues(M->M, 1, &ti, 1, &tj, &tmp, INSERT_VALUES));
 #else
   PetscInt ti = i, tj = j, tk = k, tl = l;
   if(d1) {
     tmp = d1;
-    if(_isInLocalRange(M, i))
-      _try(MatSetValues(M->M, 1, &ti, 1, &tj, &tmp, INSERT_VALUES));
-    if(_isInLocalRange(M, k))
-      _try(MatSetValues(M->M, 1, &tk, 1, &tl, &tmp, INSERT_VALUES));
+    _try(MatSetValues(M->M, 1, &ti, 1, &tj, &tmp, INSERT_VALUES));
+    _try(MatSetValues(M->M, 1, &tk, 1, &tl, &tmp, INSERT_VALUES));
   }
   if(d2) {
-    if(_isInLocalRange(M, i)) {
-      tmp = -d2;
-      _try(MatSetValues(M->M, 1, &ti, 1, &tl, &tmp, INSERT_VALUES));
-    }
-    if(_isInLocalRange(M, k)) {
-      tmp = d2;
-      _try(MatSetValues(M->M, 1, &tk, 1, &tj, &tmp, INSERT_VALUES));
-    }
+    tmp = -d2;
+    _try(MatSetValues(M->M, 1, &ti, 1, &tl, &tmp, INSERT_VALUES));
+    tmp = d2;
+    _try(MatSetValues(M->M, 1, &tk, 1, &tj, &tmp, INSERT_VALUES));
   }
 #endif
 }
@@ -882,8 +842,6 @@ void LinAlg_DummyVector(gVector *V)
 
 void LinAlg_AddScalarInVector(gScalar *S, gVector *V, int i)
 {
-  if(!_isInLocalRange(V, i)) return;
-
   if(Current.DofData->DummyDof)
     if(Current.DofData->DummyDof[i] == 1) return;
 
@@ -893,8 +851,6 @@ void LinAlg_AddScalarInVector(gScalar *S, gVector *V, int i)
 
 void LinAlg_AddDoubleInVector(double d, gVector *V, int i)
 {
-  if(!_isInLocalRange(V, i)) return;
-
   if(Current.DofData->DummyDof)
     if(Current.DofData->DummyDof[i] == 1) return;
 
@@ -914,18 +870,18 @@ void LinAlg_AddComplexInVector(double d1, double d2, gVector *V, int i, int j)
   }
 
 #if defined(PETSC_USE_COMPLEX)
-  if(_isInLocalRange(V, i) && iok && jok) {
+  if(iok && jok) {
     PetscInt ti = i;
     tmp = d1 + PETSC_i * d2;
     _try(VecSetValues(V->V, 1, &ti, &tmp, ADD_VALUES));
   }
 #else
   PetscInt ti = i, tj = j;
-  if(_isInLocalRange(V, i) && iok) {
+  if(iok) {
     tmp = d1;
     _try(VecSetValues(V->V, 1, &ti, &tmp, ADD_VALUES));
   }
-  if(_isInLocalRange(V, j) && jok) {
+  if(jok) {
     tmp = d2;
     _try(VecSetValues(V->V, 1, &tj, &tmp, ADD_VALUES));
   }
@@ -934,8 +890,6 @@ void LinAlg_AddComplexInVector(double d1, double d2, gVector *V, int i, int j)
 
 void LinAlg_AddScalarInMatrix(gScalar *S, gMatrix *M, int i, int j)
 {
-  if(!_isInLocalRange(M, i)) return;
-
   if(Current.DofData->DummyDof)
     if((Current.DofData->DummyDof[i] == 1 ||
         Current.DofData->DummyDof[j] == 1) &&
@@ -948,8 +902,6 @@ void LinAlg_AddScalarInMatrix(gScalar *S, gMatrix *M, int i, int j)
 
 void LinAlg_AddDoubleInMatrix(double d, gMatrix *M, int i, int j)
 {
-  if(!_isInLocalRange(M, i)) return;
-
   if(Current.DofData->DummyDof)
     if((Current.DofData->DummyDof[i] == 1 ||
         Current.DofData->DummyDof[j] == 1) &&
@@ -967,28 +919,20 @@ void LinAlg_AddComplexInMatrix(double d1, double d2, gMatrix *M, int i, int j,
   PetscScalar tmp;
 #if defined(PETSC_USE_COMPLEX)
   PetscInt ti = i, tj = j;
-  if(_isInLocalRange(M, i)) {
-    tmp = d1 + PETSC_i * d2;
-    _try(MatSetValues(M->M, 1, &ti, 1, &tj, &tmp, ADD_VALUES));
-  }
+  tmp = d1 + PETSC_i * d2;
+  _try(MatSetValues(M->M, 1, &ti, 1, &tj, &tmp, ADD_VALUES));
 #else
   PetscInt ti = i, tj = j, tk = k, tl = l;
   if(d1) {
     tmp = d1;
-    if(_isInLocalRange(M, i))
-      _try(MatSetValues(M->M, 1, &ti, 1, &tj, &tmp, ADD_VALUES));
-    if(_isInLocalRange(M, k))
-      _try(MatSetValues(M->M, 1, &tk, 1, &tl, &tmp, ADD_VALUES));
+    _try(MatSetValues(M->M, 1, &ti, 1, &tj, &tmp, ADD_VALUES));
+    _try(MatSetValues(M->M, 1, &tk, 1, &tl, &tmp, ADD_VALUES));
   }
   if(d2) {
-    if(_isInLocalRange(M, i)) {
-      tmp = -d2;
-      _try(MatSetValues(M->M, 1, &ti, 1, &tl, &tmp, ADD_VALUES));
-    }
-    if(_isInLocalRange(M, k)) {
-      tmp = d2;
-      _try(MatSetValues(M->M, 1, &tk, 1, &tj, &tmp, ADD_VALUES));
-    }
+    tmp = -d2;
+    _try(MatSetValues(M->M, 1, &ti, 1, &tl, &tmp, ADD_VALUES));
+    tmp = d2;
+    _try(MatSetValues(M->M, 1, &tk, 1, &tj, &tmp, ADD_VALUES));
   }
 #endif
 }

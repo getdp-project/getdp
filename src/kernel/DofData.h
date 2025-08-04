@@ -147,7 +147,6 @@ struct DofData {
 
   std::vector<int> NonLocalEquations; // equ nums of non-local equations
   std::vector<int> PartitionSplit; // equ num starting each partition
-  std::unordered_multimap<int, int> *ElementRanks; // element x MPI rank(s)
 
   // this should be added to each gMatrix, but the current implementation makes
   // it cumbersome, so it contains the combined non zero pattern for all the

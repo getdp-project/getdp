@@ -26,10 +26,6 @@
 #include "ProParser.h"
 #include "OS.h"
 
-// define this to revert to the old numbering of Dofs, that does not take mesh
-// partitions into account
-//#define OLD_DOF_NUMBERING
-
 #define TWO_PI 6.2831853071795865
 
 extern struct Problem Problem_S;
@@ -107,7 +103,6 @@ void Dof_InitDofData(struct DofData *DofData_P, int Num, int ResolutionIndex,
 
   DofData_P->DummyDof = NULL;
 
-  DofData_P->ElementRanks = new std::unordered_multimap<int, int>();
   DofData_P->SparsityPattern = new std::set<std::pair<int, int>>();
 }
 
@@ -223,7 +218,6 @@ void Dof_FreeDofData(struct DofData *DofData_P)
     }
   }
 
-  delete DofData_P->ElementRanks;
   delete DofData_P->SparsityPattern;
 
   // TODO: handle MH data and CorrectionSolutions
@@ -640,7 +634,6 @@ void Dof_ReadFilePRE(struct DofData *DofData_P)
     }
   } while(String[0] != '$');
 
-#if !defined(OLD_DOF_NUMBERING)
   DofData_P->PartitionSplit.clear();
   DofData_P->PartitionSplit.push_back(0);
   // add last dof num for each partition
@@ -655,7 +648,6 @@ void Dof_ReadFilePRE(struct DofData *DofData_P)
     for(auto p : DofData_P->PartitionSplit) sstream << p << " ";
     Message::Info("Dofs partitioning: %s", sstream.str().c_str());
   }
-#endif
 
   Dof_InitDofType(DofData_P);
 }
@@ -1238,7 +1230,7 @@ void Dof_DefineInitFixedDof(int D1, int D2, int NbrHar, double *Val,
       LinAlg_SetScalar(&Dof.Val2, &Val2[k]);
       // old version: number as we go
       // Dof.Case.Unknown.NumDof = ++(CurrentDofData->NbrDof) ;
-      ++CurrentDofData->NbrDof;
+      ++(CurrentDofData->NbrDof);
       Dof.Case.Unknown.NumDof = -1;
       Dof.Case.Unknown.PartitionOrNonLocal = PartitionOrNonLocal;
       Tree_Add(CurrentDofData->DofTree, &Dof);
@@ -1344,33 +1336,32 @@ void Dof_DefineUnknownDof(int D1, int D2, int NbrHar, int PartitionOrNonLocal)
   }
 }
 
-#if !defined(OLD_DOF_NUMBERING)
-
 // partition/global
-static std::map<int, std::vector<struct Dof *>> UnknownDofs;
+static std::map<int, std::vector<struct Dof *>> UnnumberedUnknownDofs;
 
-static void GetUnknownDofsWithoutNum(void *a, void *b)
+static void GetUnnumberedUnknownDofs(void *a, void *b)
 {
   struct Dof *Dof_P = (struct Dof *)a;
   if((Dof_P->Type == DOF_UNKNOWN || Dof_P->Type == DOF_UNKNOWN_INIT) &&
      Dof_P->Case.Unknown.NumDof == -1) {
-    UnknownDofs[Dof_P->Case.Unknown.PartitionOrNonLocal].push_back(Dof_P);
+    UnnumberedUnknownDofs[Dof_P->Case.Unknown.PartitionOrNonLocal].push_back(Dof_P);
   }
 }
 
 void Dof_NumberUnknownDof(void)
 {
-  UnknownDofs.clear();
+  UnnumberedUnknownDofs.clear();
   if(CurrentDofData->DofTree)
-    Tree_Action(CurrentDofData->DofTree, GetUnknownDofsWithoutNum);
+    Tree_Action(CurrentDofData->DofTree, GetUnnumberedUnknownDofs);
   else
-    List_Action(CurrentDofData->DofList, GetUnknownDofsWithoutNum);
+    List_Action(CurrentDofData->DofList, GetUnnumberedUnknownDofs);
 
   CurrentDofData->PartitionSplit.clear();
   CurrentDofData->PartitionSplit.push_back(0);
+
   // number dofs by partition and keep track of last dof in each partition
   int N = 0;
-  for(auto &p : UnknownDofs) {
+  for(auto &p : UnnumberedUnknownDofs) {
     if(p.first > 0) {
       Message::Debug("Numbering %lu dofs in partition %d", p.second.size(),
                      p.first);
@@ -1382,7 +1373,7 @@ void Dof_NumberUnknownDof(void)
   }
 
   // number remaining (global and non-partitioned) dofs
-  for(auto &p : UnknownDofs) {
+  for(auto &p : UnnumberedUnknownDofs) {
     if(p.first <= 0) {
       Message::Debug("Numbering %lu global or non-partitioned dofs",
                      p.second.size());
@@ -1395,7 +1386,7 @@ void Dof_NumberUnknownDof(void)
   }
 
   CurrentDofData->PartitionSplit.push_back(CurrentDofData->NbrDof);
-  UnknownDofs.clear();
+  UnnumberedUnknownDofs.clear();
 
   if(CurrentDofData->PartitionSplit.size() > 2) {
     std::ostringstream sstream;
@@ -1403,32 +1394,6 @@ void Dof_NumberUnknownDof(void)
     Message::Info("Dofs partitioning: %s", sstream.str().c_str());
   }
 }
-
-#else
-
-static int _N = 0;
-
-static void NumberUnknownDof(void *a, void *b)
-{
-  struct Dof *Dof_P = (struct Dof *)a;
-  if(Dof_P->Type == DOF_UNKNOWN || Dof_P->Type == DOF_UNKNOWN_INIT) {
-    if(Dof_P->Case.Unknown.NumDof == -1)
-      Dof_P->Case.Unknown.NumDof = ++_N;
-    if(Dof_P->Case.Unknown.PartitionOrNonLocal == -1)
-      CurrentDofData->NonLocalEquations.push_back(_N);
-  }
-}
-
-void Dof_NumberUnknownDof(void)
-{
-  _N = 0;
-  if(CurrentDofData->DofTree)
-    Tree_Action(CurrentDofData->DofTree, NumberUnknownDof);
-  else
-    List_Action(CurrentDofData->DofList, NumberUnknownDof);
-}
-
-#endif
 
 /* ------------------------------------------------------------------------ */
 /*  D o f _ D e f i n e A s s o c i a t e D o f                             */
@@ -1584,30 +1549,6 @@ void Dof_AssembleInMat(struct Dof *Equ_P, struct Dof *Dof_P, int NbrHar,
   switch(Equ_P->Type) {
   case DOF_UNKNOWN:
   case DOF_FIXEDWITHASSOCIATE:
-
-    if(Current.TypeAssembly == ASSEMBLY_SPARSITY_PATTERN &&
-       Current.Element->GeoElement &&
-       (int)Current.DofData->PartitionSplit.size() > Message::GetCommSize() + 1) {
-      int ele = Current.Element->GeoElement->Num;
-      int n = Equ_P->Case.Unknown.NumDof - 1;
-      for(int i = 1; i < (int)Current.DofData->PartitionSplit.size(); i++){
-        if(n >= Current.DofData->PartitionSplit[i - 1] &&
-           n < Current.DofData->PartitionSplit[i]) {
-          Current.DofData->ElementRanks->insert({ele, i - 1});
-          break;
-        }
-      }
-      if(NbrHar > 1 && gSCALAR_SIZE == 1) {
-        n = (Equ_P + 1)->Case.Unknown.NumDof - 1;
-        for(int i = 1; i < (int)Current.DofData->PartitionSplit.size(); i++){
-          if(n >= Current.DofData->PartitionSplit[i - 1] &&
-             n < Current.DofData->PartitionSplit[i]) {
-            Current.DofData->ElementRanks->insert({ele, i - 1});
-            break;
-          }
-        }
-      }
-    }
 
     switch(Dof_P->Type) {
     case DOF_UNKNOWN:
@@ -1770,30 +1711,6 @@ void Dof_AssembleInVec(struct Dof *Equ_P, struct Dof *Dof_P, int NbrHar,
   switch(Equ_P->Type) {
   case DOF_UNKNOWN:
   case DOF_FIXEDWITHASSOCIATE:
-
-    if(Current.TypeAssembly == ASSEMBLY_SPARSITY_PATTERN &&
-       Current.Element->GeoElement &&
-       (int)Current.DofData->PartitionSplit.size() > Message::GetCommSize() + 1) {
-      int ele = Current.Element->GeoElement->Num;
-      int n = Equ_P->Case.Unknown.NumDof - 1;
-      for(int i = 1; i < (int)Current.DofData->PartitionSplit.size(); i++){
-        if(n >= Current.DofData->PartitionSplit[i - 1] &&
-           n < Current.DofData->PartitionSplit[i]) {
-          Current.DofData->ElementRanks->insert({ele, i - 1});
-          break;
-        }
-      }
-      if(NbrHar > 1 && gSCALAR_SIZE == 1) {
-        n = (Equ_P + 1)->Case.Unknown.NumDof - 1;
-        for(int i = 1; i < (int)Current.DofData->PartitionSplit.size(); i++){
-          if(n >= Current.DofData->PartitionSplit[i - 1] &&
-             n < Current.DofData->PartitionSplit[i]) {
-            Current.DofData->ElementRanks->insert({ele, i - 1});
-            break;
-          }
-        }
-      }
-    }
 
     switch(Dof_P->Type) {
     case DOF_UNKNOWN:

@@ -293,13 +293,9 @@ void Treatment_FemFormulation(struct Formulation *Formulation_P)
 
   struct Group *GroupIn_P;
 
-  int i, j, Nbr_Element, i_Element, Nbr_EquationTerm, i_EquTerm;
-  int Index_DefineQuantity, TraceGroupIndex_DefineQuantity;
+  int i, j;
 
   List_T *InitialListInIndex_L;
-  int Nbr_Region, i_Region, Num_Region;
-  int i_Region_Dof = 0, Num_Region_Dof = 0, i_Region_Dof_ini = 0;
-  int i_Region_Dof_end = 0, i_Region_Dof_skip = 0;
 
   extern struct Group *Generate_Group;
   extern double **MH_Moving_Matrix;
@@ -314,6 +310,7 @@ void Treatment_FemFormulation(struct Formulation *Formulation_P)
   /*     DefineQuantity                                              */
   /* --------------------------------------------------------------- */
 
+  int Nbr_EquationTerm;
   if(!(Nbr_EquationTerm = List_Nbr(Formulation_P->Equation))) {
     Message::Error("No equation in Formulation '%s'", Formulation_P->Name);
     return;
@@ -367,7 +364,7 @@ void Treatment_FemFormulation(struct Formulation *Formulation_P)
   FemLocalTermActive_L =
     List_Create(Nbr_EquationTerm, 1, sizeof(struct FemLocalTermActive));
 
-  for(i_EquTerm = 0; i_EquTerm < Nbr_EquationTerm; i_EquTerm++) {
+  for(int i_EquTerm = 0; i_EquTerm < Nbr_EquationTerm; i_EquTerm++) {
     List_Add(FemLocalTermActive_L, &FemLocalTermActive_S);
     EquationTerm_P = EquationTerm_P0 + i_EquTerm;
 
@@ -406,25 +403,25 @@ void Treatment_FemFormulation(struct Formulation *Formulation_P)
   /*     Treatment of eventual GALERKIN terms                   */
   /*  --------------------------------------------------------- */
 
-  Nbr_Element = Geo_GetNbrGeoElements();
+  int Nbr_Element = Geo_GetNbrGeoElements();
 
   Message::ResetProgressMeter();
 
   bool partitioned = false;
-  if(Message::GetCommSize() > 1 && Current.DofData->ElementRanks->size() &&
+  int i_Element_start = 0, i_Element_end = Nbr_Element;
+  if(Message::GetCommSize() > 1 && TreatmentStatus == STATUS_CAL &&
      Current.TypeAssembly != ASSEMBLY_SPARSITY_PATTERN) {
     if((int)Current.DofData->PartitionSplit.size() == Message::GetCommSize() + 1 ||
        (int)Current.DofData->PartitionSplit.size() == Message::GetCommSize() + 2) {
       partitioned = true;
     }
     else {
-      Message::Warning("Number of ranks %d not compatible with partition "
-                       "split - reverting to full assembly",
-                       Message::GetCommSize());
+      Message::Error("TODO Number of ranks %d != number of mesh partitions %d",
+                     Message::GetCommSize(), Geo_GetNbrPartitions());
     }
   }
 
-  for(i_Element = 0; i_Element < Nbr_Element; i_Element++) {
+  for(int i_Element = i_Element_start; i_Element < i_Element_end; i_Element++) {
     if(Generate_Group) {
       Element.Region = Geo_GetGeoElement(i_Element)->Region;
       while(
@@ -442,23 +439,15 @@ void Treatment_FemFormulation(struct Formulation *Formulation_P)
     Element.Type = Element.GeoElement->Type;
     Current.Region = Element.Region = Element.GeoElement->Region;
 
-    if(partitioned) {
-      auto range = Current.DofData->ElementRanks->equal_range(Element.Num);
-      bool skip = true;
-      for(auto it = range.first; it != range.second; ++it) {
-        if(it->second == Message::GetCommRank()) {
-          skip = false;
-          break;
-        }
-      }
-      if(skip) continue;
+    if(partitioned && Element.GeoElement->Partition - 1 != Message::GetCommRank()) {
+      continue;
     }
 
     /* ---------------------------- */
     /* 2.1.  Loop on equation terms */
     /* ---------------------------- */
 
-    for(i_EquTerm = 0; i_EquTerm < Nbr_EquationTerm; i_EquTerm++) {
+    for(int i_EquTerm = 0; i_EquTerm < Nbr_EquationTerm; i_EquTerm++) {
       EquationTerm_P = EquationTerm_P0 + i_EquTerm;
 
       if(EquationTerm_P->Type == GALERKIN) {
@@ -501,13 +490,13 @@ void Treatment_FemFormulation(struct Formulation *Formulation_P)
 
           for(i = 0; i < EquationTerm_P->Case.LocalTerm.Term.NbrQuantityIndex;
               i++) {
-            Index_DefineQuantity =
+            int Index_DefineQuantity =
               EquationTerm_P->Case.LocalTerm.Term.QuantityIndexTable[i];
             DefineQuantity_P = DefineQuantity_P0 + Index_DefineQuantity;
             QuantityStorage_P = QuantityStorage_P0 + Index_DefineQuantity;
 
-            TraceGroupIndex_DefineQuantity = EquationTerm_P->Case.LocalTerm.Term
-                                               .QuantityTraceGroupIndexTable[i];
+            int TraceGroupIndex_DefineQuantity = EquationTerm_P->Case.LocalTerm.Term
+              .QuantityTraceGroupIndexTable[i];
 
             /* Only one analysis for each function space, unless we have a Trace
                    (note that a quantity involved in a Trace cannot appear in
@@ -651,7 +640,13 @@ void Treatment_FemFormulation(struct Formulation *Formulation_P)
   /*     Treatment of eventual GLOBAL terms                 */
   /* ------------------------------------------------------ */
 
-  for(i_EquTerm = 0; i_EquTerm < Nbr_EquationTerm; i_EquTerm++) {
+  for(int i_EquTerm = 0; i_EquTerm < Nbr_EquationTerm; i_EquTerm++) {
+
+    if(Message::GetCommSize() > 1 && TreatmentStatus == STATUS_CAL &&
+       Message::GetCommRank() != Message::GetCommSize() - 1) {
+      continue;
+    }
+
     EquationTerm_P = EquationTerm_P0 + i_EquTerm;
 
     if(EquationTerm_P->Type == GLOBALTERM) {
@@ -662,16 +657,18 @@ void Treatment_FemFormulation(struct Formulation *Formulation_P)
                                       EquationTerm_P->Case.GlobalTerm.InIndex))
           ->InitialList;
       List_Sort(InitialListInIndex_L, fcmp_int);
-      Nbr_Region = List_Nbr(InitialListInIndex_L);
+      int Nbr_Region = List_Nbr(InitialListInIndex_L);
 
       /* ---------------------------------------------- */
       /* 3.1.  Loop on Regions belonging to the support */
       /* ---------------------------------------------- */
 
-      for(i_Region = 0; i_Region < Nbr_Region; i_Region++) {
+      for(int i_Region = 0; i_Region < Nbr_Region; i_Region++) {
+        int Num_Region;
         List_Read(InitialListInIndex_L, i_Region, &Num_Region);
         Current.Region = Num_Region;
 
+        int i_Region_Dof_ini = 0, i_Region_Dof_end = 0, i_Region_Dof_skip = 0;
         switch(EquationTerm_P->Case.GlobalTerm.SubType) {
         case EQ_ST_SELF:
           i_Region_Dof_ini = i_Region;
@@ -691,9 +688,10 @@ void Treatment_FemFormulation(struct Formulation *Formulation_P)
         }
 
         // Possible mutual terms (need of double-piece-wise Function fct[r1,r2])
-        for(i_Region_Dof = i_Region_Dof_ini; i_Region_Dof < i_Region_Dof_end;
+        for(int i_Region_Dof = i_Region_Dof_ini; i_Region_Dof < i_Region_Dof_end;
             i_Region_Dof++) {
           if(i_Region_Dof != i_Region_Dof_skip) {
+            int Num_Region_Dof;
             List_Read(InitialListInIndex_L, i_Region_Dof, &Num_Region_Dof);
             Current.SubRegion =
               Num_Region_Dof; // used in double-piece-wise Function
@@ -708,7 +706,7 @@ void Treatment_FemFormulation(struct Formulation *Formulation_P)
             for(i = 0;
                 i < EquationTerm_P->Case.GlobalTerm.Term.NbrQuantityIndex;
                 i++) {
-              Index_DefineQuantity =
+              int Index_DefineQuantity =
                 EquationTerm_P->Case.GlobalTerm.Term.QuantityIndexTable[i];
               DefineQuantity_P = DefineQuantity_P0 + Index_DefineQuantity;
               QuantityStorage_P = QuantityStorage_P0 + Index_DefineQuantity;
@@ -804,7 +802,13 @@ void Treatment_FemFormulation(struct Formulation *Formulation_P)
   /*     Treatment of eventual GLOBAL EQUATION terms           */
   /* --------------------------------------------------------- */
 
-  for(i_EquTerm = 0; i_EquTerm < Nbr_EquationTerm; i_EquTerm++) {
+  for(int i_EquTerm = 0; i_EquTerm < Nbr_EquationTerm; i_EquTerm++) {
+
+    if(Message::GetCommSize() > 1 && TreatmentStatus == STATUS_CAL &&
+       Message::GetCommRank() != Message::GetCommSize() - 1) {
+      continue;
+    }
+
     EquationTerm_P = EquationTerm_P0 + i_EquTerm;
 
     if(EquationTerm_P->Type == GLOBALEQUATION) {

@@ -37,6 +37,8 @@ struct GeoData {
   double *H, *P;
 
   List_T *PeriodicNodes;
+
+  int NbrPartitions;
 };
 
 int Geo_AddGeoData(List_T *GeoData_L, char *Name_MshFile,
@@ -72,6 +74,8 @@ void Geo_SetNodesCoordinates(int Nbr_Node, int *Num_Node, double *x, double *y,
 void Geo_SetNodesCoordinatesX(int Nbr_Node, int *Num_Node, double *x);
 void Geo_SetNodesCoordinatesY(int Nbr_Node, int *Num_Node, double *y);
 void Geo_SetNodesCoordinatesZ(int Nbr_Node, int *Num_Node, double *z);
+
+int Geo_GetNbrPartitions(void);
 
 double *Geo_GetNodes_uvw(int Type, int *nbn);
 double *Geo_GetBarycenter_uvw(int Type);
