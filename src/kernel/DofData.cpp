@@ -1586,14 +1586,15 @@ void Dof_AssembleInMat(struct Dof *Equ_P, struct Dof *Dof_P, int NbrHar,
   case DOF_FIXEDWITHASSOCIATE:
 
     if(Current.TypeAssembly == ASSEMBLY_SPARSITY_PATTERN &&
-       Current.Element->GeoElement &&
-       (int)Current.DofData->PartitionSplit.size() > Message::GetCommSize() + 1) {
+       Message::GetCommSize() > 1 && Current.Element->GeoElement &&
+       (int)Current.DofData->PartitionSplit.size() > Message::GetCommSize()) {
       int ele = Current.Element->GeoElement->Num;
       int n = Equ_P->Case.Unknown.NumDof - 1;
       for(int i = 1; i < (int)Current.DofData->PartitionSplit.size(); i++){
         if(n >= Current.DofData->PartitionSplit[i - 1] &&
            n < Current.DofData->PartitionSplit[i]) {
-          Current.DofData->ElementRanks->insert({ele, i - 1});
+          int rank = std::min(i - 1, Message::GetCommSize() - 1);
+          Current.DofData->ElementRanks->insert({ele, rank});
           break;
         }
       }
@@ -1602,7 +1603,8 @@ void Dof_AssembleInMat(struct Dof *Equ_P, struct Dof *Dof_P, int NbrHar,
         for(int i = 1; i < (int)Current.DofData->PartitionSplit.size(); i++){
           if(n >= Current.DofData->PartitionSplit[i - 1] &&
              n < Current.DofData->PartitionSplit[i]) {
-            Current.DofData->ElementRanks->insert({ele, i - 1});
+            int rank = std::min(i - 1, Message::GetCommSize() - 1);
+            Current.DofData->ElementRanks->insert({ele, rank});
             break;
           }
         }
@@ -1772,14 +1774,15 @@ void Dof_AssembleInVec(struct Dof *Equ_P, struct Dof *Dof_P, int NbrHar,
   case DOF_FIXEDWITHASSOCIATE:
 
     if(Current.TypeAssembly == ASSEMBLY_SPARSITY_PATTERN &&
-       Current.Element->GeoElement &&
-       (int)Current.DofData->PartitionSplit.size() > Message::GetCommSize() + 1) {
+       Message::GetCommSize() > 1 && Current.Element->GeoElement &&
+       (int)Current.DofData->PartitionSplit.size() > Message::GetCommSize()) {
       int ele = Current.Element->GeoElement->Num;
       int n = Equ_P->Case.Unknown.NumDof - 1;
       for(int i = 1; i < (int)Current.DofData->PartitionSplit.size(); i++){
         if(n >= Current.DofData->PartitionSplit[i - 1] &&
            n < Current.DofData->PartitionSplit[i]) {
-          Current.DofData->ElementRanks->insert({ele, i - 1});
+          int rank = std::min(i - 1, Message::GetCommSize() - 1);
+          Current.DofData->ElementRanks->insert({ele, rank});
           break;
         }
       }
@@ -1788,7 +1791,8 @@ void Dof_AssembleInVec(struct Dof *Equ_P, struct Dof *Dof_P, int NbrHar,
         for(int i = 1; i < (int)Current.DofData->PartitionSplit.size(); i++){
           if(n >= Current.DofData->PartitionSplit[i - 1] &&
              n < Current.DofData->PartitionSplit[i]) {
-            Current.DofData->ElementRanks->insert({ele, i - 1});
+            int rank = std::min(i - 1, Message::GetCommSize() - 1);
+            Current.DofData->ElementRanks->insert({ele, rank});
             break;
           }
         }
