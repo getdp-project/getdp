@@ -466,6 +466,7 @@ void Generate_System(struct DefineSystem *DefineSystem_P,
       ZeroMatrix(&Current.DofData->Jac, &Current.DofData->Solver,
                  Current.DofData->NbrDof);
     // cleanup vectors
+    LinAlg_AssembleVector(&Current.DofData->b);
     LinAlg_ZeroVector(&Current.DofData->b);
     Current.TypeAssembly = old;
   }
