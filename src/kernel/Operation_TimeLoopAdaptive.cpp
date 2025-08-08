@@ -10,6 +10,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include <limits>
 #include "GetDPConfig.h"
 #include "ProData.h"
 #include "DofData.h"
@@ -435,9 +436,12 @@ double CalcMaxLTEratio(Resolution *Resolution_P, DofData *DofData_P0,
     DofData_P = DofData_P0 + TLAsystem.SystemIndex;
 
     NbrSolutions = List_Nbr(DofData_P->Solutions);
-    if(NbrSolutions < Order + 1)
-      Message::Error("Too few past solutions for system %s",
+    if(NbrSolutions < Order + 1) {
+      MaxErrorRatio = std::numeric_limits<double>::quiet_NaN();
+      Message::Info("Too few past solutions for system %s, forcing divergence",
                      DefineSystem_P->Name);
+      break;
+    }
 
     xPredictor_P = (gVector *)List_Pointer(xPredicted_L, i);
     xCorrector_P =
