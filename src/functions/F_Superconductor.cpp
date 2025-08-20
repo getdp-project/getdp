@@ -184,3 +184,31 @@ void F_LambdaCurrentSharingHom(F_ARG) {
  V->Val[0] = output;
  V->Type   = SCALAR;
 }
+
+
+// returns scalar quantity: (u - u0)/(u1 - u0)^m, useful for foil winding polynomial basis functions
+// if coord_type = 0: the normal to stack of tapes is along x -> x is the curvilinear variable u
+void F_FoilWindingPolynomialBF(F_ARG) {
+    double u0 = (double) Fct->Para[0];
+    double u1 = (double) Fct->Para[1];
+    int m = (int) Fct->Para[2];
+    int coord_type = (int) Fct->Para[3]; // 0:x, 1:y, 2:z
+
+    double u;
+    switch(coord_type) {
+        case 0:
+            u = Current.x;
+            break;
+        case 1:
+            u = Current.y;
+            break;
+        case 2:
+            u = Current.z;
+            break;
+    }
+
+    double res = pow((u - u0)/(u1 - u0), m);
+
+    V->Val[0] = res;
+    V->Type   = SCALAR;
+}
