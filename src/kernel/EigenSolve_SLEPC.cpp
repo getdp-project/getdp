@@ -161,8 +161,8 @@ static void _storeEigenVectors(struct DofData *DofData_P, PetscInt nconv, EPS ep
   Message::Info("               %-24s%-24s%-12s", "Re", "Im", "Relative error");
   bool newsol = false;
   for(int i = 0; i < nconv; i++) {
-    PetscScalar kr, ki;
-    PetscReal error;
+    PetscScalar kr = 0., ki = 0.;
+    PetscReal error = 0.;
     if(eps) {
       _try(EPSGetEigenpair(eps, i, &kr, &ki, xr, xi));
 #if(PETSC_VERSION_MAJOR == 3) && (PETSC_VERSION_MINOR < 6)

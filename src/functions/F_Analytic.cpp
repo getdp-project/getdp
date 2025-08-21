@@ -3149,9 +3149,9 @@ void F_CurlDyadGreenHom(F_ARG)
 
   Gsca = std::exp(-1. * siwt * I * kb * normrr_p) / (4. * M_PI * normrr_p);
 
-  dx_Gsca = (I * kb - 1 / normrr_p) * Gsca * (x - x_p);
-  dy_Gsca = (I * kb - 1 / normrr_p) * Gsca * (y - y_p);
-  dz_Gsca = (I * kb - 1 / normrr_p) * Gsca * (z - z_p);
+  dx_Gsca = (I * kb - 1 / normrr_p) * Gsca * (x - x_p) / normrr_p;
+  dy_Gsca = (I * kb - 1 / normrr_p) * Gsca * (y - y_p) / normrr_p;
+  dz_Gsca = (I * kb - 1 / normrr_p) * Gsca * (z - z_p) / normrr_p;
 
   curlG_xx = 0.;
   curlG_xy = -dz_Gsca;

@@ -486,6 +486,8 @@ void F_drhodj_times_j_PowerLaw(F_ARG);
 void F_dedj_PowerLaw(F_ARG);
 void F_drhodj_times_j_PowerLaw_TS_2D(F_ARG);
 void F_LambdaCurrentSharingHom(F_ARG);
+void F_AnisotropicResistivityTensorPowerLaw(F_ARG);
+void F_AnisotropicDEDJTensorPowerLaw(F_ARG);
 void F_FoilWindingPolynomialBF(F_ARG);
 
 #endif

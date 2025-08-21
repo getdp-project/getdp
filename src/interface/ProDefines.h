@@ -1457,6 +1457,8 @@ struct StringXFunction2Nbr F_Function[] =
    {"DEDJPowerLaw", (CAST)F_dedj_PowerLaw, 1, 3},
    {"DRhoDJTimesJPowerLawTS2D", (CAST)F_drhodj_times_j_PowerLaw_TS_2D, 1, 3},
    {"Lambda_CurrentSharingHom", (CAST)F_LambdaCurrentSharingHom, 5, 4},
+   {"AnisotropicRhoPL", (CAST)F_AnisotropicResistivityTensorPowerLaw, 1, 5},
+   {"AnisotropicDEDJTensorPL", (CAST)F_AnisotropicDEDJTensorPowerLaw, 1, 5},
    {"FoilWindingPolynomialBF", (CAST)F_FoilWindingPolynomialBF, 4, 0},
 
    // GF_XXX : Green Functions
