@@ -98,6 +98,24 @@ void F_dedj_PowerLaw(F_ARG) {
     V->Type = TENSOR_SYM;
 }
 
+// for thin shell 2D
+void F_drhodj_times_j_PowerLaw_TS_2D(F_ARG) {
+    double jNorm = (double) (A)->Val[0];
+    double Jcrit = (double) (A + 1)->Val[0];
+    double n = (double) (A + 2)->Val[0];
+
+    double Ecrit = (double) Fct->Para[0];
+
+    double res;
+    if (jNorm>1e-10) {
+        res = Ecrit/pow(Jcrit, 3) * (n - 1) * pow(MIN(1E99, jNorm)/Jcrit, n - 3) * jNorm * jNorm;
+    } else{
+        res = 0.;
+    }
+    V->Val[0] = res;
+    V->Type = SCALAR;
+}
+
 /* ------------------------------------------------------------------------ */
 /*  Current-sharing Homogenization factor 
     paper: L. Bortot et al. https://doi.org/10.1109/TASC.2020.2969476
@@ -194,7 +212,7 @@ void F_FoilWindingPolynomialBF(F_ARG) {
     int m = (int) Fct->Para[2];
     int coord_type = (int) Fct->Para[3]; // 0:x, 1:y, 2:z
 
-    double u;
+    double u = 0;
     switch(coord_type) {
         case 0:
             u = Current.x;
@@ -205,6 +223,10 @@ void F_FoilWindingPolynomialBF(F_ARG) {
         case 2:
             u = Current.z;
             break;
+    }
+
+    if(coord_type != 0 && coord_type != 1 && coord_type != 2) {
+        Message::Error("FoilWindingPolynomialBF: Wrong coordinate type! Should be 0, 1, 2.");
     }
 
     double res = pow((u - u0)/(u1 - u0), m);

@@ -4,7 +4,7 @@ improve performance of distributed (MPI) assembly; improved support for
 high-order meshes; new resolution operation (ReadTable); new current variable
 ($KSPConvergedReason), new integration type (Collocation); new built-in
 functions (GetRank, ValueFromMap, ValueFromFile, RhoPowerLaw,
-DRhoDJTimesJPowerLaw, DEDJPowerLaw, Lambda_CurrentSharingHom,
+DRhoDJTimesJPowerLaw, DEDJPowerLaw, DRhoDJTimesJPowerLawTS2D, Lambda_CurrentSharingHom,
 FoilWindingPolynomialBF); bug fixes (SaveMesh, adaptive time stepping with MPI,
 duplicate values in ONELAB parameter choices).
 

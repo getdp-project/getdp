@@ -1455,6 +1455,7 @@ struct StringXFunction2Nbr F_Function[] =
    {"RhoPowerLaw", (CAST)F_ResistivityPowerLaw, 1, 3},
    {"DRhoDJTimesJPowerLaw", (CAST)F_drhodj_times_j_PowerLaw, 1, 3},
    {"DEDJPowerLaw", (CAST)F_dedj_PowerLaw, 1, 3},
+   {"DRhoDJTimesJPowerLawTS2D", (CAST)F_drhodj_times_j_PowerLaw_TS_2D, 1, 3},
    {"Lambda_CurrentSharingHom", (CAST)F_LambdaCurrentSharingHom, 5, 4},
    {"FoilWindingPolynomialBF", (CAST)F_FoilWindingPolynomialBF, 4, 0},
 
