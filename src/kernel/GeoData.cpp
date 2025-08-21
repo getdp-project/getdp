@@ -504,6 +504,8 @@ static void Geo_ReadFileWithGmsh(struct GeoData *GeoData_P)
   Geo_Element.NbrEdges = Geo_Element.NbrFacets = 0;
   Geo_Element.NumEdges = Geo_Element.NumFacets = NULL;
 
+  GeoData_P->NbrPartitions = gmsh::model::getNumberOfPartitions();
+
   gmsh::vectorpair dimTags;
   gmsh::model::getEntities(dimTags, -1);
   for(unsigned int entity = 0; entity < dimTags.size(); entity++) {
@@ -515,8 +517,9 @@ static void Geo_ReadFileWithGmsh(struct GeoData *GeoData_P)
       dimTags[entity].first, dimTags[entity].second, physicalsTags);
 
     std::vector<int> partitions;
-    gmsh::model::getPartitions(
-      dimTags[entity].first, dimTags[entity].second, partitions);
+    if(GeoData_P->NbrPartitions > 1)
+      gmsh::model::getPartitions(dimTags[entity].first, dimTags[entity].second,
+                                 partitions);
 
     for(unsigned int phys = 0; phys < physicalsTags.size(); phys++) {
       for(unsigned int i = 0; i < elementTypes.size(); i++) {
@@ -1030,6 +1033,8 @@ void Geo_ReadFile(struct GeoData *GeoData_P)
 
   } /* while 1 ... */
 
+  GeoData_P->NbrPartitions = 1;
+
   Geo_SnapNodes(GeoData_P);
 }
 
@@ -1091,6 +1096,12 @@ void Geo_ReadFileAdapt(struct GeoData *GeoData_P)
 
   Message::Info("Maximum interpolation order = %g", Flag_ORDER);
 }
+
+/* ------------------------------------------------------------------------ */
+/*  G e o _ G e t N b r P a r t i t i o n s                                 */
+/* ------------------------------------------------------------------------ */
+
+int Geo_GetNbrPartitions(void) { return CurrentGeoData->NbrPartitions; }
 
 /* ------------------------------------------------------------------------ */
 /*  f c m p _ E l m   &   f c m p _ N o d                                   */

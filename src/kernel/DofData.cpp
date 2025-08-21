@@ -1238,7 +1238,7 @@ void Dof_DefineInitFixedDof(int D1, int D2, int NbrHar, double *Val,
       LinAlg_SetScalar(&Dof.Val2, &Val2[k]);
       // old version: number as we go
       // Dof.Case.Unknown.NumDof = ++(CurrentDofData->NbrDof) ;
-      ++CurrentDofData->NbrDof;
+      ++(CurrentDofData->NbrDof);
       Dof.Case.Unknown.NumDof = -1;
       Dof.Case.Unknown.PartitionOrNonLocal = PartitionOrNonLocal;
       Tree_Add(CurrentDofData->DofTree, &Dof);
@@ -1347,30 +1347,30 @@ void Dof_DefineUnknownDof(int D1, int D2, int NbrHar, int PartitionOrNonLocal)
 #if !defined(OLD_DOF_NUMBERING)
 
 // partition/global
-static std::map<int, std::vector<struct Dof *>> UnknownDofs;
+static std::map<int, std::vector<struct Dof *>> UnnumberedUnknownDofs;
 
-static void GetUnknownDofsWithoutNum(void *a, void *b)
+static void GetUnnumberedUnknownDofs(void *a, void *b)
 {
   struct Dof *Dof_P = (struct Dof *)a;
   if((Dof_P->Type == DOF_UNKNOWN || Dof_P->Type == DOF_UNKNOWN_INIT) &&
      Dof_P->Case.Unknown.NumDof == -1) {
-    UnknownDofs[Dof_P->Case.Unknown.PartitionOrNonLocal].push_back(Dof_P);
+    UnnumberedUnknownDofs[Dof_P->Case.Unknown.PartitionOrNonLocal].push_back(Dof_P);
   }
 }
 
 void Dof_NumberUnknownDof(void)
 {
-  UnknownDofs.clear();
+  UnnumberedUnknownDofs.clear();
   if(CurrentDofData->DofTree)
-    Tree_Action(CurrentDofData->DofTree, GetUnknownDofsWithoutNum);
+    Tree_Action(CurrentDofData->DofTree, GetUnnumberedUnknownDofs);
   else
-    List_Action(CurrentDofData->DofList, GetUnknownDofsWithoutNum);
+    List_Action(CurrentDofData->DofList, GetUnnumberedUnknownDofs);
 
   CurrentDofData->PartitionSplit.clear();
   CurrentDofData->PartitionSplit.push_back(0);
   // number dofs by partition and keep track of last dof in each partition
   int N = 0;
-  for(auto &p : UnknownDofs) {
+  for(auto &p : UnnumberedUnknownDofs) {
     if(p.first > 0) {
       Message::Debug("Numbering %lu dofs in partition %d", p.second.size(),
                      p.first);
@@ -1382,7 +1382,7 @@ void Dof_NumberUnknownDof(void)
   }
 
   // number remaining (global and non-partitioned) dofs
-  for(auto &p : UnknownDofs) {
+  for(auto &p : UnnumberedUnknownDofs) {
     if(p.first <= 0) {
       Message::Debug("Numbering %lu global or non-partitioned dofs",
                      p.second.size());
@@ -1395,7 +1395,7 @@ void Dof_NumberUnknownDof(void)
   }
 
   CurrentDofData->PartitionSplit.push_back(CurrentDofData->NbrDof);
-  UnknownDofs.clear();
+  UnnumberedUnknownDofs.clear();
 
   if(CurrentDofData->PartitionSplit.size() > 2) {
     std::ostringstream sstream;
@@ -1408,7 +1408,7 @@ void Dof_NumberUnknownDof(void)
 
 static int _N = 0;
 
-static void NumberUnknownDof(void *a, void *b)
+static void NumberUnnumberedUnknownDof(void *a, void *b)
 {
   struct Dof *Dof_P = (struct Dof *)a;
   if(Dof_P->Type == DOF_UNKNOWN || Dof_P->Type == DOF_UNKNOWN_INIT) {
@@ -1423,9 +1423,9 @@ void Dof_NumberUnknownDof(void)
 {
   _N = 0;
   if(CurrentDofData->DofTree)
-    Tree_Action(CurrentDofData->DofTree, NumberUnknownDof);
+    Tree_Action(CurrentDofData->DofTree, NumberUnnumberedUnknownDof);
   else
-    List_Action(CurrentDofData->DofList, NumberUnknownDof);
+    List_Action(CurrentDofData->DofList, NumberUnnumberedUnknownDof);
 }
 
 #endif

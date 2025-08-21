@@ -31,16 +31,13 @@ struct Dof *Cal_FemGlobalEquation2(int Index_DefineQuantity, int Num_Region,
                                    struct DefineQuantity *DefineQuantity_P0,
                                    struct QuantityStorage *QuantityStorage_P0)
 {
-  struct DefineQuantity *DefineQuantity_P;
-  struct QuantityStorage *QuantityStorage_P;
-  struct GlobalQuantity *GlobalQuantity_P;
-  struct QuantityStorage QuaSto_S;
-
-  DefineQuantity_P = DefineQuantity_P0 + Index_DefineQuantity;
-  QuantityStorage_P = QuantityStorage_P0 + Index_DefineQuantity;
-  GlobalQuantity_P = (struct GlobalQuantity *)List_Pointer(
+  struct DefineQuantity *DefineQuantity_P = DefineQuantity_P0 + Index_DefineQuantity;
+  struct QuantityStorage *QuantityStorage_P = QuantityStorage_P0 + Index_DefineQuantity;
+  struct GlobalQuantity *GlobalQuantity_P = (struct GlobalQuantity *)List_Pointer(
     QuantityStorage_P->FunctionSpace->GlobalQuantity,
     *(int *)List_Pointer(DefineQuantity_P->IndexInFunctionSpace, 0));
+
+  struct QuantityStorage QuaSto_S;
   Get_DofOfRegion(Num_Region, GlobalQuantity_P,
                   QuantityStorage_P->FunctionSpace, &QuaSto_S);
 
@@ -58,46 +55,30 @@ void Cal_FemGlobalEquation(struct EquationTerm *EquationTerm_P,
                            struct DefineQuantity *DefineQuantity_P0,
                            struct QuantityStorage *QuantityStorage_P0)
 {
-  int Nbr_GlobalEquationTerm, i_GlobalEquationTerm;
-
-  struct Constraint *Constraint_P;
-  struct GlobalEquationTerm *GlobalEquationTerm_P;
-
-  int Nbr_EquAndDof;
-
-  List_T *InitialListInIndex_L, *RegionIndex_L;
-  int Nbr_Region, i_Region, Num_Region, k;
-
-  int Nbr_MCPR, i_MCPR, Nbr_CPR, i_CPR, i_Node, i_Loop, j_Branch, Num_Equ;
-  struct MultiConstraintPerRegion *MCPR_P;
-  struct ConstraintPerRegion *CPR_P;
-  struct Group *Group_P;
   double Val[NBR_MAX_HARMONIC];
 
   struct DofGlobal {
     int NumRegion;
     struct Dof *Dof;
   };
-  List_T *DofGlobal_Equ_L, *DofGlobal_DofNode_L, *DofGlobal_DofLoop_L;
-  struct DofGlobal *DofGlobal_Equ, *DofGlobal_DofNode, *DofGlobal_DofLoop;
-  struct DofGlobal DofGlobal_S, *DofGlobal_P;
 
   /* Liste des Regions auxquelles on associe des Equations de Type 'Network' */
 
-  RegionIndex_L = List_Create(50, 50, sizeof(int));
+  List_T *RegionIndex_L = List_Create(50, 50, sizeof(int));
 
-  Constraint_P = (struct Constraint *)List_Pointer(
+  struct Constraint *Constraint_P = (struct Constraint *)List_Pointer(
     Problem_S.Constraint, EquationTerm_P->Case.GlobalEquation.ConstraintIndex);
-  Nbr_MCPR = List_Nbr(Constraint_P->MultiConstraintPerRegion);
-  for(i_MCPR = 0; i_MCPR < Nbr_MCPR; i_MCPR++) {
-    MCPR_P = (struct MultiConstraintPerRegion *)List_Pointer(
-      Constraint_P->MultiConstraintPerRegion, i_MCPR);
-    Nbr_CPR = List_Nbr(MCPR_P->ConstraintPerRegion);
-    for(i_CPR = 0; i_CPR < Nbr_CPR; i_CPR++) {
-      CPR_P = (struct ConstraintPerRegion *)List_Pointer(
-        MCPR_P->ConstraintPerRegion, i_CPR);
-      Group_P =
-        (struct Group *)List_Pointer(Problem_S.Group, CPR_P->RegionIndex);
+  int Nbr_MCPR = List_Nbr(Constraint_P->MultiConstraintPerRegion);
+  for(int i_MCPR = 0; i_MCPR < Nbr_MCPR; i_MCPR++) {
+    struct MultiConstraintPerRegion *MCPR_P = (struct MultiConstraintPerRegion *)
+      List_Pointer(Constraint_P->MultiConstraintPerRegion, i_MCPR);
+    int Nbr_CPR = List_Nbr(MCPR_P->ConstraintPerRegion);
+    for(int i_CPR = 0; i_CPR < Nbr_CPR; i_CPR++) {
+      struct ConstraintPerRegion *CPR_P = (struct ConstraintPerRegion *)
+        List_Pointer(MCPR_P->ConstraintPerRegion, i_CPR);
+      struct Group *Group_P = (struct Group *)
+        List_Pointer(Problem_S.Group, CPR_P->RegionIndex);
+      int Num_Region;
       List_Read(Group_P->InitialList, 0, &Num_Region);
       if(!List_Search(RegionIndex_L, &Num_Region, fcmp_int))
         List_Add(RegionIndex_L, &Num_Region);
@@ -109,31 +90,33 @@ void Cal_FemGlobalEquation(struct EquationTerm *EquationTerm_P,
       }
     }
   }
-  Nbr_EquAndDof = List_Nbr(RegionIndex_L);
+  int Nbr_EquAndDof = List_Nbr(RegionIndex_L);
   if(!Nbr_EquAndDof) { return; }
 
-  DofGlobal_Equ_L = List_Create(Nbr_EquAndDof, 1, sizeof(struct DofGlobal));
-  DofGlobal_DofNode_L = List_Create(Nbr_EquAndDof, 1, sizeof(struct DofGlobal));
-  DofGlobal_DofLoop_L = List_Create(Nbr_EquAndDof, 1, sizeof(struct DofGlobal));
+  List_T *DofGlobal_Equ_L = List_Create(Nbr_EquAndDof, 1, sizeof(struct DofGlobal));
+  List_T *DofGlobal_DofNode_L = List_Create(Nbr_EquAndDof, 1, sizeof(struct DofGlobal));
+  List_T *DofGlobal_DofLoop_L = List_Create(Nbr_EquAndDof, 1, sizeof(struct DofGlobal));
 
   /* Construction des listes de Dof globaux pour Equ, DofNode, DofLoop */
 
-  Nbr_GlobalEquationTerm =
+  int Nbr_GlobalEquationTerm =
     List_Nbr(EquationTerm_P->Case.GlobalEquation.GlobalEquationTerm);
-  for(i_GlobalEquationTerm = 0; i_GlobalEquationTerm < Nbr_GlobalEquationTerm;
+  for(int i_GlobalEquationTerm = 0; i_GlobalEquationTerm < Nbr_GlobalEquationTerm;
       i_GlobalEquationTerm++) {
-    GlobalEquationTerm_P = (struct GlobalEquationTerm *)List_Pointer(
-      EquationTerm_P->Case.GlobalEquation.GlobalEquationTerm,
-      i_GlobalEquationTerm);
-    InitialListInIndex_L = ((struct Group *)List_Pointer(
-                              Problem_S.Group, GlobalEquationTerm_P->InIndex))
-                             ->InitialList;
-    Nbr_Region = List_Nbr(InitialListInIndex_L);
+    struct GlobalEquationTerm *GlobalEquationTerm_P =
+      (struct GlobalEquationTerm *)List_Pointer
+      (EquationTerm_P->Case.GlobalEquation.GlobalEquationTerm, i_GlobalEquationTerm);
+    List_T *InitialListInIndex_L =
+      ((struct Group *)List_Pointer(Problem_S.Group, GlobalEquationTerm_P->InIndex))
+      ->InitialList;
+    int Nbr_Region = List_Nbr(InitialListInIndex_L);
     List_Sort(InitialListInIndex_L, fcmp_int);
 
-    for(i_Region = 0; i_Region < Nbr_Region; i_Region++) {
+    for(int i_Region = 0; i_Region < Nbr_Region; i_Region++) {
+      int Num_Region;
       List_Read(InitialListInIndex_L, i_Region, &Num_Region);
       if(List_Search(RegionIndex_L, &Num_Region, fcmp_int)) {
+        struct DofGlobal DofGlobal_S;
         DofGlobal_S.NumRegion = Num_Region;
         DofGlobal_S.Dof = Cal_FemGlobalEquation2(
           GlobalEquationTerm_P->DefineQuantityIndexEqu, Num_Region,
@@ -158,11 +141,10 @@ void Cal_FemGlobalEquation(struct EquationTerm *EquationTerm_P,
     return;
   }
 
-  DofGlobal_Equ = (struct DofGlobal *)List_Pointer(DofGlobal_Equ_L, 0);
-  DofGlobal_DofNode = (struct DofGlobal *)List_Pointer(DofGlobal_DofNode_L, 0);
-  DofGlobal_DofLoop = (struct DofGlobal *)List_Pointer(DofGlobal_DofLoop_L, 0);
-
-  for(k = 0; k < List_Nbr(DofGlobal_Equ_L); k++) {
+  struct DofGlobal *DofGlobal_Equ = (struct DofGlobal *)List_Pointer(DofGlobal_Equ_L, 0);
+  struct DofGlobal *DofGlobal_DofNode = (struct DofGlobal *)List_Pointer(DofGlobal_DofNode_L, 0);
+  struct DofGlobal *DofGlobal_DofLoop = (struct DofGlobal *)List_Pointer(DofGlobal_DofLoop_L, 0);
+  for(int k = 0; k < List_Nbr(DofGlobal_Equ_L); k++) {
     if(DofGlobal_Equ[k].Dof->Type == DOF_FIXED ||
        DofGlobal_Equ[k].Dof->Type == DOF_LINK) {
       if(DofGlobal_Equ[k].Dof == DofGlobal_DofNode[k].Dof)
@@ -174,45 +156,47 @@ void Cal_FemGlobalEquation(struct EquationTerm *EquationTerm_P,
 
   /* Construction des equations (assemblage) */
 
-  Num_Equ = 0;
+  int Num_Equ = 0;
 
   Nbr_MCPR = List_Nbr(Constraint_P->MultiConstraintPerRegion);
-  for(i_MCPR = 0; i_MCPR < Nbr_MCPR; i_MCPR++) {
-    MCPR_P = (struct MultiConstraintPerRegion *)List_Pointer(
-      Constraint_P->MultiConstraintPerRegion, i_MCPR);
+  for(int i_MCPR = 0; i_MCPR < Nbr_MCPR; i_MCPR++) {
+    struct MultiConstraintPerRegion *MCPR_P = (struct MultiConstraintPerRegion *)
+      List_Pointer(Constraint_P->MultiConstraintPerRegion, i_MCPR);
 
     if(!MCPR_P->Active)
       MCPR_P->Active =
         Generate_Network(MCPR_P->Name, MCPR_P->ConstraintPerRegion);
 
-    for(i_Node = 0; i_Node < MCPR_P->Active->Case.Network.NbrNode; i_Node++) {
-      for(j_Branch = 0; j_Branch < MCPR_P->Active->Case.Network.NbrBranch;
+    for(int i_Node = 0; i_Node < MCPR_P->Active->Case.Network.NbrNode; i_Node++) {
+      for(int j_Branch = 0; j_Branch < MCPR_P->Active->Case.Network.NbrBranch;
           j_Branch++) {
         if(MCPR_P->Active->Case.Network.MatNode[i_Node][j_Branch]) {
-          Group_P = (struct Group *)List_Pointer(
-            Problem_S.Group, ((struct ConstraintPerRegion *)List_Pointer(
-                                MCPR_P->ConstraintPerRegion, j_Branch))
-                               ->RegionIndex);
+          struct Group *Group_P = (struct Group *)List_Pointer(Problem_S.Group,
+                         ((struct ConstraintPerRegion *)
+                          List_Pointer(MCPR_P->ConstraintPerRegion, j_Branch))
+                         ->RegionIndex);
+          int Num_Region;
           List_Read(Group_P->InitialList, 0, &Num_Region);
 
-          DofGlobal_P = (struct DofGlobal *)List_PQuery(DofGlobal_DofNode_L,
-                                                        &Num_Region, fcmp_int);
+          struct DofGlobal *DofGlobal_P = (struct DofGlobal *)
+            List_PQuery(DofGlobal_DofNode_L, &Num_Region, fcmp_int);
 
           Val[0] =
             (double)(MCPR_P->Active->Case.Network.MatNode[i_Node][j_Branch]);
           if(Current.NbrHar > 1) {
             Val[1] = 0.;
-            for(k = 2; k < std::min(NBR_MAX_HARMONIC, Current.NbrHar); k += 2) {
+            for(int k = 2; k < std::min(NBR_MAX_HARMONIC, Current.NbrHar); k += 2) {
               Val[k] = Val[0];
               Val[k + 1] = 0.;
             }
           }
           /*
           Message::Info("Node: eq.(%d) [%d, %d], dof [%d, %d] : %.16g\n",
-              Num_Equ,
-              DofGlobal_Equ[Num_Equ].Dof->NumType,
-          DofGlobal_Equ[Num_Equ].Dof->Entity, DofGlobal_P->Dof->NumType,
-          DofGlobal_P->Dof->Entity, Val[0] ) ;
+                        Num_Equ,
+                        DofGlobal_Equ[Num_Equ].Dof->NumType,
+                        DofGlobal_Equ[Num_Equ].Dof->Entity,
+                        DofGlobal_P->Dof->NumType,
+                        DofGlobal_P->Dof->Entity, Val[0] ) ;
           */
           Cal_AssembleTerm_NeverDt(DofGlobal_Equ[Num_Equ].Dof, DofGlobal_P->Dof,
                                    Val);
@@ -222,35 +206,37 @@ void Cal_FemGlobalEquation(struct EquationTerm *EquationTerm_P,
       Num_Equ++;
     } /* for i_Node ... */
 
-    for(i_Loop = 0; i_Loop < MCPR_P->Active->Case.Network.NbrLoop; i_Loop++) {
+    for(int i_Loop = 0; i_Loop < MCPR_P->Active->Case.Network.NbrLoop; i_Loop++) {
 
-      for(j_Branch = 0; j_Branch < MCPR_P->Active->Case.Network.NbrBranch;
+      for(int j_Branch = 0; j_Branch < MCPR_P->Active->Case.Network.NbrBranch;
           j_Branch++) {
         if(MCPR_P->Active->Case.Network.MatLoop[i_Loop][j_Branch]) {
-          Group_P = (struct Group *)List_Pointer(
+          struct Group *Group_P = (struct Group *)List_Pointer(
             Problem_S.Group, ((struct ConstraintPerRegion *)List_Pointer(
                                 MCPR_P->ConstraintPerRegion, j_Branch))
                                ->RegionIndex);
+          int Num_Region;
           List_Read(Group_P->InitialList, 0, &Num_Region);
 
-          DofGlobal_P = (struct DofGlobal *)List_PQuery(DofGlobal_DofLoop_L,
-                                                        &Num_Region, fcmp_int);
+          struct DofGlobal *DofGlobal_P = (struct DofGlobal *)
+            List_PQuery(DofGlobal_DofLoop_L, &Num_Region, fcmp_int);
 
           Val[0] =
             (double)(MCPR_P->Active->Case.Network.MatLoop[i_Loop][j_Branch]);
           if(Current.NbrHar > 1) {
             Val[1] = 0.;
-            for(k = 2; k < std::min(NBR_MAX_HARMONIC, Current.NbrHar); k += 2) {
+            for(int k = 2; k < std::min(NBR_MAX_HARMONIC, Current.NbrHar); k += 2) {
               Val[k] = Val[0];
               Val[k + 1] = 0.;
             }
           }
           /*
           Message::Info("Loop: eq.(%d) [%d, %d], dof [%d, %d] : %.16g\n",
-              Num_Equ,
-              DofGlobal_Equ[Num_Equ].Dof->NumType,
-          DofGlobal_Equ[Num_Equ].Dof->Entity, DofGlobal_P->Dof->NumType,
-          DofGlobal_P->Dof->Entity, Val[0] ) ;
+                        Num_Equ,
+                        DofGlobal_Equ[Num_Equ].Dof->NumType,
+                        DofGlobal_Equ[Num_Equ].Dof->Entity,
+                        DofGlobal_P->Dof->NumType,
+                        DofGlobal_P->Dof->Entity, Val[0]);
           */
           Cal_AssembleTerm_NeverDt(DofGlobal_Equ[Num_Equ].Dof, DofGlobal_P->Dof,
                                    Val);
@@ -274,32 +260,16 @@ void Cal_FemGlobalEquation(struct EquationTerm *EquationTerm_P,
 
 void Treatment_FemFormulation(struct Formulation *Formulation_P)
 {
-  struct Element Element;
-
   struct QuantityStorage *QuantityStorage_P0, *QuantityStorage_P;
   struct QuantityStorage QuantityStorage_S, QuantityStorage_GlobalEqu_S;
   struct Dof DofForNoDof_P[NBR_MAX_HARMONIC];
   struct EquationTerm *EquationTerm_P0, *EquationTerm_P;
   struct GlobalQuantity *GlobalQuantity_P;
 
-  int Nbr_DefineQuantity;
-  struct DefineQuantity *DefineQuantity_P0, *DefineQuantity_P = nullptr;
+  struct DefineQuantity *DefineQuantity_P = nullptr;
 
-  List_T *FemLocalTermActive_L;
   struct FemLocalTermActive FemLocalTermActive_S;
-  List_T *QuantityStorage_L;
-
   struct FemGlobalTermActive FemGlobalTermActive_S;
-
-  struct Group *GroupIn_P;
-
-  int i, j, Nbr_Element, i_Element, Nbr_EquationTerm, i_EquTerm;
-  int Index_DefineQuantity, TraceGroupIndex_DefineQuantity;
-
-  List_T *InitialListInIndex_L;
-  int Nbr_Region, i_Region, Num_Region;
-  int i_Region_Dof = 0, Num_Region_Dof = 0, i_Region_Dof_ini = 0;
-  int i_Region_Dof_end = 0, i_Region_Dof_skip = 0;
 
   extern struct Group *Generate_Group;
   extern double **MH_Moving_Matrix;
@@ -314,27 +284,29 @@ void Treatment_FemFormulation(struct Formulation *Formulation_P)
   /*     DefineQuantity                                              */
   /* --------------------------------------------------------------- */
 
-  if(!(Nbr_EquationTerm = List_Nbr(Formulation_P->Equation))) {
+  int Nbr_EquationTerm = List_Nbr(Formulation_P->Equation);
+  if(!Nbr_EquationTerm) {
     Message::Error("No equation in Formulation '%s'", Formulation_P->Name);
     return;
   }
 
-  if(!(Nbr_DefineQuantity = List_Nbr(Formulation_P->DefineQuantity))) {
+  int Nbr_DefineQuantity = List_Nbr(Formulation_P->DefineQuantity);
+  if(!Nbr_DefineQuantity) {
     Message::Error("No Quantity in Formulation '%s'", Formulation_P->Name);
     return;
   }
 
-  DefineQuantity_P0 =
+  struct DefineQuantity *DefineQuantity_P0 =
     (struct DefineQuantity *)List_Pointer(Formulation_P->DefineQuantity, 0);
 
-  QuantityStorage_L =
+  List_T *QuantityStorage_L =
     List_Create(Nbr_DefineQuantity, 1, sizeof(struct QuantityStorage));
 
   QuantityStorage_S.NumLastElementForFunctionSpace =
     QuantityStorage_S.NumLastElementForDofDefinition =
       QuantityStorage_S.NumLastElementForEquDefinition = 0;
 
-  for(i = 0; i < Nbr_DefineQuantity; i++) {
+  for(int i = 0; i < Nbr_DefineQuantity; i++) {
     QuantityStorage_S.DefineQuantity = DefineQuantity_P0 + i;
 
     if(QuantityStorage_S.DefineQuantity->Type == INTEGRALQUANTITY &&
@@ -356,6 +328,7 @@ void Treatment_FemFormulation(struct Formulation *Formulation_P)
   QuantityStorage_P0 =
     (struct QuantityStorage *)List_Pointer(QuantityStorage_L, 0);
 
+  struct Element Element;
   Get_InitDofOfElement(&Element);
 
   /* --------------------------------------------------------------- */
@@ -364,10 +337,10 @@ void Treatment_FemFormulation(struct Formulation *Formulation_P)
 
   EquationTerm_P0 =
     (struct EquationTerm *)List_Pointer(Formulation_P->Equation, 0);
-  FemLocalTermActive_L =
+  List_T *FemLocalTermActive_L =
     List_Create(Nbr_EquationTerm, 1, sizeof(struct FemLocalTermActive));
 
-  for(i_EquTerm = 0; i_EquTerm < Nbr_EquationTerm; i_EquTerm++) {
+  for(int i_EquTerm = 0; i_EquTerm < Nbr_EquationTerm; i_EquTerm++) {
     List_Add(FemLocalTermActive_L, &FemLocalTermActive_S);
     EquationTerm_P = EquationTerm_P0 + i_EquTerm;
 
@@ -406,7 +379,7 @@ void Treatment_FemFormulation(struct Formulation *Formulation_P)
   /*     Treatment of eventual GALERKIN terms                   */
   /*  --------------------------------------------------------- */
 
-  Nbr_Element = Geo_GetNbrGeoElements();
+  int Nbr_Element = Geo_GetNbrGeoElements();
 
   Message::ResetProgressMeter();
 
@@ -424,7 +397,7 @@ void Treatment_FemFormulation(struct Formulation *Formulation_P)
     }
   }
 
-  for(i_Element = 0; i_Element < Nbr_Element; i_Element++) {
+  for(int i_Element = 0; i_Element < Nbr_Element; i_Element++) {
     if(Generate_Group) {
       Element.Region = Geo_GetGeoElement(i_Element)->Region;
       while(
@@ -458,14 +431,14 @@ void Treatment_FemFormulation(struct Formulation *Formulation_P)
     /* 2.1.  Loop on equation terms */
     /* ---------------------------- */
 
-    for(i_EquTerm = 0; i_EquTerm < Nbr_EquationTerm; i_EquTerm++) {
+    for(int i_EquTerm = 0; i_EquTerm < Nbr_EquationTerm; i_EquTerm++) {
       EquationTerm_P = EquationTerm_P0 + i_EquTerm;
 
       if(EquationTerm_P->Type == GALERKIN) {
         /* if the element is in the support of integration of the term */
         /* ----------------------------------------------------------- */
 
-        GroupIn_P = (struct Group *)List_Pointer(
+        struct Group *GroupIn_P = (struct Group *)List_Pointer(
           Problem_S.Group, EquationTerm_P->Case.LocalTerm.InIndex);
 
         if((GroupIn_P->Type != ELEMENTLIST &&
@@ -499,28 +472,27 @@ void Treatment_FemFormulation(struct Formulation *Formulation_P)
 
           std::vector<struct QuantityStorage *> QuantityStorageTrace;
 
-          for(i = 0; i < EquationTerm_P->Case.LocalTerm.Term.NbrQuantityIndex;
+          for(int i = 0;
+              i < EquationTerm_P->Case.LocalTerm.Term.NbrQuantityIndex;
               i++) {
-            Index_DefineQuantity =
+            int Index_DefineQuantity =
               EquationTerm_P->Case.LocalTerm.Term.QuantityIndexTable[i];
-            DefineQuantity_P = DefineQuantity_P0 + Index_DefineQuantity;
+            struct DefineQuantity *DefineQuantity_P = DefineQuantity_P0 + Index_DefineQuantity;
             QuantityStorage_P = QuantityStorage_P0 + Index_DefineQuantity;
 
-            TraceGroupIndex_DefineQuantity = EquationTerm_P->Case.LocalTerm.Term
-                                               .QuantityTraceGroupIndexTable[i];
+            int TraceGroupIndex_DefineQuantity =
+              EquationTerm_P->Case.LocalTerm.Term.QuantityTraceGroupIndexTable[i];
 
             /* Only one analysis for each function space, unless we have a Trace
                    (note that a quantity involved in a Trace cannot appear in
                the same term outside of a Trace) */
 
-            if(QuantityStorage_P->NumLastElementForFunctionSpace !=
-                 Element.Num ||
+            if(QuantityStorage_P->NumLastElementForFunctionSpace != Element.Num ||
                TraceGroupIndex_DefineQuantity >= 0) {
               switch(DefineQuantity_P->Type) {
               case LOCALQUANTITY:
                 if(TraceGroupIndex_DefineQuantity >= 0 &&
-                   Get_InitElementTrace(&Element,
-                                        TraceGroupIndex_DefineQuantity)) {
+                   Get_InitElementTrace(&Element, TraceGroupIndex_DefineQuantity)) {
                   /* Fill QuantityStorage for the first trace element; others
                      (e.g. for mortaring on nonconformal meshes) will be handled
                      in a loop over the Cal_GalerkinTermOfFemEquation */
@@ -568,9 +540,9 @@ void Treatment_FemFormulation(struct Formulation *Formulation_P)
               if(EquationTerm_P->Case.LocalTerm.MatrixIndex == -1)
                 EquationTerm_P->Case.LocalTerm.MatrixIndex = 0;
 
-              j = List_ISearch(Current.DofData->OnlyTheseMatrices,
-                               &EquationTerm_P->Case.LocalTerm.MatrixIndex,
-                               fcmp_int);
+              int j = List_ISearch(Current.DofData->OnlyTheseMatrices,
+                                   &EquationTerm_P->Case.LocalTerm.MatrixIndex,
+                                   fcmp_int);
               if(j != -1) {
                 Flag_Only = 1;
                 switch(EquationTerm_P->Case.LocalTerm.MatrixIndex) {
@@ -651,27 +623,29 @@ void Treatment_FemFormulation(struct Formulation *Formulation_P)
   /*     Treatment of eventual GLOBAL terms                 */
   /* ------------------------------------------------------ */
 
-  for(i_EquTerm = 0; i_EquTerm < Nbr_EquationTerm; i_EquTerm++) {
+  for(int i_EquTerm = 0; i_EquTerm < Nbr_EquationTerm; i_EquTerm++) {
     EquationTerm_P = EquationTerm_P0 + i_EquTerm;
 
     if(EquationTerm_P->Type == GLOBALTERM) {
       EquationTerm_P->Case.GlobalTerm.Active = &FemGlobalTermActive_S;
 
-      InitialListInIndex_L =
+      List_T *InitialListInIndex_L =
         ((struct Group *)List_Pointer(Problem_S.Group,
                                       EquationTerm_P->Case.GlobalTerm.InIndex))
           ->InitialList;
       List_Sort(InitialListInIndex_L, fcmp_int);
-      Nbr_Region = List_Nbr(InitialListInIndex_L);
+      int Nbr_Region = List_Nbr(InitialListInIndex_L);
 
       /* ---------------------------------------------- */
       /* 3.1.  Loop on Regions belonging to the support */
       /* ---------------------------------------------- */
 
-      for(i_Region = 0; i_Region < Nbr_Region; i_Region++) {
+      for(int i_Region = 0; i_Region < Nbr_Region; i_Region++) {
+        int Num_Region;
         List_Read(InitialListInIndex_L, i_Region, &Num_Region);
         Current.Region = Num_Region;
 
+        int i_Region_Dof_ini = 0, i_Region_Dof_end = 0, i_Region_Dof_skip = 0;
         switch(EquationTerm_P->Case.GlobalTerm.SubType) {
         case EQ_ST_SELF:
           i_Region_Dof_ini = i_Region;
@@ -691,9 +665,10 @@ void Treatment_FemFormulation(struct Formulation *Formulation_P)
         }
 
         // Possible mutual terms (need of double-piece-wise Function fct[r1,r2])
-        for(i_Region_Dof = i_Region_Dof_ini; i_Region_Dof < i_Region_Dof_end;
+        for(int i_Region_Dof = i_Region_Dof_ini; i_Region_Dof < i_Region_Dof_end;
             i_Region_Dof++) {
           if(i_Region_Dof != i_Region_Dof_skip) {
+            int Num_Region_Dof;
             List_Read(InitialListInIndex_L, i_Region_Dof, &Num_Region_Dof);
             Current.SubRegion =
               Num_Region_Dof; // used in double-piece-wise Function
@@ -705,10 +680,10 @@ void Treatment_FemFormulation(struct Formulation *Formulation_P)
             /* ----------------------------------------------------------------
              */
 
-            for(i = 0;
+            for(int i = 0;
                 i < EquationTerm_P->Case.GlobalTerm.Term.NbrQuantityIndex;
                 i++) {
-              Index_DefineQuantity =
+              int Index_DefineQuantity =
                 EquationTerm_P->Case.GlobalTerm.Term.QuantityIndexTable[i];
               DefineQuantity_P = DefineQuantity_P0 + Index_DefineQuantity;
               QuantityStorage_P = QuantityStorage_P0 + Index_DefineQuantity;
@@ -804,7 +779,7 @@ void Treatment_FemFormulation(struct Formulation *Formulation_P)
   /*     Treatment of eventual GLOBAL EQUATION terms           */
   /* --------------------------------------------------------- */
 
-  for(i_EquTerm = 0; i_EquTerm < Nbr_EquationTerm; i_EquTerm++) {
+  for(int i_EquTerm = 0; i_EquTerm < Nbr_EquationTerm; i_EquTerm++) {
     EquationTerm_P = EquationTerm_P0 + i_EquTerm;
 
     if(EquationTerm_P->Type == GLOBALEQUATION) {
