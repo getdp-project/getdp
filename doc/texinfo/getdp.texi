@@ -4046,6 +4046,11 @@ since GetDP was started).
 Returns the current memory usage, in megabytes (maximum resident set
 size).
 
+@item GetRank
+@code{[]}
+
+Returns the MPI rank.
+
 @item SetNumberRunTime
 @code{[@var{expression}]@{@var{char-expression}@}}
 
@@ -4111,6 +4116,11 @@ where @var{entity} is the node (mesh vertex) or element number (tag).
 Accesses the map @var{char-expression} created by a @code{NodeTable} or
 @code{ElementTable} @code{PostOperation}, or by the @code{ReadTable}
 operation, at the key @var{expression} specified as argument.
+
+@item ValueFromFile
+@code{[ ]@{ @var{char-expression} @}}
+
+Reads a single scalar value from the ASCII @var{char-expression}.
 
 @end ftable
 
