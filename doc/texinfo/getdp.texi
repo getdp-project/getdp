@@ -28,6 +28,7 @@
 @setchapternewpage odd
 @paragraphindent 0
 @finalout
+@afourpaper
 @c %**end of header
 
 @c merge function index into type index
@@ -61,7 +62,7 @@ Copyright @value{COPYRIGHT}.
 
 @subtitle The documentation for GetDP @value{GETDP-VERSION}
 @subtitle A General environment for the treatment of Discrete Problems
-@subtitle
+@subtitle @w{ }
 @subtitle @today{}
 
 @author Patrick Dular
@@ -980,14 +981,6 @@ List of expressions are defined as:
 @var{expression-list}:
   @var{expression} <,@dots{}>
 @end example
-
-@menu
-* Operators::
-* Constants::
-* Functions::
-* Current values::
-* Fields::
-@end menu
 
 @c -------------------------------------------------------------------------
 @c Constants
