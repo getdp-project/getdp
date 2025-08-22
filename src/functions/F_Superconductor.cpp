@@ -373,9 +373,9 @@ void F_AnisotropicDEDJTensorPowerLaw(F_ARG)
 // along x -> x is the curvilinear variable u
 void F_FoilWindingPolynomialBF(F_ARG)
 {
-  double u0 = (double)Fct->Para[0];
-  double u1 = (double)Fct->Para[1];
-  int m = (int)Fct->Para[2];
+  int m = (int)Fct->Para[0];
+  double u0 = (double)Fct->Para[1];
+  double u1 = (double)Fct->Para[2];
   int coord_type = (int)Fct->Para[3]; // 0:x, 1:y, 2:z
 
   double u = 0;
