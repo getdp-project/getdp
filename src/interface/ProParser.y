@@ -2789,7 +2789,6 @@ BasisFunctionTerm :
               }
               // change parameter 0
               WholeQuantity_S.Case.Function.Para[0] = d;
-              List_Add(Current_WholeQuantity_L, &WholeQuantity_S);
               Expression_S.Type = WHOLEQUANTITY;
               Expression_S.Case.WholeQuantity = List_Create(1, 1, sizeof(struct WholeQuantity));
               List_Add(Expression_S.Case.WholeQuantity, &WholeQuantity_S);
