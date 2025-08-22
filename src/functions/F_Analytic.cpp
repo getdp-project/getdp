@@ -1,4 +1,4 @@
-// GetDP - Copyright (C) 1997-2022 P. Dular and C. Geuzaine, University of Liege
+// GetDP - Copyright (C) 1997-2025 P. Dular and C. Geuzaine, University of Liege
 //
 // See the LICENSE.txt file for license information. Please report all
 // issues on https://gitlab.onelab.info/getdp/getdp/issues.
@@ -1497,8 +1497,7 @@ void F_AcousticFieldHardSphere(F_ARG)
     nEnd = (Fct->NbrParameters > 6) ? Fct->Para[6] : nStart + 1;
   }
 
-  std::complex<double> *hnkRtab;
-  hnkRtab = new std::complex<double>[nEnd + 1];
+  std::complex<double> *hnkRtab = new std::complex<double>[nEnd + 1];
 #if defined(_OPENMP)
 #pragma omp parallel for
 #endif
@@ -1524,7 +1523,7 @@ void F_AcousticFieldHardSphere(F_ARG)
   V->Val[MAX_DIM] = vi;
   V->Type = SCALAR;
 
-  delete hnkRtab;
+  delete [] hnkRtab;
 }
 
 /* Scattering by an acoustically hard sphere (exterior Dirichlet problem) of
@@ -2003,8 +2002,7 @@ void F_AcousticFieldHardCylinder(F_ARG)
     nEnd = (Fct->NbrParameters > 4) ? Fct->Para[4] : nStart + 1;
   }
 
-  std::complex<double> *HnkRtab;
-  HnkRtab = new std::complex<double>[nEnd];
+  std::complex<double> *HnkRtab = new std::complex<double>[nEnd];
 #if defined(_OPENMP)
 #pragma omp parallel for
 #endif
@@ -2028,7 +2026,7 @@ void F_AcousticFieldHardCylinder(F_ARG)
     vi += std::imag(val);
   }
 
-  delete HnkRtab;
+  delete [] HnkRtab;
 
   V->Val[0] = vr;
   V->Val[MAX_DIM] = vi;

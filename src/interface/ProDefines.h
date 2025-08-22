@@ -1,4 +1,4 @@
-// GetDP - Copyright (C) 1997-2022 P. Dular and C. Geuzaine, University of Liege
+// GetDP - Copyright (C) 1997-2025 P. Dular and C. Geuzaine, University of Liege
 //
 // See the LICENSE.txt file for license information. Please report all
 // issues on https://gitlab.onelab.info/getdp/getdp/issues.
@@ -333,6 +333,7 @@ struct StringXPointer Current_Value[] = {
   {"KSPIteration", &Current.KSPIteration},
   {"KSPResidual", &Current.KSPResidual},
   {"KSPSystemSize", &Current.KSPSystemSize},
+  {"KSPConvergedReason", &Current.KSPConvergedReason},
   {NULL, NULL}};
 
 struct StringXDefine PostQuantityTerm_EvaluationType[] = {
@@ -1263,6 +1264,7 @@ struct StringXFunction2Nbr F_Function[] =
    {"GetWallClockTime", (CAST)F_GetWallClockTime, 0, 0},
    {"Memory", (CAST)F_GetMemory, 0, 0},
    {"GetMemory", (CAST)F_GetMemory, 0, 0},
+   {"GetRank", (CAST)F_GetRank, 0, 0},
    {"SetNumberRunTime", (CAST)F_SetNumberRunTime, -1, -1},
    {"SetNumberRunTimeWithChoices", (CAST)F_SetNumberRunTimeWithChoices, -1, -1},
    {"GetNumberRunTime", (CAST)F_GetNumberRunTime, -1, -1},
@@ -1453,9 +1455,11 @@ struct StringXFunction2Nbr F_Function[] =
    {"RhoPowerLaw", (CAST)F_ResistivityPowerLaw, 1, 3},
    {"DRhoDJTimesJPowerLaw", (CAST)F_drhodj_times_j_PowerLaw, 1, 3},
    {"DEDJPowerLaw", (CAST)F_dedj_PowerLaw, 1, 3},
+   {"DRhoDJTimesJPowerLawTS2D", (CAST)F_drhodj_times_j_PowerLaw_TS_2D, 1, 3},
    {"Lambda_CurrentSharingHom", (CAST)F_LambdaCurrentSharingHom, 5, 4},
    {"AnisotropicRhoPL", (CAST)F_AnisotropicResistivityTensorPowerLaw, 1, 5},
    {"AnisotropicDEDJTensorPL", (CAST)F_AnisotropicDEDJTensorPowerLaw, 1, 5},
+   {"FoilWindingPolynomialBF", (CAST)F_FoilWindingPolynomialBF, 4, 0},
 
    // GF_XXX : Green Functions
    {"Laplace", (CAST)GF_Laplace, 1, 0},

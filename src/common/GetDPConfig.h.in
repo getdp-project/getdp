@@ -1,4 +1,4 @@
-// GetDP - Copyright (C) 1997-2022 P. Dular and C. Geuzaine, University of Liege
+// GetDP - Copyright (C) 1997-2025 P. Dular and C. Geuzaine, University of Liege
 //
 // See the LICENSE.txt file for license information. Please report all
 // issues on https://gitlab.onelab.info/getdp/getdp/issues.
@@ -27,7 +27,6 @@
 #cmakedefine HAVE_PEWE
 #cmakedefine HAVE_PYTHON
 #cmakedefine HAVE_SLEPC
-#cmakedefine HAVE_SMALLFEM
 #cmakedefine HAVE_SPARSKIT
 #cmakedefine HAVE_ZITSOL
 #cmakedefine HAVE_MULTIHARMONIC

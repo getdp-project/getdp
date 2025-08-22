@@ -1,4 +1,4 @@
-// GetDP - Copyright (C) 1997-2022 P. Dular and C. Geuzaine, University of Liege
+// GetDP - Copyright (C) 1997-2025 P. Dular and C. Geuzaine, University of Liege
 //
 // See the LICENSE.txt file for license information. Please report all
 // issues on https://gitlab.onelab.info/getdp/getdp/issues.
@@ -504,6 +504,8 @@ static void Geo_ReadFileWithGmsh(struct GeoData *GeoData_P)
   Geo_Element.NbrEdges = Geo_Element.NbrFacets = 0;
   Geo_Element.NumEdges = Geo_Element.NumFacets = NULL;
 
+  GeoData_P->NbrPartitions = gmsh::model::getNumberOfPartitions();
+
   gmsh::vectorpair dimTags;
   gmsh::model::getEntities(dimTags, -1);
   for(unsigned int entity = 0; entity < dimTags.size(); entity++) {
@@ -513,6 +515,11 @@ static void Geo_ReadFileWithGmsh(struct GeoData *GeoData_P)
     std::vector<int> physicalsTags;
     gmsh::model::getPhysicalGroupsForEntity(
       dimTags[entity].first, dimTags[entity].second, physicalsTags);
+
+    std::vector<int> partitions;
+    if(GeoData_P->NbrPartitions > 1)
+      gmsh::model::getPartitions(dimTags[entity].first, dimTags[entity].second,
+                                 partitions);
 
     for(unsigned int phys = 0; phys < physicalsTags.size(); phys++) {
       for(unsigned int i = 0; i < elementTypes.size(); i++) {
@@ -526,6 +533,7 @@ static void Geo_ReadFileWithGmsh(struct GeoData *GeoData_P)
           Geo_Element.Num = (phys == 0) ? elementTags[i][j] : ++maxTag;
           Geo_Element.Region = physicalsTags[phys];
           Geo_Element.ElementaryRegion = dimTags[entity].second;
+          Geo_Element.Partition = partitions.empty() ? 0 : partitions[0];
           Geo_Element.NumNodes =
             (int *)Malloc(Geo_Element.NbrNodes * sizeof(int));
           for(int k = 0; k < Geo_Element.NbrNodes; k++)
@@ -864,6 +872,7 @@ void Geo_ReadFile(struct GeoData *GeoData_P)
 
       Geo_Element.NbrEdges = Geo_Element.NbrFacets = 0;
       Geo_Element.NumEdges = Geo_Element.NumFacets = NULL;
+      Geo_Element.Partition = 0;
 
       if(!binary) {
         for(i = 0; i < Nbr; i++) {
@@ -1024,6 +1033,8 @@ void Geo_ReadFile(struct GeoData *GeoData_P)
 
   } /* while 1 ... */
 
+  GeoData_P->NbrPartitions = 1;
+
   Geo_SnapNodes(GeoData_P);
 }
 
@@ -1085,6 +1096,12 @@ void Geo_ReadFileAdapt(struct GeoData *GeoData_P)
 
   Message::Info("Maximum interpolation order = %g", Flag_ORDER);
 }
+
+/* ------------------------------------------------------------------------ */
+/*  G e o _ G e t N b r P a r t i t i o n s                                 */
+/* ------------------------------------------------------------------------ */
+
+int Geo_GetNbrPartitions(void) { return CurrentGeoData->NbrPartitions; }
 
 /* ------------------------------------------------------------------------ */
 /*  f c m p _ E l m   &   f c m p _ N o d                                   */

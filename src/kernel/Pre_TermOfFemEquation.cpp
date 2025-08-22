@@ -1,4 +1,4 @@
-// GetDP - Copyright (C) 1997-2022 P. Dular and C. Geuzaine, University of Liege
+// GetDP - Copyright (C) 1997-2025 P. Dular and C. Geuzaine, University of Liege
 //
 // See the LICENSE.txt file for license information. Please report all
 // issues on https://gitlab.onelab.info/getdp/getdp/issues.
@@ -128,7 +128,6 @@ void Pre_TermOfFemEquation(struct Element *Element,
 {
   struct QuantityStorage *QuantityStorageEqu_P, *QuantityStorageDof_P;
   int i;
-  bool NonLocal = false;
 
   QuantityStorageEqu_P =
     QuantityStorage_P0 +
@@ -143,16 +142,15 @@ void Pre_TermOfFemEquation(struct Element *Element,
     QuantityStorageEqu_P->NumLastElementForEquDefinition = Element->Num;
 
     for(i = 0; i < QuantityStorageEqu_P->NbrElementaryBasisFunction; i++) {
-      NonLocal = (QuantityStorageEqu_P->TypeQuantity == INTEGRALQUANTITY) ||
+      bool NonLocal = (QuantityStorageEqu_P->TypeQuantity == INTEGRALQUANTITY) ||
                  IsEquationNonLocal(
                    QuantityStorageEqu_P->BasisFunction[i].BasisFunction);
-
       switch(QuantityStorageEqu_P->BasisFunction[i].Constraint) {
       case NONE:
         Dof_DefineUnknownDof(
           QuantityStorageEqu_P->BasisFunction[i].CodeBasisFunction,
           QuantityStorageEqu_P->BasisFunction[i].CodeEntity, Current.NbrHar,
-          NonLocal);
+          NonLocal ? -1 : Element->GeoElement->Partition);
         break;
       case ASSIGN:
         Dof_DefineAssignFixedDof(
@@ -166,7 +164,8 @@ void Pre_TermOfFemEquation(struct Element *Element,
           QuantityStorageEqu_P->BasisFunction[i].CodeBasisFunction,
           QuantityStorageEqu_P->BasisFunction[i].CodeEntity, Current.NbrHar,
           QuantityStorageEqu_P->BasisFunction[i].Value,
-          QuantityStorageEqu_P->BasisFunction[i].Value2, NonLocal);
+          QuantityStorageEqu_P->BasisFunction[i].Value2,
+          NonLocal ? -1 : Element->GeoElement->Partition);
         break;
       case ASSIGNFROMRESOLUTION:
         Dof_DefineAssignSolveDof(
@@ -202,7 +201,7 @@ void Pre_TermOfFemEquation(struct Element *Element,
     QuantityStorageDof_P->NumLastElementForDofDefinition = Element->Num;
 
     for(i = 0; i < QuantityStorageDof_P->NbrElementaryBasisFunction; i++) {
-      NonLocal = (QuantityStorageDof_P->TypeQuantity == INTEGRALQUANTITY) ||
+      bool NonLocal = (QuantityStorageDof_P->TypeQuantity == INTEGRALQUANTITY) ||
                  IsEquationNonLocal(
                    QuantityStorageDof_P->BasisFunction[i].BasisFunction);
 
@@ -219,7 +218,8 @@ void Pre_TermOfFemEquation(struct Element *Element,
           QuantityStorageDof_P->BasisFunction[i].CodeBasisFunction,
           QuantityStorageDof_P->BasisFunction[i].CodeEntity, Current.NbrHar,
           QuantityStorageDof_P->BasisFunction[i].Value,
-          QuantityStorageDof_P->BasisFunction[i].Value2, NonLocal);
+          QuantityStorageDof_P->BasisFunction[i].Value2,
+          NonLocal ? -1 : Element->GeoElement->Partition);
         break;
       case ASSIGNFROMRESOLUTION:
         Dof_DefineAssignSolveDof(

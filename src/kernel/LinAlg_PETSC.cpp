@@ -1,4 +1,4 @@
-// GetDP - Copyright (C) 1997-2022 P. Dular and C. Geuzaine, University of Liege
+// GetDP - Copyright (C) 1997-2025 P. Dular and C. Geuzaine, University of Liege
 //
 // See the LICENSE.txt file for license information. Please report all
 // issues on https://gitlab.onelab.info/getdp/getdp/issues.
@@ -154,10 +154,44 @@ void LinAlg_CreateSolver(gSolver *Solver, const char *SolverDataFileName)
   }
 }
 
+static bool _usePartitions()
+{
+  if(Message::GetCommSize() == 1)
+    return false; // sequential
+
+  if((int)Current.DofData->PartitionSplit.size() == Message::GetCommSize() + 1)
+    return true; // local equations only
+
+  if((int)Current.DofData->PartitionSplit.size() == Message::GetCommSize() + 2)
+    return true; // local equations + non-partitioned/global equations
+
+  return false; // partitioning does not match the number of ranks
+}
+
+static int _getLocalSize()
+{
+  int s = PETSC_DECIDE;
+
+  if(_usePartitions()) {
+    int r = Message::GetCommRank();
+    if(r == Message::GetCommSize() - 1) {
+      // add any non-partitioned/global equations in the last partition
+      s = *Current.DofData->PartitionSplit.rbegin() -
+        Current.DofData->PartitionSplit[r];
+    }
+    else {
+      s = Current.DofData->PartitionSplit[r + 1] -
+        Current.DofData->PartitionSplit[r];
+    }
+    Message::Debug("localsize = %d", s);
+  }
+  return s;
+}
+
 void LinAlg_CreateVector(gVector *V, gSolver *Solver, int n)
 {
   _try(VecCreate(MyComm, &V->V));
-  _try(VecSetSizes(V->V, PETSC_DECIDE, n));
+  _try(VecSetSizes(V->V, _getLocalSize(), n));
 
   // override the default options with the ones from the option
   // database (if any)
@@ -203,24 +237,62 @@ static void _fillseq(gVector *V)
 
 void LinAlg_CreateMatrix(gMatrix *M, gSolver *Solver, int n, int m, bool silent)
 {
-  PetscInt prealloc = 100.;
-  std::vector<PetscInt> nnz;
-
-  if(Message::GetCommSize() == 1 && Current.DofData->SparsityPattern &&
-     Current.DofData->SparsityPattern->size() > 1) {
-    // we add 1 to account for the diagonal element enforced below in seqaij
-    // matrices
+  if(Current.DofData->SparsityPattern->size() && Message::GetCommSize() == 1) {
+    // we add 1 to account for the diagonal element enforced below
+    std::vector<PetscInt> nnz;
     nnz.resize(n, 1);
-    for(auto p : *Current.DofData->SparsityPattern) nnz[p.first]++;
+    for(auto p : *Current.DofData->SparsityPattern) {
+      nnz[p.first]++;
+    }
+    _try(MatCreateSeqAIJ(PETSC_COMM_SELF, n, m, 0, &nnz[0], &M->M));
+    // PETSc (I)LU does not like matrices with empty (non assembled) diagonals
+    for(int i = 0; i < n; i++) {
+      PetscInt ti = i;
+      PetscScalar d = 0.;
+      _try(MatSetValues(M->M, 1, &ti, 1, &ti, &d, INSERT_VALUES));
+    }
+    _try(MatAssemblyBegin(M->M, MAT_FLUSH_ASSEMBLY));
+    _try(MatAssemblyEnd(M->M, MAT_FLUSH_ASSEMBLY));
+  }
+  else if(Current.DofData->SparsityPattern->size() && _usePartitions()) {
+    PetscInt nloc = _getLocalSize();
+    PetscInt mloc = nloc;
+    std::vector<PetscInt> d_nnz, o_nnz;
+    d_nnz.resize(nloc, 1);
+    o_nnz.resize(nloc, 0);
+    int r = Message::GetCommRank();
+    int istart = Current.DofData->PartitionSplit[r];
+    int iend = (r == Message::GetCommSize() - 1) ?
+      *Current.DofData->PartitionSplit.rbegin() :
+      Current.DofData->PartitionSplit[r + 1];
+    for(auto p : *Current.DofData->SparsityPattern) {
+      if(p.first >= istart && p.first < iend) {
+        int i = p.first - istart;
+        if(p.second >= istart && p.second < iend)
+          d_nnz[i]++;
+        else
+          o_nnz[i]++;
+      }
+    }
+#if((PETSC_VERSION_MAJOR == 3) && (PETSC_VERSION_MINOR >= 3))
+    _try(MatCreateAIJ(MyComm, nloc, mloc, n, m, 0, &d_nnz[0],
+                      0, &o_nnz[0], &M->M));
+#else
+    _try(MatCreateMPIAIJ(MyComm, nloc, mloc, n, m, 0, &d_nnz[0],
+                         0, &o_nnz[0], &M->M));
+#endif
   }
   else {
     // use heuristics
-    PetscInt prealloc_full = n;
+    PetscInt nloc = (Message::GetCommSize() > 1) ? _getLocalSize() : n;
+    PetscInt mloc = nloc;
+    PetscInt prealloc = 100.;
+    PetscInt prealloc_full = mloc;
     int nonloc = Current.DofData->NonLocalEquations.size();
 
-    // heuristic for preallocation of global rows: don't prelloc more than 500 Mb
+    // heuristic for global rows: don't prelloc more than 500 Mb
     double limit = 500. * 1024. * 1024. / (gSCALAR_SIZE * sizeof(double));
-    double estim = (double)nonloc * (double)n;
+    double estim = (double)nonloc * (double)mloc;
     if(estim > limit) {
       prealloc_full = (int)(limit / nonloc);
       Message::Debug("Heuristic PETSc prealloc_full changed to %d", prealloc_full);
@@ -232,43 +304,39 @@ void LinAlg_CreateMatrix(gMatrix *M, gSolver *Solver, int n, int m, bool silent)
     PetscOptionsGetInt(PETSC_NULL, "-petsc_prealloc_full", &prealloc_full,
                        &set_prealloc_full);
 
-    // prealloc cannot be bigger than the number of rows!
-    prealloc = (prealloc > n) ? n : prealloc;
-    prealloc_full = (prealloc_full > n) ? n : prealloc_full;
+    // prealloc cannot be bigger than the number of columns!
+    prealloc = (prealloc > mloc) ? mloc : prealloc;
+    prealloc_full = (prealloc_full > mloc) ? mloc : prealloc_full;
 
     if(!silent && set_prealloc)
       Message::Info("Setting PETSc prealloc to %d", prealloc);
     if(!silent && set_prealloc_full)
       Message::Info("Setting PETSc prealloc_full to %d", prealloc_full);
 
-    nnz.resize(n, prealloc);
-
-    // preallocate non local equations as full lines (this is not optimal, but
-    // preallocating too few elements leads to horrible assembly performance:
-    // petsc really sucks at dynamic reallocation in the AIJ matrix format)
-    for(int i = 0; i < nonloc; i++)
-      nnz[Current.DofData->NonLocalEquations[i] - 1] = prealloc_full;
-  }
-
-  if(Message::GetCommSize() > 1) { // FIXME: use nnz
-#if((PETSC_VERSION_MAJOR == 3) && (PETSC_VERSION_MINOR >= 3))
-    _try(MatCreateAIJ(MyComm, PETSC_DECIDE, PETSC_DECIDE, n, m, prealloc,
-                      PETSC_NULL, prealloc, PETSC_NULL, &M->M));
-#else
-    _try(MatCreateMPIAIJ(MyComm, PETSC_DECIDE, PETSC_DECIDE, n, m, prealloc,
-                         PETSC_NULL, prealloc, PETSC_NULL, &M->M));
-#endif
-  }
-  else {
-    _try(MatCreateSeqAIJ(PETSC_COMM_SELF, n, m, 0, &nnz[0], &M->M));
-    // PETSc (I)LU does not like matrices with empty (non assembled) diagonals
-    for(int i = 0; i < n; i++) {
-      PetscInt ti = i;
-      PetscScalar d = 0.;
-      _try(MatSetValues(M->M, 1, &ti, 1, &ti, &d, INSERT_VALUES));
+    if(Message::GetCommSize() == 1) {
+      std::vector<PetscInt> nnz;
+      nnz.resize(n, prealloc);
+      for(int i = 0; i < nonloc; i++)
+        nnz[Current.DofData->NonLocalEquations[i] - 1] = prealloc_full;
+      _try(MatCreateSeqAIJ(PETSC_COMM_SELF, n, m, 0, &nnz[0], &M->M));
+      // PETSc (I)LU does not like matrices with empty (non assembled) diagonals
+      for(int i = 0; i < n; i++) {
+        PetscInt ti = i;
+        PetscScalar d = 0.;
+        _try(MatSetValues(M->M, 1, &ti, 1, &ti, &d, INSERT_VALUES));
+      }
+      _try(MatAssemblyBegin(M->M, MAT_FLUSH_ASSEMBLY));
+      _try(MatAssemblyEnd(M->M, MAT_FLUSH_ASSEMBLY));
     }
-    _try(MatAssemblyBegin(M->M, MAT_FLUSH_ASSEMBLY));
-    _try(MatAssemblyEnd(M->M, MAT_FLUSH_ASSEMBLY));
+    else {
+#if((PETSC_VERSION_MAJOR == 3) && (PETSC_VERSION_MINOR >= 3))
+      _try(MatCreateAIJ(MyComm, nloc, mloc, n, m, prealloc, PETSC_NULL,
+                        prealloc, PETSC_NULL, &M->M));
+#else
+      _try(MatCreateMPIAIJ(MyComm, nloc, mloc, n, m, prealloc, PETSC_NULL,
+                           prealloc, PETSC_NULL, &M->M));
+#endif
+    }
   }
 
 #if((PETSC_VERSION_MAJOR == 3) && (PETSC_VERSION_MINOR >= 3))
@@ -1321,8 +1389,6 @@ static void _solve(gMatrix *A, gVector *B, gSolver *Solver, gVector *X,
     return;
   }
 
-  int view = !Solver->ksp[kspIndex];
-
   if(kspIndex != 0) Message::Info("Using solver index %d", kspIndex);
 
   PC pc;
@@ -1359,10 +1425,6 @@ static void _solve(gMatrix *A, gVector *B, gSolver *Solver, gVector *X,
     _try(PCFactorSetMatOrderingType(pc, MATORDERINGRCM));
 #endif
 #endif
-
-    // override the default options with the ones from the option database (if
-    // any)
-    _try(KSPSetFromOptions(Solver->ksp[kspIndex]));
   }
   else if(precond) {
 #if(PETSC_VERSION_MAJOR == 3) && (PETSC_VERSION_MINOR >= 5)
@@ -1381,6 +1443,10 @@ static void _solve(gMatrix *A, gVector *B, gSolver *Solver, gVector *X,
 #endif
     _try(KSPGetPC(Solver->ksp[kspIndex], &pc));
   }
+
+  // override the default options with the ones from the option database (if
+  // any)
+  _try(KSPSetFromOptions(Solver->ksp[kspIndex]));
 
 #if(PETSC_VERSION_MAJOR == 3) && (PETSC_VERSION_MINOR >= 4)
   const char *ksptype = "";
@@ -1404,9 +1470,7 @@ static void _solve(gMatrix *A, gVector *B, gSolver *Solver, gVector *X,
   const char *stype = "";
 #endif
 
-  if(view) {
-    Message::Info("N: %ld - %s %s %s", long(i), ksptype, pctype, stype);
-  }
+  Message::Info("N: %ld - %s %s %s", long(i), ksptype, pctype, stype);
 
   _try(KSPSolve(Solver->ksp[kspIndex], B->V, X->V));
 
@@ -1439,13 +1503,18 @@ static void _solve(gMatrix *A, gVector *B, gSolver *Solver, gVector *X,
   // copy result on all procs
   _fillseq(X);
 
-  if(view && Message::GetVerbosity() > 5)
+  if(Message::GetVerbosity() > 5) {
     _try(KSPView(Solver->ksp[kspIndex], MyPetscViewer));
+  }
 
   PetscInt its;
   _try(KSPGetIterationNumber(Solver->ksp[kspIndex], &its));
   if(its > 1) Message::Info("%d iterations", its);
   Current.KSPIterations = its;
+
+  KSPConvergedReason reason;
+  _try(KSPGetConvergedReason(Solver->ksp[kspIndex], &reason));
+  Current.KSPConvergedReason = (double)reason;
 
   PetscTruth set, kspfree = PETSC_FALSE;
   PetscOptionsGetTruth(PETSC_NULL, "-kspfree", &kspfree, &set);
@@ -1554,12 +1623,9 @@ static void _solveNL(gMatrix *A, gVector *B, gMatrix *J, gVector *R,
     return;
   }
 
-  bool view = !Solver->snes[solverIndex];
-
   // either we are on sequential (!GetIsCommWorld) or in parallel with rank = 0
   // (GetIsCommWorld)
-  if(view)
-    Message::Info("N: %ld", (long)n);
+  Message::Info("N: %ld", (long)n);
 
   if(solverIndex != 0)
     Message::Info("Using nonlinear solver index %d", solverIndex);
@@ -1610,7 +1676,7 @@ static void _solveNL(gMatrix *A, gVector *B, gMatrix *J, gVector *R,
   // copy result on all procs
   _fillseq(X);
 
-  if(view && Message::GetVerbosity() > 5)
+  if(Message::GetVerbosity() > 5)
     _try(SNESView(Solver->snes[solverIndex], MyPetscViewer));
 
   PetscInt its;

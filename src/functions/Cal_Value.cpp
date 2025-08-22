@@ -1,4 +1,4 @@
-// GetDP - Copyright (C) 1997-2022 P. Dular and C. Geuzaine, University of Liege
+// GetDP - Copyright (C) 1997-2025 P. Dular and C. Geuzaine, University of Liege
 //
 // See the LICENSE.txt file for license information. Please report all
 // issues on https://gitlab.onelab.info/getdp/getdp/issues.
@@ -2113,6 +2113,7 @@ void Cal_RotateValue(struct Value *V1, struct Value *V2, struct Value *R)
 #undef B2
     }
     else { /* Attention: a modifier */
+      Cal_ZeroValue(&A);
 #define B0 V2->Val[0]
 #define B1 V2->Val[1]
 #define B2 V2->Val[2]
@@ -2481,7 +2482,9 @@ void Cal_RotateValue(struct Value *V1, struct Value *V2, struct Value *R)
 #undef COMPUTE_A
 #undef COMPLEX_COMPUTE_A
 
-  default: Message::Error("Wrong argument type in 'Cal_RotateValue'"); break;
+  default:
+    Message::Error("Wrong argument type in 'Cal_RotateValue'");
+    break;
   }
 }
 

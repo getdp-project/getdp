@@ -1,5 +1,5 @@
 \input texinfo.tex @c -*-texinfo-*-
-@c GetDP - Copyright (C) 1997-2022 P. Dular and C. Geuzaine, University of Liege
+@c GetDP - Copyright (C) 1997-2025 P. Dular and C. Geuzaine, University of Liege
 @c
 @c See the LICENSE.txt file for license information. Please report all
 @c issues on https://gitlab.onelab.info/getdp/getdp/issues.
@@ -22,7 +22,7 @@
 @c %**start of header
 @setfilename getdp.info
 @include version.texi
-@set COPYRIGHT @copyright{} 1997-2022 P. Dular and C. Geuzaine, University of Liege
+@set COPYRIGHT @copyright{} 1997-2025 P. Dular and C. Geuzaine, University of Liege
 @settitle GetDP @value{GETDP-VERSION}
 @footnotestyle separate
 @setchapternewpage odd
@@ -136,7 +136,6 @@ dimensions. This is the @cite{GetDP Reference Manual} for GetDP
 * Metasyntactic variable index::  Index of metasyntactic variables used in this manual.
 * Syntax index::                Index of reserved keywords in the GetDP language.
 
-@ifnothtml
 @detailmenu
  --- The Detailed Node Listing ---
 
@@ -208,9 +207,9 @@ Types for @code{Function}
 * Math functions::
 * Extended math functions::
 * Green functions::
-* Type manipulation functions::
-* Coordinate functions::
-* Miscellaneous functions::
+* Geometry and mesh-related functions::
+* System functions::
+* Physics-related functions::
 
 Short examples
 
@@ -275,7 +274,6 @@ Frequently asked questions
 * Usage::
 
 @end detailmenu
-@end ifnothtml
 @end menu
 
 @c =========================================================================
@@ -1486,9 +1484,9 @@ evaluated during the analysis of the syntax (since they are of
   @var{math-function-id} |
   @var{extended-math-function-id} |
   @var{green-function-id} |
-  @var{type-function-id} |
-  @var{coord-function-id} |
-  @var{misc-function-id}
+  @var{geometry-function-id} |
+  @var{physics-function-id} |
+  @var{system-function-id}
 @end example
 
 @noindent Notes:
@@ -1573,6 +1571,9 @@ Current iteration in a Krylov subspace solver.
 Current residual in a Krylov subspace solver.
 @item $KSPIterations
 Total number of iterations of Krylov subspace solver.
+@item $KSPConvergedReason
+Convergence status of Krylov subspace solver (negative values indicate
+divergence; see PETSc @code{KSPConvergedReason}).
 @item $KSPSystemSize
 System size of Krylov subspace solver.
 @end table
@@ -3277,9 +3278,9 @@ Dual volumes of elements of @var{R1}.
 * Math functions::
 * Extended math functions::
 * Green functions::
-* Type manipulation functions::
-* Coordinate functions::
-* Miscellaneous functions::
+* Geometry and mesh-related functions::
+* System functions::
+* Physics-related functions::
 @end menu
 
 @c .........................................................................
@@ -3451,6 +3452,11 @@ Returns the derivative of the Bessel function of the second kind of
 order given by the first @var{expression} for the value of the second
 @var{expression} (real valued only).
 
+@item Rand
+@code{[@var{expression}]}
+
+Returns a pseudo-random number in [0, @var{expression}].
+
 @end ftable
 
 @c .........................................................................
@@ -3551,73 +3557,6 @@ the result is always in [0,@var{expression-cst}[.
 @var{expression-cst},@var{expression-cst}@}}
 
 Not documented yet.
-
-@end ftable
-
-@c .........................................................................
-@c Green functions
-@c .........................................................................
-
-@node Green functions, Type manipulation functions, Extended math functions, Types for Function
-@subsection Green functions
-
-@vindex @var{green-function-id}
-
-The Green functions are only used in integral quantities
-(@pxref{Formulation}). The first parameter represents the dimension of the
-problem:
-@itemize @bullet
-@item @code{1D}:
-@code{r = Fabs[$X-$XS]}
-@item @code{2D}:
-@code{r = Sqrt[($X-$XS)^2+($Y-$YS)^2]}
-@item @code{3D}:
-@code{r = Sqrt[($X-$XS)^2+($Y-$YS)^2+($Z-$ZS)^2]}
-@end itemize
-The triplets of values given in the definitions below correspond to the
-@code{1D}, @code{2D} and @code{3D} cases.
-
-@noindent
-@var{green-function-id}:
-@ftable @code
-
-@item Laplace
-@code{[]@{@var{expression-cst}@}}
-
-@code{r/2}, @code{1/(2*Pi)*ln(1/r)}, @code{1/(4*Pi*r)}.
-
-@item GradLaplace
-@code{[]@{@var{expression-cst}@}}
-
-Gradient of @code{Laplace} relative to the destination point (@code{$X},
-@code{$Y}, @code{$Z}).
-
-@item Helmholtz
-@code{[]@{@var{expression-cst}, @var{expression-cst}@}}
-
-@code{exp(j*k0*r)/(4*Pi*r)}, where @code{k0} is given by the second parameter.
-
-@item GradHelmholtz
-@code{[]@{@var{expression-cst}, @var{expression-cst}@}}
-
-Gradient of @code{Helmholtz} relative to the destination point (@code{$X},
-@code{$Y}, @code{$Z}).
-
-@end ftable
-
-
-@c .........................................................................
-@c Type
-@c .........................................................................
-
-@node Type manipulation functions, Coordinate functions, Green functions, Types for Function
-@subsection Type manipulation functions
-
-@vindex @var{type-function-id}
-
-@noindent
-@var{type-function-id}:
-@ftable @code
 
 @item Complex
 @code{[@var{expression-list}]}
@@ -3785,144 +3724,6 @@ Creates a unit vector in y-direction.
 
 Creates a unit vector in z-direction.
 
-@end ftable
-
-
-@c .........................................................................
-@c Coord
-@c .........................................................................
-
-@node Coordinate functions, Miscellaneous functions, Type manipulation functions, Types for Function
-@subsection Coordinate functions
-
-@vindex @var{coord-function-id}
-
-
-@noindent
-@var{coord-function-id}:
-@ftable @code
-
-@item X
-@code{[]}
-
-Gets the X coordinate.
-
-@item Y
-@code{[]}
-
-Gets the Y coordinate.
-
-@item Z
-@code{[]}
-
-Gets the Z coordinate.
-
-@item XYZ
-@code{[]}
-
-Gets X, Y and Z in a vector.
-
-@c todo:
-
-@c @item F_aX_bY_cZ
-@c @code{[]@{@var{expression-cst},@var{expression-cst},@var{expression-cst}@}}
-
-@c @item F_aX21_bY21_cZ21
-@c @code{[]@{@var{expression-cst},@var{expression-cst},@var{expression-cst}@}}
-
-@end ftable
-
-
-@c .........................................................................
-@c Misc
-@c .........................................................................
-
-@node Miscellaneous functions,  , Coordinate functions, Types for Function
-@subsection Miscellaneous functions
-
-@vindex @var{misc-function-id}
-
-@noindent
-@var{misc-function-id}:
-@ftable @code
-
-@item Printf
-@code{[@var{expression}]}
-
-Prints the value of @var{expression} when evaluated. (@code{MPI_Printf}
-can be use instead, to print the message for all MPI ranks.)
-
-@item Rand
-@code{[@var{expression}]}
-
-Returns a pseudo-random number in [0, @var{expression}].
-
-@item Normal
-@code{[]}
-
-Computes the normal to the element.
-
-@item NormalSource
-@code{[]}
-
-Computes the normal to the source element (only valid in a quantity of
-Integral type).
-
-@item Tangent
-@code{[]}
-
-Computes the tangent to the element (only valid for line elements).
-
-@item TangentSource
-@code{[]}
-
-Computes the tangent to the source element (only valid in a quantity of
-Integral type and only for line elements).
-
-@item ElementVol
-@code{[]}
-
-Computes the element's volume.
-
-@item SurfaceArea
-@code{[]@{@var{expression-cst-list}@}}
-
-Computes the area of the physical surfaces in @var{expression-cst-list}
-or of the actual surface if @var{expression-cst-list} is empty.
-
-@item GetVolume
-@code{[]}
-
-Computes the volume of the actual physical group.
-
-@item CompElementNum
-@code{[]}
-
-Returns 0 if the current element and the current source element are
-identical.
-
-@item GetNumElements
-@code{[]@{@var{expression-cst-list}@}}
-
-Counts the elements of physical numbers in @var{expression-cst-list}
-or of the actual region if @var{expression-cst-list} is empty.
-
-@item ElementNum
-@code{[]}
-
-Returns the tag (number) of the current element.
-
-@item QuadraturePointIndex
-@code{[]}
-
-Returns the index of the current quadrature point.
-
-@item AtIndex
-@code{[@var{expression}]@{@var{expression-cst-list}@}}
-
-Returns the i-th entry of @var{expression-cst-list}. This can be used to
-get an element in a list, using an index that is computed at runtime.
-
 @item InterpolationLinear
 @code{[@var{expression}]@{@var{expression-cst-list}@}}
 
@@ -4017,6 +3818,164 @@ are treated in the same way as for @code{ScalarField}.
 Idem, but consider only complex-valued tensor fields. Optional arguments
 are treated in the same way as for @code{ScalarField}.
 
+@item FoilWindingPolynomialBF
+
+Not documented yet.
+
+@end ftable
+
+@c .........................................................................
+@c Green functions
+@c .........................................................................
+
+@node Green functions, Geometry and mesh-related functions, Extended math functions, Types for Function
+@subsection Green functions
+
+@vindex @var{green-function-id}
+
+The Green functions can be used in integral quantities
+(@pxref{Formulation}). The first parameter represents the dimension of
+the problem:
+@itemize @bullet
+@item @code{1D}:
+@code{r = Fabs[$X-$XS]}
+@item @code{2D}:
+@code{r = Sqrt[($X-$XS)^2+($Y-$YS)^2]}
+@item @code{3D}:
+@code{r = Sqrt[($X-$XS)^2+($Y-$YS)^2+($Z-$ZS)^2]}
+@end itemize
+The triplets of values given in the definitions below correspond to the
+@code{1D}, @code{2D} and @code{3D} cases.
+
+@noindent
+@var{green-function-id}:
+@ftable @code
+
+@item Laplace
+@code{[]@{@var{expression-cst}@}}
+
+@code{r/2}, @code{1/(2*Pi)*ln(1/r)}, @code{1/(4*Pi*r)}.
+
+@item GradLaplace
+@code{[]@{@var{expression-cst}@}}
+
+Gradient of @code{Laplace} relative to the destination point (@code{$X},
+@code{$Y}, @code{$Z}).
+
+@item Helmholtz
+@code{[]@{@var{expression-cst}, @var{expression-cst}@}}
+
+@code{exp(j*k0*r)/(4*Pi*r)}, where @code{k0} is given by the second parameter.
+
+@item GradHelmholtz
+@code{[]@{@var{expression-cst}, @var{expression-cst}@}}
+
+Gradient of @code{Helmholtz} relative to the destination point (@code{$X},
+@code{$Y}, @code{$Z}).
+
+@end ftable
+
+@c .........................................................................
+@c Geometry and mesh
+@c .........................................................................
+
+@node Geometry and mesh-related functions, System functions, Green functions, Types for Function
+@subsection Geometry and mesh-related functions
+
+@vindex @var{geometry-function-id}
+
+@noindent
+@var{geometry-function-id}:
+@ftable @code
+
+@item X
+@code{[]}
+
+Gets the X coordinate.
+
+@item Y
+@code{[]}
+
+Gets the Y coordinate.
+
+@item Z
+@code{[]}
+
+Gets the Z coordinate.
+
+@item XYZ
+@code{[]}
+
+Gets X, Y and Z in a vector.
+
+@c todo:
+
+@c @item F_aX_bY_cZ
+@c @code{[]@{@var{expression-cst},@var{expression-cst},@var{expression-cst}@}}
+
+@c @item F_aX21_bY21_cZ21
+@c @code{[]@{@var{expression-cst},@var{expression-cst},@var{expression-cst}@}}
+
+@item Normal
+@code{[]}
+
+Computes the normal to the element.
+
+@item NormalSource
+@code{[]}
+
+Computes the normal to the source element (only valid in a quantity of
+Integral type).
+
+@item Tangent
+@code{[]}
+
+Computes the tangent to the element (only valid for line elements).
+
+@item TangentSource
+@code{[]}
+
+Computes the tangent to the source element (only valid in a quantity of
+Integral type and only for line elements).
+
+@item ElementVol
+@code{[]}
+
+Computes the element's volume.
+
+@item SurfaceArea
+@code{[]@{@var{expression-cst-list}@}}
+
+Computes the area of the physical surfaces in @var{expression-cst-list}
+or of the actual surface if @var{expression-cst-list} is empty.
+
+@item GetVolume
+@code{[]}
+
+Computes the volume of the actual physical group.
+
+@item CompElementNum
+@code{[]}
+
+Returns 0 if the current element and the current source element are
+identical.
+
+@item GetNumElements
+@code{[]@{@var{expression-cst-list}@}}
+
+Counts the elements of physical numbers in @var{expression-cst-list}
+or of the actual region if @var{expression-cst-list} is empty.
+
+@item ElementNum
+@code{[]}
+
+Returns the tag (number) of the current element.
+
+@item QuadraturePointIndex
+@code{[]}
+
+Returns the index of the current quadrature point.
+
 @item Distance
 @code{[@var{expression}]@{@var{expression-cst}@}}
 
@@ -4024,6 +3983,33 @@ Evaluate the distance between the point (whose x, y, z coordinates are
 given as a vector argument) and a vector valued view, interpreted as a
 displacement field (i.e. compute the minimal distance between the point
 and the deformed mesh in the view).
+
+@end ftable
+
+@c .........................................................................
+@c System
+@c .........................................................................
+
+@node System functions, Physics-related functions, Geometry and mesh-related functions, Types for Function
+@subsection System functions
+
+@vindex @var{system-function-id}
+
+@noindent
+@var{system-function-id}:
+@ftable @code
+
+@item Printf
+@code{[@var{expression}]}
+
+Prints the value of @var{expression} when evaluated. (@code{MPI_Printf}
+can be use instead, to print the message for all MPI ranks.)
+
+@item AtIndex
+@code{[@var{expression}]@{@var{expression-cst-list}@}}
+
+Returns the i-th entry of @var{expression-cst-list}. This can be used to
+get an element in a list, using an index that is computed at runtime.
 
 @item GetCpuTime
 @code{[]}
@@ -4042,6 +4028,11 @@ since GetDP was started).
 
 Returns the current memory usage, in megabytes (maximum resident set
 size).
+
+@item GetRank
+@code{[]}
+
+Returns the MPI rank.
 
 @item SetNumberRunTime
 @code{[@var{expression}]@{@var{char-expression}@}}
@@ -4108,6 +4099,126 @@ where @var{entity} is the node (mesh vertex) or element number (tag).
 Accesses the map @var{char-expression} created by a @code{NodeTable} or
 @code{ElementTable} @code{PostOperation}, or by the @code{ReadTable}
 operation, at the key @var{expression} specified as argument.
+
+@item ValueFromFile
+@code{[ ]@{ @var{char-expression} @}}
+
+Reads a single scalar value from the ASCII @var{char-expression}.
+
+@end ftable
+
+@c .........................................................................
+@c Physics
+@c .........................................................................
+
+@node Physics-related functions,  , System functions, Types for Function
+@subsection Physics-related functions
+
+@vindex @var{physics-function-id}
+
+@noindent
+@var{physics-function-id}:
+@ftable @code
+
+@item JFIE_ZPolAnalyticOnCyl
+@item RCS_ZPolAnalyticCyl
+@item JFIE_TransZPolAnalyticOnCyl
+@item JFIE_OnSphCutTheta
+@item RCS_SphTheta
+@item JFIE_OnSphCutPhi
+@item RCS_SphPhi
+@item CurrentPerfectlyConductingSphere
+@item ElectricFieldPerfectlyConductingSphereMwt
+@item ElectricFieldDielectricSphereMwt
+@item ExactOsrcSolutionPerfectlyConductingSphereMwt
+@item CurrentPerfectlyConductingSphereMwt
+
+Exact solutions for electromagnetic scattering problems.
+
+@item dhdb_Jiles
+@item dbdh_Jiles
+@item h_Jiles
+@item b_Jiles
+
+Functions for Jiles hysteresis model.
+
+@item Cell_EB
+@item b_EB
+@item hrev_EB
+@item Jrev_EB
+@item h_EB
+@item dbdh_EB
+@item dhdb_EB
+
+Functions for Energy-based hysteresis model.
+
+@item AcousticFieldSoftSphere
+@item AcousticFieldSoftSphereABC
+@item DrAcousticFieldSoftSphere
+@item RCSSoftSphere
+@item AcousticFieldHardSphere
+@item RCSHardSphere
+@item AcousticFieldSoftCylinder
+@item AcousticFieldSoftCylinderABC
+@item DrAcousticFieldSoftCylinder
+@item RCSSoftCylinder
+@item AcousticFieldHardCylinder
+@item AcousticFieldHardCylinderABC
+@item DthetaAcousticFieldHardCylinder
+@item RCSHardCylinder
+
+Exact solutions for acoustc scattering problems.
+
+@item OSRC_C0
+@item OSRC_R0
+@item OSRC_Aj
+@item OSRC_Bj
+
+Functions for on-surface radiation boundary conditions.
+
+@item ElastodynamicsCylinderCavity
+@item ElastodynamicsCylinderWall
+@item ElastodynamicsCylinderWallS
+@item ElastodynamicsCylinderWallOut
+@item ElastodynamicsCylinderWallsOut
+@item ElastoCylinderWallOutAbc
+@item ElastoCylinderWallsOutAbc
+@item ElastoCylinderWallOutAbc2
+@item ElastoCylinderWallOutAbc2Pade
+@item ElastoCylinderWallsOutAbc2Pade
+
+Exact solutions for elastodynamic problems.
+
+@item pnm
+@item unm
+@item snm
+@item Xnm
+@item Ynm
+@item Znm
+@item Mnm
+@item Nnm
+
+Vector spherical harmonics.
+
+@item DyadGreenHom
+@item CurlDyadGreenHom
+
+Dyadic Green's Function for homogeneous lossless media)
+
+@item BiotSavart
+@item Pocklington
+
+Biot-Savart functions.
+
+@item RhoPowerLaw
+@item DRhoDJTimesJPowerLaw
+@item DEDJPowerLaw
+@item DRhoDJTimesJPowerLawTS2D
+@item AnisotropicRhoPL
+@item AnisotropicDEDJTensorPL
+@item Lambda_CurrentSharingHom
+
+Functions for power-law model of superconductors.
 
 @end ftable
 
@@ -4389,9 +4500,9 @@ for 2-D regions in axisymmetrical geometries.
 
 @item VolSphShell
 Volume Jacobian with spherical shell transformation,
-for @var{n}-D regions in @var{n}-D geometries, @var{n} = 2 or 3. 
-For @var{n}=2, the value of @var{center-Z} has no effect and the 
-transformation is in the @var{XY} plane. An external radius of 0 
+for @var{n}-D regions in @var{n}-D geometries, @var{n} = 2 or 3.
+For @var{n}=2, the value of @var{center-Z} has no effect and the
+transformation is in the @var{XY} plane. An external radius of 0
 can be used for the Kelvin (inversion) transformation.
 
 @i{Parameters}: @var{radius-internal}, @var{radius-external}
@@ -4401,12 +4512,12 @@ can be used for the Kelvin (inversion) transformation.
 @item VolCylShell
 Volume Jacobian with cylindrical shell transformation, for @var{n}-D
 regions in @var{n}-D geometries, @var{n} = 2 or 3. For @var{n}=2,
-@code{VolCylShell} reverts to @code{VolSphShell} and the @var{axis} 
-parameter below has no effect (and should be omitted). An external 
-radius of 0 can be used for the Kelvin (inversion) transformation. 
+@code{VolCylShell} reverts to @code{VolSphShell} and the @var{axis}
+parameter below has no effect (and should be omitted). An external
+radius of 0 can be used for the Kelvin (inversion) transformation.
 
 @i{Parameters}: @var{radius-internal}, @var{radius-external}
-               <, @var{axis}, @var{center-X}, @var{center-Y}, 
+               <, @var{axis}, @var{center-X}, @var{center-Y},
 			      @var{center-Z}, @var{power}, @var{1/infinity} >.
 
 @item VolAxiSphShell
@@ -5106,7 +5217,7 @@ When GetDP is linked with the Gmsh library, read a file using Gmsh. This
 file can be in any format recognized by Gmsh. If the file contains one
 or multiple post-processing fields, these fields will be evaluated using
 the built-in @code{Field[]}, @code{ScalarField[]}, @code{VectorField[]},
-etc., functions (@pxref{Miscellaneous functions}).
+etc..
 
 (Note that @code{GmshOpen} and @code{GmshMerge} can be used instead of
 @code{GmshRead} to force Gmsh to do classical ``open'' and ``merge''
@@ -5119,9 +5230,8 @@ necessary.)
 
 Same thing as the @code{GmshRead} command above, except that the field
 is forced to be stored with the given tag. The tag can be used to
-retrieve the given field with the built-in @code{Field[]},
-@code{ScalarField[]}, @code{VectorField[]}, etc., functions
-(@pxref{Miscellaneous functions}).
+retrieve the given field with the built-in functions @code{Field[]},
+@code{ScalarField[]}, @code{VectorField[]}, etc..
 
 @item GmshRead
 @code{[@var{expression-char}, @code{$}@var{string}]}
@@ -5753,6 +5863,22 @@ plots, parametric coordinates for parametric @code{OnGrid} plots, etc.
 Like @code{Table}, but with only the @var{x-coord} @var{y-coord}
 @var{z-coord} and @var{values} columns.
 
+@item ValueOnly
+Like @code{Table}, but with only @var{values} columns.
+
+@item Gnuplot
+Space oriented column output similar to the @code{Table} format, except that
+a new line is created for each node of each element, with a repetition of
+the first node if the number of nodes in the element is greater than 2. This
+permits to draw unstructured meshes and nice three-dimensional elevation
+plots in Gnuplot. The columns are: @var{element-type} @var{element-index}
+@var{x-coord} @var{y-coord} @var{z-coord} @var{real} @var{real} @var{real}
+@var{values}. The three @var{real} numbers preceding the @var{values}
+contain context-dependent information, depending on the type of plot:
+curvilinear abscissa for @code{OnLine} plots, normal to the plane for
+@code{OnPlane} plots, parametric coordinates for parametric @code{OnGrid}
+plots, etc.
+
 @item TimeTable
 Time oriented column output, e.g., suitable for Gnuplot, Excel, Caleida
 Graph, etc. The columns are: @var{time-step} @var{time} @var{x-coord}
@@ -5777,21 +5903,17 @@ name of the @code{PostOperation} quantity. The values are also directly
 usable by the @code{ValueFromTable} function, which allows to use them
 as values in an element-wise @code{Constraint}.
 
-@item Gnuplot
-Space oriented column output similar to the @code{Table} format, except that
-a new line is created for each node of each element, with a repetition of
-the first node if the number of nodes in the element is greater than 2. This
-permits to draw unstructured meshes and nice three-dimensional elevation
-plots in Gnuplot. The columns are: @var{element-type} @var{element-index}
-@var{x-coord} @var{y-coord} @var{z-coord} @var{real} @var{real} @var{real}
-@var{values}. The three @var{real} numbers preceding the @var{values}
-contain context-dependent information, depending on the type of plot:
-curvilinear abscissa for @code{OnLine} plots, normal to the plane for
-@code{OnPlane} plots, parametric coordinates for parametric @code{OnGrid}
-plots, etc.
+@item RegionTable
+Table of global quantity values, per region.
+
+@item FrequencyTable
+Table of global quantity values, per region, with frequency in the first
+column.
 
 @item Adaptation
 Adaptation map, suitable for the GetDP @code{-adapt} command line option.
+
+@c TODO : document RegionValue
 
 @end ftable
 

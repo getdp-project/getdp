@@ -1,4 +1,4 @@
-# GetDP - Copyright (C) 1997-2022 P. Dular and C. Geuzaine, University of Liege
+# GetDP - Copyright (C) 1997-2025 P. Dular and C. Geuzaine, University of Liege
 #
 # See the LICENSE.txt file for license information. Please report all
 # issues on https://gitlab.onelab.info/getdp/getdp/issues.
@@ -46,7 +46,6 @@ opt(PETSC "Enable PETSc linear solver" ${DEFAULT})
 opt(PRIVATE_API "Enable private API" OFF)
 opt(PYTHON "Enable Python functions" ${DEFAULT})
 opt(SLEPC "Enable SLEPc eigensolver" ${DEFAULT})
-opt(SMALLFEM "Enable experimental SmallFem assembler" OFF)
 opt(SPARSKIT "Enable Sparskit solver instead of PETSc (requires Fortran)" ${DEFAULT})
 opt(SYSTEM_CONTRIB "Use system versions of contrib libraries, when possible" OFF)
 opt(PEWE "Enable PeWe exact solutions (requires Fortran)" ${DEFAULT})
@@ -64,8 +63,8 @@ set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_C_STANDARD 99)
 
-set(GETDP_MAJOR_VERSION 3)
-set(GETDP_MINOR_VERSION 6)
+set(GETDP_MAJOR_VERSION 4)
+set(GETDP_MINOR_VERSION 0)
 set(GETDP_PATCH_VERSION 0)
 if(NOT GETDP_EXTRA_VERSION)
   set(GETDP_EXTRA_VERSION "")
@@ -394,16 +393,6 @@ if(ENABLE_GMSH)
     list(APPEND EXTERNAL_LIBRARIES ${GMSH_LIB})
     list(APPEND EXTERNAL_INCLUDES ${GMSH_INC} ${GMSH_INC}/gmsh)
     set_config_option(HAVE_GMSH "Gmsh")
-  endif()
-endif()
-
-if(ENABLE_SMALLFEM)
-  find_library(SMALLFEM_LIB sf PATH_SUFFIXES lib)
-  find_path(SMALLFEM_INC "functionSpace/functionSpace.h" PATH_SUFFIXES include)
-  if(SMALLFEM_LIB AND SMALLFEM_INC)
-    list(APPEND EXTERNAL_LIBRARIES ${SMALLFEM_LIB})
-    list(APPEND EXTERNAL_INCLUDES ${SMALLFEM_INC})
-    set_config_option(HAVE_SMALLFEM "SmallFem")
   endif()
 endif()
 

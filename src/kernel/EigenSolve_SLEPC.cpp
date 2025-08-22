@@ -1,4 +1,4 @@
-// GetDP - Copyright (C) 1997-2022 P. Dular and C. Geuzaine, University of Liege
+// GetDP - Copyright (C) 1997-2025 P. Dular and C. Geuzaine, University of Liege
 //
 // See the LICENSE.txt file for license information. Please report all
 // issues on https://gitlab.onelab.info/getdp/getdp/issues.
@@ -161,8 +161,8 @@ static void _storeEigenVectors(struct DofData *DofData_P, PetscInt nconv, EPS ep
   Message::Info("               %-24s%-24s%-12s", "Re", "Im", "Relative error");
   bool newsol = false;
   for(int i = 0; i < nconv; i++) {
-    PetscScalar kr, ki;
-    PetscReal error;
+    PetscScalar kr = 0., ki = 0.;
+    PetscReal error = 0.;
     if(eps) {
       _try(EPSGetEigenpair(eps, i, &kr, &ki, xr, xi));
 #if(PETSC_VERSION_MAJOR == 3) && (PETSC_VERSION_MINOR < 6)
@@ -960,7 +960,7 @@ static void _rationalEVP(struct DofData *DofData_P, int numEigenValues,
 #if(PETSC_VERSION_MAJOR == 3) && (PETSC_VERSION_MINOR >= 8)
   NEP nep;
   NEPType type;
-  int max_Nchar = 1000;
+  const int max_Nchar = 1000;
   char str_coefsNum[6][max_Nchar];
   char str_coefsDen[6][max_Nchar];
   char str_buff[50];

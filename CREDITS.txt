@@ -1,4 +1,4 @@
-                 GetDP is copyright (C) 1997-2022
+                 GetDP is copyright (C) 1997-2025
 
                           Patrick Dular
 
@@ -9,21 +9,21 @@
 
                        University of Liege
 
-Major code contributions to GetDP have been provided by Johan Gyselinck, Ruth
-Sabariego, Michael Asam, Bertrand Thierry, Francois Henrotte, Guillaume
-Dem\'esy. Other code contributors include: David Colignon, Tuan Ledinh, Patrick
-Lefevre, Andre Nicolet, Jean-Francois Remacle, Timo Tarhasaari, Christophe
-Trophime, Marc Ume, Peter Binde and Louis Denis. See the source code for more
+Major code contributions to GetDP have been provided by Marc Ume, Francois
+Henrotte, Jean-Francois Remacle, Johan Gyselinck, Ruth Sabariego, Tuan Ledinh,
+Patrick Lefevre, Michael Asam, Bertrand Thierry, Kevin Jacques, Nicolas Marsic,
+Guillaume Dem\'esy, Louis Denis, Erik Schnaubelt. See the source code for more
 details.
 
-Thanks to the following folks who have contributed by providing fresh ideas on
-theoretical or programming topics, who have sent patches, requests for changes
+Thanks to the following folks who have contributed by providing patches, fresh
+ideas on theoretical or programming topics, who have sent requests for changes
 or improvements, or who gave us access to exotic machines for testing GetDP:
-Olivier Adam, Alejandro Angulo, Geoffrey Deliege, Mark Evans, Philippe Geuzaine,
-Eric Godard, Sebastien Guenneau, Daniel Kedzierski, Samuel Kvasnica, Benoit
-Meys, Uwe Pahner, Georgia Psoni, Robert Struijs, Ahmed Rassili, Thierry
-Scordilis, Herve Tortel, Jose Geraldo A. Brito Neto, Matthias Fenner, Daryl Van
-Vorst, Marc Boulé.
+Timo Tarhasaari, David Colignon, Andre Nicolet, Benoit Meys, Uwe Pahner,
+Alexandru Mustatea, Olivier Adam, Alejandro Angulo, Geoffrey Deliege, Mark
+Evans, Philippe Geuzaine, Eric Godard, Sebastien Guenneau, Daniel Kedzierski,
+Samuel Kvasnica, Georgia Psoni, Robert Struijs, Ahmed Rassili, Thierry
+Scordilis, Christophe Trophime, Herve Tortel, Peter Binde, Jose Geraldo A. Brito
+Neto, Matthias Fenner, Daryl Van Vorst, Xavier Antoine, Marc Boulé.
 
 The AVL tree code (src/common/avl.*) is copyright (C) 1988-1993, 1995 The Regents
 of the University of California. Permission to use, copy, modify, and distribute

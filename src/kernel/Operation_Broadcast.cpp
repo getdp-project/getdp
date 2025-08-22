@@ -1,4 +1,4 @@
-// GetDP - Copyright (C) 1997-2022 P. Dular and C. Geuzaine, University of Liege
+// GetDP - Copyright (C) 1997-2025 P. Dular and C. Geuzaine, University of Liege
 //
 // See the LICENSE.txt file for license information. Please report all
 // issues on https://gitlab.onelab.info/getdp/getdp/issues.
@@ -45,8 +45,7 @@ int Operation_CheckVariables(struct Resolution *Resolution_P,
           names.push_back(it->first);
       }
       else {
-        for(unsigned int i = 0;
-            i < List_Nbr(Operation_P->Case.CheckVariables.Names); i++) {
+        for(int i = 0; i < List_Nbr(Operation_P->Case.CheckVariables.Names); i++) {
           char *s;
           List_Read(Operation_P->Case.CheckVariables.Names, i, &s);
           if(!List_Nbr(Operation_P->Case.CheckVariables.id)) {
@@ -56,10 +55,10 @@ int Operation_CheckVariables(struct Resolution *Resolution_P,
               Message::Warning("Unknown runtime variable '%s'", s);
           }
           else {
-            for(unsigned int j = 0;
-                j < List_Nbr(Operation_P->Case.CheckVariables.id); j++) {
+            for(int j = 0; j < List_Nbr(Operation_P->Case.CheckVariables.id); j++) {
               char sidj[STRING_SIZE];
-              strncpy(sidj, s, sizeof(sidj));
+              strncpy(sidj, s, STRING_SIZE - 1);
+	      sidj[STRING_SIZE - 1] = '\0';
               double idj;
               List_Read(Operation_P->Case.GatherVariables.id, j, &idj);
               char cidj[STRING_SIZE];
@@ -83,9 +82,10 @@ int Operation_CheckVariables(struct Resolution *Resolution_P,
     if((Operation_P->Case.CheckVariables.from == -1 ||
         rank == Operation_P->Case.CheckVariables.from) &&
        (rank == commrank)) {
-      for(unsigned int i = 0; i < names.size(); i++) {
+      for(std::size_t i = 0; i < names.size(); i++) {
         char key[STRING_SIZE];
-        strncpy(key, names[i].c_str(), sizeof(key));
+        strncpy(key, names[i].c_str(), STRING_SIZE - 1);
+	key[STRING_SIZE - 1] = '\0';
         struct Value &v = values[key];
         std::string stringvalue = Print_Value_ToString(&v);
         printf("On rank %d: %s = %s\n", rank, key, stringvalue.c_str());
@@ -190,7 +190,7 @@ int Operation_BroadcastFieldsGeneric(struct Resolution *Resolution_P,
         gmsh::view::getListData(tag, dataTypes, numElements, data);
         int numDataTypes = dataTypes.size();
         MPI_Bcast(&numDataTypes, 1, MPI_INT, rank, MPI_COMM_WORLD);
-        for(unsigned int i = 0; i < dataTypes.size(); i++) {
+        for(std::size_t i = 0; i < dataTypes.size(); i++) {
           char dataType[2] = {dataTypes[i][0], dataTypes[i][1]};
           MPI_Bcast(dataType, 2, MPI_SIGNED_CHAR, rank, MPI_COMM_WORLD);
           MPI_Bcast(&numElements[i], 1, MPI_INT, rank, MPI_COMM_WORLD);
@@ -258,8 +258,7 @@ int Operation_GatherVariables(struct Resolution *Resolution_P,
   // Identify Valid Variable names to gather ...
   /////////////////////////////////////////////////////////////////////////////////////
   std::vector<std::string> names;
-  for(unsigned int i = 0; i < List_Nbr(Operation_P->Case.GatherVariables.Names);
-      i++) {
+  for(int i = 0; i < List_Nbr(Operation_P->Case.GatherVariables.Names); i++) {
     char *s;
     List_Read(Operation_P->Case.GatherVariables.Names, i, &s);
     if(!List_Nbr(Operation_P->Case.GatherVariables.id)) {
@@ -269,10 +268,10 @@ int Operation_GatherVariables(struct Resolution *Resolution_P,
         Message::Warning("GatherVariables: Unknown variable %s", s);
     }
     else {
-      for(unsigned int j = 0;
-          j < List_Nbr(Operation_P->Case.GatherVariables.id); j++) {
+      for(int j = 0; j < List_Nbr(Operation_P->Case.GatherVariables.id); j++) {
         char sidj[STRING_SIZE];
-        strncpy(sidj, s, sizeof(sidj));
+        strncpy(sidj, s, STRING_SIZE - 1);
+	sidj[STRING_SIZE - 1] = '\0';	
         double idj;
         List_Read(Operation_P->Case.GatherVariables.id, j, &idj);
         char cidj[STRING_SIZE];
@@ -302,18 +301,19 @@ int Operation_GatherVariables(struct Resolution *Resolution_P,
   vtypes = new int[numVar];
   double *vvals;
   vvals = new double[numVar * NBR_MAX_HARMONIC * MAX_DIM];
-  for(unsigned int i = 0; i < numVar; i++) {
-    strncpy(&(vnames[i * STRING_SIZE]), names[i].c_str(), STRING_SIZE);
+  for(int i = 0; i < numVar; i++) {
+    strncpy(&(vnames[i * STRING_SIZE]), names[i].c_str(), STRING_SIZE - 1);
+    vnames[i * STRING_SIZE + STRING_SIZE - 1] = '\0';
     struct Value &v = values[&(vnames[i * STRING_SIZE])];
     vtypes[i] = v.Type;
-    for(unsigned int k = 0; k < NBR_MAX_HARMONIC * MAX_DIM; k++)
+    for(int k = 0; k < NBR_MAX_HARMONIC * MAX_DIM; k++)
       vvals[i * NBR_MAX_HARMONIC * MAX_DIM + k] = v.Val[k];
   }
 
   /////////////////////////////////////////////////////////////////////////////////////
   // Prepare Gather ...
   /////////////////////////////////////////////////////////////////////////////////////
-  int numVartot, *vnumVar_gathered;
+  int numVartot, *vnumVar_gathered = nullptr;
   // int *vnamessizes; //(v1) //vnamessizes could be gathered (v1) or deduced
   // from vnumVar_gathered and STRING_SIZE (v2)
 
@@ -341,19 +341,18 @@ int Operation_GatherVariables(struct Resolution *Resolution_P,
   /////////////////////////////////////////////////////////////////////////////////////
   // Gather all vectors vnames in vector vnames_gathered ...
   /////////////////////////////////////////////////////////////////////////////////////
-  char *vnames_gathered;
-  int *vnamessizes, // (v2)
-    *vnamesdispls;
+  char *vnames_gathered = nullptr;
+  int *vnamessizes = nullptr, *vnamesdispls = nullptr;
   if(Allgather || commrank == Operation_P->Case.GatherVariables.to) {
     vnames_gathered = new char[numVartot * STRING_SIZE];
     vnamessizes = new int[commsize]; // (v2)
     vnamesdispls = new int[commsize];
 
-    for(unsigned int i = 0; i < commsize; i++) // (v2)
+    for(int i = 0; i < commsize; i++) // (v2)
       vnamessizes[i] = vnumVar_gathered[i] * STRING_SIZE; // (v2)
 
     vnamesdispls[0] = 0;
-    for(unsigned int i = 1; i < commsize; i++)
+    for(int i = 1; i < commsize; i++)
       vnamesdispls[i] = vnamesdispls[i - 1] + vnamessizes[i - 1];
   }
 
@@ -376,18 +375,18 @@ int Operation_GatherVariables(struct Resolution *Resolution_P,
   /////////////////////////////////////////////////////////////////////////////////////
   // Gather all vectors vvals in vector vvals_gathered ...
   /////////////////////////////////////////////////////////////////////////////////////
-  double *vvals_gathered;
-  int *vvalssizes, *vvalsdispls;
+  double *vvals_gathered = nullptr;
+  int *vvalssizes = nullptr, *vvalsdispls = nullptr;
   if(Allgather || commrank == Operation_P->Case.GatherVariables.to) {
     vvals_gathered = new double[numVartot * NBR_MAX_HARMONIC * MAX_DIM];
     vvalssizes = new int[commsize];
     vvalsdispls = new int[commsize];
 
-    for(unsigned int i = 0; i < commsize; i++)
+    for(int i = 0; i < commsize; i++)
       vvalssizes[i] = vnumVar_gathered[i] * NBR_MAX_HARMONIC * MAX_DIM;
 
     vvalsdispls[0] = 0;
-    for(unsigned int i = 1; i < commsize; i++)
+    for(int i = 1; i < commsize; i++)
       vvalsdispls[i] = vvalsdispls[i - 1] + vvalssizes[i - 1];
   }
 
@@ -409,14 +408,14 @@ int Operation_GatherVariables(struct Resolution *Resolution_P,
   /////////////////////////////////////////////////////////////////////////////////////
   // Gather all vectors vtypes in vector vtypes_gathered ...
   /////////////////////////////////////////////////////////////////////////////////////
-  int *vtypes_gathered, *vtypesdispls;
+  int *vtypes_gathered = nullptr, *vtypesdispls = nullptr;
   if(Allgather || commrank == Operation_P->Case.GatherVariables.to) {
     vtypes_gathered = new int[numVartot];
     // vtypessizes = vnumVar_gathered which is already known at this stage
     vtypesdispls = new int[commsize];
 
     vtypesdispls[0] = 0;
-    for(unsigned int i = 1; i < commsize; i++)
+    for(int i = 1; i < commsize; i++)
       vtypesdispls[i] = vtypesdispls[i - 1] + vnumVar_gathered[i - 1];
   }
 
@@ -438,10 +437,10 @@ int Operation_GatherVariables(struct Resolution *Resolution_P,
   // Update Variables from gathered vectors
   /////////////////////////////////////////////////////////////////////////////////////
   if(Allgather || commrank == Operation_P->Case.GatherVariables.to) {
-    for(unsigned int i = 0; i < numVartot; i++) {
+    for(int i = 0; i < numVartot; i++) {
       struct Value v;
       v.Type = vtypes_gathered[i];
-      for(unsigned int k = 0; k < NBR_MAX_HARMONIC * MAX_DIM; k++)
+      for(int k = 0; k < NBR_MAX_HARMONIC * MAX_DIM; k++)
         v.Val[k] = vvals_gathered[i * NBR_MAX_HARMONIC * MAX_DIM + k];
       values[&(vnames_gathered[i * STRING_SIZE])] = v;
     }
@@ -473,8 +472,8 @@ int Operation_ScatterVariables(struct Resolution *Resolution_P,
   }
 
   int numid = List_Nbr(Operation_P->Case.ScatterVariables.id);
-  int vid[numid]; // vector of id numbers of variable associated to a rank (vid)
-  for(unsigned int j = 0; j < numid; j++) {
+  std::vector<int> vid(numid); // vector of id numbers of variable associated to a rank (vid)
+  for(int j = 0; j < numid; j++) {
     double idj;
     List_Read(Operation_P->Case.ScatterVariables.id, j, &idj);
     vid[j] = (int)idj;
@@ -484,7 +483,7 @@ int Operation_ScatterVariables(struct Resolution *Resolution_P,
   // (Before Scatter): Gather all numid in the vector vnumid_gathered in the
   // root rank and get numidtot
   /////////////////////////////////////////////////////////////////////////////////////
-  int numidtot, *vnumid_gathered;
+  int numidtot, *vnumid_gathered = nullptr;
   if(commrank == Operation_P->Case.ScatterVariables.from)
     vnumid_gathered = new int[commsize];
   MPI_Reduce(&numid, &numidtot, 1, MPI_INT, MPI_SUM,
@@ -502,15 +501,15 @@ int Operation_ScatterVariables(struct Resolution *Resolution_P,
   /////////////////////////////////////////////////////////////////////////////////////
   // (Before Scatter): Gather all vid vectors in vid_gathered in the root rank
   /////////////////////////////////////////////////////////////////////////////////////
-  int *vid_gathered, *viddispls;
+  int *vid_gathered = nullptr, *viddispls = nullptr;
   if(commrank == Operation_P->Case.ScatterVariables.from) {
     vid_gathered = new int[numidtot];
     viddispls = new int[commsize];
     viddispls[0] = 0;
-    for(unsigned int i = 1; i < commsize; i++)
+    for(int i = 1; i < commsize; i++)
       viddispls[i] = viddispls[i - 1] + vnumid_gathered[i - 1];
   }
-  MPI_Gatherv(vid, numid, MPI_INT, vid_gathered, vnumid_gathered, viddispls,
+  MPI_Gatherv(&vid[0], numid, MPI_INT, vid_gathered, vnumid_gathered, viddispls,
               MPI_INT, Operation_P->Case.ScatterVariables.from, MPI_COMM_WORLD);
 
   /////////////////////////////////////////////////////////////////////////////////////
@@ -519,19 +518,19 @@ int Operation_ScatterVariables(struct Resolution *Resolution_P,
   /////////////////////////////////////////////////////////////////////////////////////
   std::map<std::string, struct Value> &values = Get_AllValueSaved();
   std::vector<std::string> names;
-  int numVartot, *vnumVar_toscatter;
+  int numVartot, *vnumVar_toscatter = nullptr;
   if(commrank == Operation_P->Case.ScatterVariables.from) {
     vnumVar_toscatter = new int[commsize];
-    for(unsigned int rank = 0; rank < commsize; rank++) {
+    for(int rank = 0; rank < commsize; rank++) {
       vnumVar_toscatter[rank] = 0;
-      for(unsigned int i = 0;
-          i < List_Nbr(Operation_P->Case.ScatterVariables.Names); i++) {
+      for(int i = 0; i < List_Nbr(Operation_P->Case.ScatterVariables.Names); i++) {
         char *s;
         List_Read(Operation_P->Case.ScatterVariables.Names, i, &s);
         {
-          for(unsigned int k = 0; k < vnumid_gathered[rank]; k++) {
+          for(int k = 0; k < vnumid_gathered[rank]; k++) {
             char sidj[STRING_SIZE];
-            strncpy(sidj, s, sizeof(sidj));
+            strncpy(sidj, s, STRING_SIZE - 1);
+	    sidj[STRING_SIZE - 1] = '\0';
             char cidj[STRING_SIZE];
             snprintf(cidj, sizeof(cidj), "_%d",
                      vid_gathered[viddispls[rank] + k]);
@@ -560,20 +559,21 @@ int Operation_ScatterVariables(struct Resolution *Resolution_P,
   // Build vectors: vnames_toscatter, vtypes_toscatter, vvals_toscatter in the
   // root rank
   /////////////////////////////////////////////////////////////////////////////////////
-  char *vnames_toscatter;
-  int *vtypes_toscatter;
-  double *vvals_toscatter;
+  char *vnames_toscatter = nullptr;
+  int *vtypes_toscatter = nullptr;
+  double *vvals_toscatter = nullptr;
   if(commrank == Operation_P->Case.ScatterVariables.from) {
     int vnamessize_toscatter = numVartot * STRING_SIZE;
     vnames_toscatter = new char[vnamessize_toscatter];
     vtypes_toscatter = new int[numVartot];
     vvals_toscatter = new double[numVartot * NBR_MAX_HARMONIC * MAX_DIM];
-    for(unsigned int i = 0; i < numVartot; i++) {
+    for(int i = 0; i < numVartot; i++) {
       strncpy(&(vnames_toscatter[i * STRING_SIZE]), names[i].c_str(),
-              STRING_SIZE);
+              STRING_SIZE - 1);
+      vnames_toscatter[i * STRING_SIZE + STRING_SIZE - 1] = '\0';
       struct Value &v = values[&(vnames_toscatter[i * STRING_SIZE])];
       vtypes_toscatter[i] = v.Type;
-      for(unsigned int k = 0; k < NBR_MAX_HARMONIC * MAX_DIM; k++)
+      for(int k = 0; k < NBR_MAX_HARMONIC * MAX_DIM; k++)
         vvals_toscatter[i * NBR_MAX_HARMONIC * MAX_DIM + k] = v.Val[k];
     }
   }
@@ -589,16 +589,16 @@ int Operation_ScatterVariables(struct Resolution *Resolution_P,
   // Scatter vector vnames_toscatter from root to vectors vnames in each rank
   // ...
   /////////////////////////////////////////////////////////////////////////////////////
-  char *vnames;
-  int *vnamessizes, *vnamesdispls;
+  char *vnames = nullptr;
+  int *vnamessizes = nullptr, *vnamesdispls = nullptr;
   vnames = new char[numVar * STRING_SIZE];
   if(commrank == Operation_P->Case.ScatterVariables.from) {
     vnamessizes = new int[commsize];
     vnamesdispls = new int[commsize];
-    for(unsigned int i = 0; i < commsize; i++)
+    for(int i = 0; i < commsize; i++)
       vnamessizes[i] = vnumVar_toscatter[i] * STRING_SIZE;
     vnamesdispls[0] = 0;
-    for(unsigned int i = 1; i < commsize; i++)
+    for(int i = 1; i < commsize; i++)
       vnamesdispls[i] = vnamesdispls[i - 1] + vnamessizes[i - 1];
   }
   MPI_Scatterv(vnames_toscatter, vnamessizes, vnamesdispls, MPI_SIGNED_CHAR,
@@ -613,16 +613,16 @@ int Operation_ScatterVariables(struct Resolution *Resolution_P,
   /////////////////////////////////////////////////////////////////////////////////////
   // Scatter vector vvals_toscatter from root to vectors vvals in each rank ...
   /////////////////////////////////////////////////////////////////////////////////////
-  double *vvals;
-  int *vvalssizes, *vvalsdispls;
+  double *vvals = nullptr;
+  int *vvalssizes = nullptr, *vvalsdispls = nullptr;
   vvals = new double[numVar * NBR_MAX_HARMONIC * MAX_DIM];
   if(commrank == Operation_P->Case.ScatterVariables.from) {
     vvalssizes = new int[commsize];
     vvalsdispls = new int[commsize];
-    for(unsigned int i = 0; i < commsize; i++)
+    for(int i = 0; i < commsize; i++)
       vvalssizes[i] = vnumVar_toscatter[i] * NBR_MAX_HARMONIC * MAX_DIM;
     vvalsdispls[0] = 0;
-    for(unsigned int i = 1; i < commsize; i++)
+    for(int i = 1; i < commsize; i++)
       vvalsdispls[i] = vvalsdispls[i - 1] + vvalssizes[i - 1];
   }
   MPI_Scatterv(vvals_toscatter, vvalssizes, vvalsdispls, MPI_DOUBLE, vvals,
@@ -639,16 +639,16 @@ int Operation_ScatterVariables(struct Resolution *Resolution_P,
   // Scatter vector vtypes_toscatter from root to vectors vtypes in each rank
   // ...
   /////////////////////////////////////////////////////////////////////////////////////
-  int *vtypes, *vtypesdispls;
+  int *vtypes = nullptr, *vtypesdispls = nullptr;
   // int *vtypessizes, = vnumVar_toscatter which is already known at this stage
   vtypes = new int[numVar];
   if(commrank == Operation_P->Case.ScatterVariables.from) {
     // vtypessizes   = new int[commsize];
     vtypesdispls = new int[commsize];
-    // for(unsigned int i = 0; i < commsize; i++)
+    // for(int i = 0; i < commsize; i++)
     //   vtypessizes[i]=vnumVar_toscatter[i];
     vtypesdispls[0] = 0;
-    for(unsigned int i = 1; i < commsize; i++)
+    for(int i = 1; i < commsize; i++)
       vtypesdispls[i] = vtypesdispls[i - 1] + vnumVar_toscatter[i - 1];
   }
   MPI_Scatterv(vtypes_toscatter, vnumVar_toscatter, vtypesdispls, MPI_INT,
@@ -665,10 +665,10 @@ int Operation_ScatterVariables(struct Resolution *Resolution_P,
   // In each rank, Update Variables from vectors vnames, vvals, vtypes obtained
   // after scattering
   /////////////////////////////////////////////////////////////////////////////////////
-  for(unsigned int i = 0; i < numVar; i++) {
+  for(int i = 0; i < numVar; i++) {
     struct Value v;
     v.Type = vtypes[i];
-    for(unsigned int k = 0; k < NBR_MAX_HARMONIC * MAX_DIM; k++)
+    for(int k = 0; k < NBR_MAX_HARMONIC * MAX_DIM; k++)
       v.Val[k] = vvals[i * NBR_MAX_HARMONIC * MAX_DIM + k];
     values[&(vnames[i * STRING_SIZE])] = v;
   }
@@ -701,8 +701,7 @@ int Operation_BroadcastVariables(struct Resolution *Resolution_P,
   std::map<std::string, struct Value> &values = Get_AllValueSaved();
 
   std::vector<std::string> names;
-  for(unsigned int i = 0;
-      i < List_Nbr(Operation_P->Case.BroadcastVariables.Names); i++) {
+  for(int i = 0; i < List_Nbr(Operation_P->Case.BroadcastVariables.Names); i++) {
     char *s;
     List_Read(Operation_P->Case.BroadcastVariables.Names, i, &s);
     if(values.find(s) != values.end())
@@ -726,9 +725,10 @@ int Operation_BroadcastVariables(struct Resolution *Resolution_P,
       if(rank == commrank) {
         int numValues = names.size();
         MPI_Bcast(&numValues, 1, MPI_INT, rank, MPI_COMM_WORLD);
-        for(unsigned int i = 0; i < names.size(); i++) {
+        for(std::size_t i = 0; i < names.size(); i++) {
           char key[STRING_SIZE];
-          strncpy(key, names[i].c_str(), sizeof(key));
+          strncpy(key, names[i].c_str(), STRING_SIZE - 1);
+	  key[STRING_SIZE - 1] = '\0';
           // Message::Warning("I am %d Sending %s from %d", commrank, key,
           // rank);
           MPI_Bcast(key, sizeof(key), MPI_SIGNED_CHAR, rank, MPI_COMM_WORLD);
@@ -741,7 +741,7 @@ int Operation_BroadcastVariables(struct Resolution *Resolution_P,
       else {
         int numValues;
         MPI_Bcast(&numValues, 1, MPI_INT, rank, MPI_COMM_WORLD);
-        for(unsigned int i = 0; i < numValues; i++) {
+        for(int i = 0; i < numValues; i++) {
           char key[STRING_SIZE];
           MPI_Bcast(key, sizeof(key), MPI_SIGNED_CHAR, rank, MPI_COMM_WORLD);
           // Message::Warning("I am %d Receving %s from %d", commrank, key,
@@ -767,11 +767,12 @@ int Operation_BroadcastVariables(struct Resolution *Resolution_P,
         numValues = names.size();
       MPI_Bcast(&numValues, 1, MPI_INT, rank, MPI_COMM_WORLD);
 
-      for(unsigned int i = 0; i < names.size(); i++){
+      for(std::size_t i = 0; i < names.size(); i++){
         char key[STRING_SIZE];
         struct Value v;
         if(rank == commrank){
-          strncpy(key, names[i].c_str(), sizeof(key));
+          strncpy(key, names[i].c_str(), STRING_SIZE - 1);
+	  key[STRING_SIZE - 1] = '\0';
           v = values[key];
         }
         MPI_Bcast(key, sizeof(key), MPI_SIGNED_CHAR, rank, MPI_COMM_WORLD);

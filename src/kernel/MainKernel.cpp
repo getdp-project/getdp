@@ -1,4 +1,4 @@
-// GetDP - Copyright (C) 1997-2022 P. Dular and C. Geuzaine, University of Liege
+// GetDP - Copyright (C) 1997-2025 P. Dular and C. Geuzaine, University of Liege
 //
 // See the LICENSE.txt file for license information. Please report all
 // issues on https://gitlab.onelab.info/getdp/getdp/issues.
@@ -47,7 +47,7 @@ static void Info(int level, char *arg0)
     fprintf(
       stderr,
       "GetDP, a General environment for the treatment of Discrete Problems\n"
-      "Copyright (C) 1997-2022 P. Dular and C. Geuzaine, University of Liege\n"
+      "Copyright (C) 1997-2025 P. Dular and C. Geuzaine, University of Liege\n"
       "Usage: %s [file] [options]\n"
       "Processing options:\n"
       "  -pre 'Resolution'         pre-processing\n"
@@ -67,8 +67,9 @@ static void Info(int level, char *arg0)
       "  -order num                restrict maximum interpolation order\n"
       "  -cache                    cache network computations to disk\n"
 #if defined(HAVE_PETSC)
-      "  -sparsity                 compute exact sparsity pattern before each assembly\n"
-      "  -sparsity-once            compute exact sparsity pattern once per system\n"
+      "  -sparsity                 compute sparsity and parallel layout once "
+      "per system\n"
+      "  -sparsity-all             always compute sparsity and parallel layout\n"
 #endif
       "Linear solver options:\n"
 #if defined(HAVE_PETSC)
@@ -169,7 +170,7 @@ static void Get_Options(int argc, char *argv[], int *sargc, char **sargv,
         Flag_SPARSITY_PATTERN = 1;
         i++;
       }
-      else if(!strcmp(argv[i] + 1, "sparsity-once")) {
+      else if(!strcmp(argv[i] + 1, "sparsity-all")) {
         Flag_SPARSITY_PATTERN = 2;
         i++;
       }

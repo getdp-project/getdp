@@ -1,4 +1,4 @@
-// GetDP - Copyright (C) 1997-2022 P. Dular and C. Geuzaine, University of Liege
+// GetDP - Copyright (C) 1997-2025 P. Dular and C. Geuzaine, University of Liege
 //
 // See the LICENSE.txt file for license information. Please report all
 // issues on https://gitlab.onelab.info/getdp/getdp/issues.
@@ -250,10 +250,8 @@ void Get_GroupsOfElementaryEntitiesOfElement(
   for(i = 0; i < Nbr_ElementaryEntities; i++) {
     Num_Entity = abs(Num_ElementaryEntities[i]);
 
-    for(std::multimap<int, TwoInt>::iterator it =
-          GroupEntity_P->ExtendedListForSearch.lower_bound(Num_Entity);
-        it != GroupEntity_P->ExtendedListForSearch.upper_bound(Num_Entity);
-        ++it) {
+    auto range = GroupEntity_P->ExtendedListForSearch.equal_range(Num_Entity);
+    for(auto it = range.first; it != range.second; ++it) {
       Key_P = &it->second;
 
       j = *StartingIndex;

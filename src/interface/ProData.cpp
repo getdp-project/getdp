@@ -1,4 +1,4 @@
-// GetDP - Copyright (C) 1997-2022 P. Dular and C. Geuzaine, University of Liege
+// GetDP - Copyright (C) 1997-2025 P. Dular and C. Geuzaine, University of Liege
 //
 // See the LICENSE.txt file for license information. Please report all
 // issues on https://gitlab.onelab.info/getdp/getdp/issues.
@@ -1301,9 +1301,9 @@ void Print_Formulation()
       FE = (struct EquationTerm *)List_Pointer(FE_L, j);
       if(FE->Type == GALERKIN || FE->Type == DERHAM) {
         if(FE->Type == GALERKIN)
-          Message::Check("      Galerkin { Density [ ... ];\n");
+          Message::Check("      Galerkin { [ ... ];\n");
         if(FE->Type == DERHAM)
-          Message::Check("      deRham   { Density [ ... ];\n");
+          Message::Check("      deRham   { [ ... ];\n");
         Message::Check("                 In %s;\n",
                        ((struct Group *)List_Pointer(
                           Problem_S.Group, FE->Case.LocalTerm.InIndex))
@@ -1319,7 +1319,7 @@ void Print_Formulation()
                           FE->Case.LocalTerm.IntegrationMethodIndex))
                          ->Name);
 
-        Message::Check("      /* Inventaire des DQ (%d) [%d] :",
+        Message::Check("      /* Involved Quantities (%d) [%d] :",
                        FE->Case.LocalTerm.Term.NbrQuantityIndex,
                        FE->Case.LocalTerm.Term.QuantityIndexPost);
         for(k = 0; k < FE->Case.LocalTerm.Term.NbrQuantityIndex; k++)
@@ -1346,7 +1346,7 @@ void Print_Formulation()
             "                 SubType %s;\n",
             Get_StringForDefine(Equation_SubType, FE->Case.GlobalTerm.SubType));
 
-        Message::Check("      /* Inventaire des DQ (%d) [%d,%d] :",
+        Message::Check("      /* Involved Quantities (%d) [%d,%d] :",
                        FE->Case.GlobalTerm.Term.NbrQuantityIndex,
                        FE->Case.GlobalTerm.Term.DefineQuantityIndexDof,
                        FE->Case.GlobalTerm.Term.DefineQuantityIndexEqu);

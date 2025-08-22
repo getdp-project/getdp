@@ -1,8 +1,11 @@
-3.6.0 (Work-in-progress): new functions ValueFromFile and ReadTable; improved
-support for high-order meshes; improved parsing speed of .pro files with many
-functions and groups; new -sparsity option to use exact sparsity pattern for
-PETSc matrices; bug fixes (SaveMesh, adaptive time stepping with MPI, duplicate
-values in ONELAB parameter choices).
+4.0.0 (Work-in-progress): improved parsing speed of .pro files with many
+functions and groups; new -sparsity option to compute PETSc matrix sparsity and
+improve performance of distributed (MPI) assembly; improved support for
+high-order meshes; added support for 2nd order edge elements on quadrangles; new
+resolution operation (ReadTable); new current variable ($KSPConvergedReason),
+new integration type (Collocation); new built-in functions (GetRank,
+ValueFromMap, ValueFromFile, ...); bug fixes (SaveMesh, adaptive time stepping
+with MPI, duplicate values in ONELAB parameter choices).
 
 3.5.0 (May 13, 2022): generalized Trace operator on non-conforming meshes; new
 Errf function; source code reorganization.

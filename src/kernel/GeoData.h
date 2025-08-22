@@ -1,4 +1,4 @@
-// GetDP - Copyright (C) 1997-2022 P. Dular and C. Geuzaine, University of Liege
+// GetDP - Copyright (C) 1997-2025 P. Dular and C. Geuzaine, University of Liege
 //
 // See the LICENSE.txt file for license information. Please report all
 // issues on https://gitlab.onelab.info/getdp/getdp/issues.
@@ -37,6 +37,8 @@ struct GeoData {
   double *H, *P;
 
   List_T *PeriodicNodes;
+
+  int NbrPartitions;
 };
 
 int Geo_AddGeoData(List_T *GeoData_L, char *Name_MshFile,
@@ -54,6 +56,8 @@ void Geo_ReadFileAdapt(struct GeoData *GeoData_P);
 
 void Geo_SaveMesh(struct GeoData *GeoData_P, List_T *InitialList,
                   char *FileName);
+
+int Geo_GetNbrPartitions(void);
 
 int Geo_GetNbrGeoElements(void);
 struct Geo_Element *Geo_GetGeoElement(int Index_Element);

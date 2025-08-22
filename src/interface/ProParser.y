@@ -1847,7 +1847,7 @@ ParametersForFunction :
 
   | '{' '$' String__Index '}'
     { $$ = NULL; StringForParameter = $3; }
- ;
+;
 
 /* ------------------------------------------------------------------------ */
 /*  J a c o b i a n   M e t h o d                                           */
@@ -2698,7 +2698,7 @@ BasisFunctionTerm :
       BasisFunction_S.NameOfCoef = $2; BasisFunction_S.Dimension = 1;
     }
 
-  | tFunction tSTRING OptionalParametersForBasisFunction tEND
+  | tFunction String__Index OptionalParametersForBasisFunction tEND
     {
       Get_3Function3NbrForString
 	(BF_Function, $2, &FlagError,
@@ -2712,7 +2712,7 @@ BasisFunctionTerm :
       Free($2);
     }
 
-  | tdFunction '{' tSTRING Comma tSTRING '}' tEND
+  | tdFunction '{' String__Index Comma String__Index '}' tEND
     {
       void  (*FunctionDummy)();
       int i, j;
@@ -2735,7 +2735,7 @@ BasisFunctionTerm :
       Free($5);
     }
 
-  | tdFunction '{' tSTRING Comma tSTRING Comma tSTRING '}' tEND
+  | tdFunction '{' String__Index Comma String__Index Comma String__Index '}' tEND
     {
       void  (*FunctionDummy)();
       int i, j;
@@ -2769,6 +2769,47 @@ BasisFunctionTerm :
   | tSubFunction ListOfExpression tEND
     {
       BasisFunction_S.SubFunction = List_Copy(ListOfInt_L);
+    }
+
+  | tSubFunction '{' tFunction WholeQuantity_Single tEND tSTRING ListOfFExpr tEND '}' tEND
+    {
+      if(!strcmp($6, "Parameter") || !strcmp($6, "Parameter0")) {
+        if(WholeQuantity_S.Type == WQ_BUILTINFUNCTION) {
+          int nbp = WholeQuantity_S.Case.Function.NbrParameters;
+          if(nbp > 0) {
+            List_Reset(ListOfInt_L);
+            for(int i = 0; i < List_Nbr($7); i++) {
+              double d;
+              List_Read($7, i, &d);
+              if(i > 0) { // allocate new parameters
+                double *para2 = (double *)Malloc(nbp * sizeof(double));
+                for(int j = 0; j < nbp; j++)
+                  para2[j] = WholeQuantity_S.Case.Function.Para[j];
+                WholeQuantity_S.Case.Function.Para = para2;
+              }
+              // change parameter 0
+              WholeQuantity_S.Case.Function.Para[0] = d;
+              Expression_S.Type = WHOLEQUANTITY;
+              Expression_S.Case.WholeQuantity = List_Create(1, 1, sizeof(struct WholeQuantity));
+              List_Add(Expression_S.Case.WholeQuantity, &WholeQuantity_S);
+              int j = Add_Expression(&Expression_S, strSave("Exp_Fct"), 1);
+              List_Add(ListOfInt_L, &j);
+            }
+            BasisFunction_S.SubFunction = List_Copy(ListOfInt_L);
+          }
+          else {
+            vyyerror(0, "Parametric SubFunction requires at least one parameter");
+          }
+        }
+        else {
+          vyyerror(0, "Parametric SubFunction currently only for built-in functions");
+        }
+      }
+      else {
+        vyyerror(0, "Unknown option '%s' for parametric SubFunction", $6);
+      }
+      Free($6);
+      List_Delete($7);
     }
 
   | tSubdFunction ListOfExpression tEND

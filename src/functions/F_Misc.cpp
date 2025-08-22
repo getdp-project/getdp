@@ -1,4 +1,4 @@
-// GetDP - Copyright (C) 1997-2022 P. Dular and C. Geuzaine, University of Liege
+// GetDP - Copyright (C) 1997-2025 P. Dular and C. Geuzaine, University of Liege
 //
 // See the LICENSE.txt file for license information. Please report all
 // issues on https://gitlab.onelab.info/getdp/getdp/issues.
@@ -89,6 +89,12 @@ void F_GetMemory(F_ARG)
   double val = (double)mem / 1024. / 1024.;
   V->Type = SCALAR;
   V->Val[0] = val;
+}
+
+void F_GetRank(F_ARG)
+{
+  V->Type = SCALAR;
+  V->Val[0] = Message::GetCommRank();
 }
 
 void F_SetNumberRunTime(F_ARG)

@@ -1,4 +1,4 @@
-# GetDP - Copyright (C) 1997-2022 P. Dular and C. Geuzaine, University of Liege
+# GetDP - Copyright (C) 1997-2025 P. Dular and C. Geuzaine, University of Liege
 #
 # See the LICENSE.txt file for license information. Please report all
 # issues on https://gitlab.onelab.info/getdp/getdp/issues.
@@ -38,7 +38,6 @@ set(SRC
         Pre_TermOfFemEquation.cpp
           Generate_Network.cpp
         Cal_GalerkinTermOfFemEquation.cpp
-        Cal_SmallFemTermOfFemEquation.cpp
         Cal_GlobalTermOfFemEquation.cpp
           Cal_IntegralQuantity.cpp
           Cal_AnalyticIntegration.cpp

@@ -1,4 +1,4 @@
-// GetDP - Copyright (C) 1997-2022 P. Dular and C. Geuzaine, University of Liege
+// GetDP - Copyright (C) 1997-2025 P. Dular and C. Geuzaine, University of Liege
 //
 // See the LICENSE.txt file for license information. Please report all
 // issues on https://gitlab.onelab.info/getdp/getdp/issues.
@@ -214,6 +214,7 @@ void F_QuadraturePointIndex(F_ARG);
 void F_GetCpuTime(F_ARG);
 void F_GetWallClockTime(F_ARG);
 void F_GetMemory(F_ARG);
+void F_GetRank(F_ARG);
 void F_SetNumberRunTime(F_ARG);
 void F_SetNumberRunTimeWithChoices(F_ARG);
 void F_GetNumberRunTime(F_ARG);
@@ -483,8 +484,10 @@ void F_Python(F_ARG);
 void F_ResistivityPowerLaw(F_ARG);
 void F_drhodj_times_j_PowerLaw(F_ARG);
 void F_dedj_PowerLaw(F_ARG);
+void F_drhodj_times_j_PowerLaw_TS_2D(F_ARG);
 void F_LambdaCurrentSharingHom(F_ARG);
 void F_AnisotropicResistivityTensorPowerLaw(F_ARG);
 void F_AnisotropicDEDJTensorPowerLaw(F_ARG);
+void F_FoilWindingPolynomialBF(F_ARG);
 
 #endif

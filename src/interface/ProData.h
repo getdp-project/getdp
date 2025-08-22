@@ -1,4 +1,4 @@
-// GetDP - Copyright (C) 1997-2022 P. Dular and C. Geuzaine, University of Liege
+// GetDP - Copyright (C) 1997-2025 P. Dular and C. Geuzaine, University of Liege
 //
 // See the LICENSE.txt file for license information. Please report all
 // issues on https://gitlab.onelab.info/getdp/getdp/issues.
@@ -109,6 +109,7 @@ struct Group {
   List_T *ExtendedList, *ExtendedSuppList, *ExtendedSuppList2;
   int InitialListGroupIndex, InitialSuppListGroupIndex,
     InitialSuppList2GroupIndex;
+  // TODO we might want to move to std::unordered_multimap
   std::multimap<int, TwoInt> ExtendedListForSearch;
   struct MovingBand2D *MovingBand2D;
   GeoElementRTree *ElementRTree;
@@ -1733,6 +1734,7 @@ struct CurrentData {
 
   // Iterative linear system solvers
   double KSPIterations, KSPIteration, KSPResidual, KSPSystemSize;
+  double KSPConvergedReason;
 };
 
 /* ------------------------------------------------------------------------ */
@@ -1855,7 +1857,7 @@ struct Geo_Node {
 
 struct Geo_Element {
   int Num;
-  int Type, Region, ElementaryRegion;
+  int Type, Region, ElementaryRegion, Partition;
   int NbrNodes, *NumNodes;
   int NbrEdges, *NumEdges;
   int NbrFacets, *NumFacets;
