@@ -763,11 +763,11 @@ Caches network computations to disk.
 
 @item -sparsity
 
-Computes the exact sparsity pattern of matrices before each system assembly.
+Computes the sparsity and parallel matrix layout once per system.
 
-@item -sparsity-once
+@item -sparsity-all
 
-Computes the exact sparsity pattern of matrices once per system (before the first assembly).
+Always computes sparsity and parallel matrix layout.
 
 @item -bin
 
