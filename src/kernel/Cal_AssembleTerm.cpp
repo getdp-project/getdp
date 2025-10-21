@@ -170,7 +170,7 @@ void Cal_AssembleTerm_DtDof(struct Dof *Equ, struct Dof *Dof, double Val[])
           tmp[0] = Val[0] * Current.aCorrCoeff[i] /
                    (Current.bCorrCoeff * Current.DTime);
           Dof_AssembleInVec(Equ, Dof, Current.NbrHar, tmp,
-                            Current.DofData->CurrentSolution - 1,
+                            Current.DofData->CurrentSolution - 1 - i,
                             &(Current.DofData->CurrentSolution - 1 - i)->x,
                             &Current.DofData->b);
         }
