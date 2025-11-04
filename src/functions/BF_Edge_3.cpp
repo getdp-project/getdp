@@ -11,6 +11,21 @@
 #if defined(HAVE_KERNEL)
 #include "GeoData.h"
 #endif
+// simple sort by string key
+static inline std::string tri_key_from_nodes(int a, int b, int c)
+{
+  int t[3] = {a, b, c};
+  std::sort(t, t+3);
+  return std::to_string(t[0]) + ":" + std::to_string(t[1]) + ":" + std::to_string(t[2]);
+}
+
+// populate _periodicFacets map from Get_ConstraintOfElement.cpp 
+// (see Generate_LinkFacets)
+static std::unordered_map<std::string, bool> _periodicFacets;
+extern "C" void PeriodicCV_Set_ByNodes3(int n1, int n2, int n3)
+{
+  _periodicFacets[tri_key_from_nodes(n1, n2, n3)] = true;
+}
 
 /* The non-symmetric facet functions are selected according to the
    NumIndex^th smallest global node number */
@@ -45,8 +60,126 @@ int Get_FacetFunctionIndex(struct Element *Element, int NumEntity, int NumIndex)
 
     Element->NumLastElementForSortedNodesByFacet = Element->Num;
   }
-
   return Element->SortedNodesByFacet[NumEntity - 1][NumIndex - 1].Int1;
+#endif
+}
+
+// LinkFacets : we check if the facet is periodc in _periodicFacets, 
+// (i) if not, we use the same facet function as before to ensure 
+// discrete continuity across facets (same facets functions, cf Get_FacetFunctionIndex)
+// (ii) if periodic, we use a geometric sorting/permutation ensuring we link dofs based
+// on facet functions build on 'same' master/slave nodes
+// we switch case on Get_FacetFunctionIndexPeriodic(Element, NumEntity, Index) rather than
+// Get_FacetFunctionIndex(Element, NumEntity, Index) in TETRAHEDRON_4
+int Get_FacetFunctionIndexPeriodic(struct Element *Element, int NumEntity, int NumIndex)
+{
+#if !defined(HAVE_KERNEL)
+  Message::Error("Get_FacetFunctionIndex requires Kernel");
+  return 0;
+#else
+
+  int i, j, *NumNodes;
+
+  // Check if the facet is periodic  (geometric match) 
+  int *loc = Geo_GetNodesOfFacetInElement(Element->GeoElement, NumEntity - 1);
+  if(!loc) return 0;
+  
+  int g[3] = {0,0,0};
+  for(int i=0; loc[i]; ++i)
+    g[i] = Element->GeoElement->NumNodes[loc[i] - 1];
+
+  std::string key = tri_key_from_nodes(g[0], g[1], g[2]);
+  auto it = _periodicFacets.find(key);
+
+  if(it == _periodicFacets.end()){ 
+    // not a periodic face, fallback to default sorting scheme : 
+    // "The non-symmetric facet functions are selected according to the
+    //  NumIndex^th smallest global node number"
+    if(Element->NumLastElementForSortedNodesByFacet != Element->Num) {
+      for(i = 0; i < Element->GeoElement->NbrFacets; i++) {
+        NumNodes = Geo_GetNodesOfFacetInElement(Element->GeoElement, i);
+        j = 0;
+        while(NumNodes[j]) {
+          Element->SortedNodesByFacet[i][j].Int1 = NumNodes[j];
+          Element->SortedNodesByFacet[i][j].Int2 =
+            Element->GeoElement->NumNodes[NumNodes[j] - 1];
+          j++;
+        }
+        qsort(Element->SortedNodesByFacet[i], j, sizeof(struct TwoInt),
+              fcmp_Int2);
+      }
+
+      Element->NumLastElementForSortedNodesByFacet = Element->Num;
+    }
+    return Element->SortedNodesByFacet[NumEntity - 1][NumIndex - 1].Int1;
+  }
+  else{ 
+    // this is a periodic face, then the default sorting scheme fails:
+    // we cannot guaranty that global nodes will be sorted in the same
+    // manner across periodic facets
+    // FIXME : we could node use permutations slave => master to use 
+    // the default scheme (?) 
+    int local_ids[3];
+    for(int i = 0; i < 3; ++i)
+      local_ids[i] = loc[i];
+
+    // facet vertex coords
+    double xyz[3][3];
+    for(int i = 0; loc[i] && i < 3; ++i) {
+      int lid = loc[i] - 1;
+      xyz[i][0] = Element->x[lid];
+      xyz[i][1] = Element->y[lid];
+      xyz[i][2] = Element->z[lid];
+    }
+
+    // check facet barycenters
+    double bx = (xyz[0][0] + xyz[1][0] + xyz[2][0]) / 3.0;
+    double by = (xyz[0][1] + xyz[1][1] + xyz[2][1]) / 3.0;
+    double bz = (xyz[0][2] + xyz[1][2] + xyz[2][2]) / 3.0;
+
+    Message::Debug("periodic facet %d tri {%d,%d,%d} bary={%.2f,%.2f,%.2f}",NumEntity, g[0],g[1],g[2],bx,by,bz);
+    // sort 3 face nodes by (first x, then y, then z)
+    int idx[3] = {0,1,2};
+    std::sort(idx, idx+3, [&](int a, int b){
+        if(xyz[a][0] < xyz[b][0]) return true;
+        if(xyz[a][0] > xyz[b][0]) return false;
+        if(xyz[a][1] < xyz[b][1]) return true;
+        if(xyz[a][1] > xyz[b][1]) return false;
+        return xyz[a][2] < xyz[b][2];
+    });
+
+    // Consistency check
+    int local_id_check = loc[idx[NumIndex - 1]] - 1;
+    // Coordinates of chosen vertex according to local numbering
+    double cx_check = Element->x[local_id_check];
+    double cy_check = Element->y[local_id_check];
+    double cz_check = Element->z[local_id_check];
+    // Coordinates of sorted vertex according to geometry
+    double sx_check = xyz[idx[NumIndex - 1]][0];
+    double sy_check = xyz[idx[NumIndex - 1]][1];
+    double sz_check = xyz[idx[NumIndex - 1]][2];
+    // chosen local node must correspond geometrically to sorted vertex
+    double dx_check = cx_check - sx_check;
+    double dy_check = cy_check - sy_check;
+    double dz_check = cz_check - sz_check;
+    double dist2_check = dx_check*dx_check + dy_check*dy_check + dz_check*dz_check;
+
+    if(dist2_check > 1e-14) {
+      Message::Warning(
+        "Inconsistent mapping at element %d facet %d: "
+        "local vertex %d does not match geometric vertex "
+        "(dist^2=%.3e). Local=(%.3f,%.3f,%.3f) Sorted=(%.3f,%.3f,%.3f).",
+        Element->Num, NumEntity, local_id_check, dist2_check,
+        cx_check, cy_check, cz_check, sx_check, sy_check, sz_check
+      );
+    }
+    // New convention for periodic facet
+    // cv = (NumIndex-1)^th local index of the geometrically sorted nodes
+    // (they are expected to match for *translated* facets)
+    Message::Debug("this is a periodic facet : Elem %d facet %d → cv=%d",
+                      Element->Num, NumEntity, loc[idx[NumIndex-1]]);
+    return loc[idx[NumIndex-1]];
+  }
 #endif
 }
 
