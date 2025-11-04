@@ -26,6 +26,9 @@ extern List_T *PreResolutionIndex_L;
 
 extern int Nbr_ElementaryBF;
 
+// LinkFacets, see src/Functions/BF_Edge_3.cpp 
+extern "C" void PeriodicCV_Set_ByNodes3(int n1, int n2, int n3);
+
 /* ------------------------------------------------------------------------ */
 /*  T r e a t m e n t _ C o n s t r a i n t F o r E l e m e n t             */
 /* ------------------------------------------------------------------------ */
@@ -459,7 +462,11 @@ struct EdgeNN {
 struct FacetNNN {
   int NumFacet;
   int Node1, Node2, Node3;
-  double Coef, Coef2;
+  double x, y, z;
+  double nx, ny, nz;
+  int ParentElement;
+  int LocalFacetIndex;
+  double x_orig, y_orig, z_orig;
 };
 
 int fcmp_NN(const void *a, const void *b)
@@ -541,7 +548,6 @@ void Generate_ElementaryEntities_FacetNNN(List_T *InitialList,
   struct Geo_Element *GeoElement;
   int Nbr_Element, i_Element;
   int Nbr_Entity = 0, i_Entity, *Num_Entities = NULL;
-
   struct FacetNNN FacetNNN;
   int *Num_Nodes;
 
@@ -549,33 +555,64 @@ void Generate_ElementaryEntities_FacetNNN(List_T *InitialList,
     Entity_Tr = Tree_Create(sizeof(struct FacetNNN), fcmp_int);
 
     Nbr_Element = Geo_GetNbrGeoElements();
+
     for(i_Element = 0; i_Element < Nbr_Element; i_Element++) {
       GeoElement = Geo_GetGeoElement(i_Element);
 
-      if(List_Search(InitialList, &GeoElement->Region, fcmp_int)) {
-        switch(Type_Entity) {
-        case FACETSOF:
-          if(GeoElement->NbrFacets == 0) Geo_CreateFacetsOfElement(GeoElement);
-          Nbr_Entity = GeoElement->NbrFacets;
-          Num_Entities = GeoElement->NumFacets;
-          break;
+      if(!List_Search(InitialList, &GeoElement->Region, fcmp_int))
+        continue;
+
+      if(GeoElement->NbrFacets == 0)
+        Geo_CreateFacetsOfElement(GeoElement);
+
+      Nbr_Entity   = GeoElement->NbrFacets;
+      Num_Entities = GeoElement->NumFacets;
+
+      for(i_Entity = 0; i_Entity < Nbr_Entity; i_Entity++) {
+
+        FacetNNN.NumFacet = abs(Num_Entities[i_Entity]);
+        Num_Nodes = Geo_GetNodesOfFacetInElement(GeoElement, i_Entity);
+
+        FacetNNN.Node1 = GeoElement->NumNodes[abs(Num_Nodes[0]) - 1];
+        FacetNNN.Node2 = GeoElement->NumNodes[abs(Num_Nodes[1]) - 1];
+        FacetNNN.Node3 = GeoElement->NumNodes[abs(Num_Nodes[2]) - 1];
+
+        double x1, y1, z1, x2, y2, z2, x3, y3, z3;
+        Geo_GetNodesCoordinates(1, &FacetNNN.Node1, &x1, &y1, &z1);
+        Geo_GetNodesCoordinates(1, &FacetNNN.Node2, &x2, &y2, &z2);
+        Geo_GetNodesCoordinates(1, &FacetNNN.Node3, &x3, &y3, &z3);
+        FacetNNN.x = (x1 + x2 + x3) / 3.0;
+        FacetNNN.y = (y1 + y2 + y3) / 3.0;
+        FacetNNN.z = (z1 + z2 + z3) / 3.0;
+
+        double ux = x2 - x1, uy = y2 - y1, uz = z2 - z1;
+        double vx = x3 - x1, vy = y3 - y1, vz = z3 - z1;
+        FacetNNN.nx = uy * vz - uz * vy;
+        FacetNNN.ny = uz * vx - ux * vz;
+        FacetNNN.nz = ux * vy - uy * vx;
+        double nrm = sqrt(FacetNNN.nx*FacetNNN.nx +
+                          FacetNNN.ny*FacetNNN.ny +
+                          FacetNNN.nz*FacetNNN.nz);
+        if(nrm > 1e-300) {
+          FacetNNN.nx /= nrm;
+          FacetNNN.ny /= nrm;
+          FacetNNN.nz /= nrm;
         }
-        for(i_Entity = 0; i_Entity < Nbr_Entity; i_Entity++) {
-          FacetNNN.NumFacet = abs(Num_Entities[i_Entity]);
-          Num_Nodes = Geo_GetNodesOfFacetInElement(GeoElement, i_Entity);
-          FacetNNN.Node1 = GeoElement->NumNodes[abs(Num_Nodes[0]) - 1];
-          FacetNNN.Node2 = GeoElement->NumNodes[abs(Num_Nodes[1]) - 1];
-          FacetNNN.Node3 = GeoElement->NumNodes[abs(Num_Nodes[2]) - 1];
-          if(!Tree_Search(Entity_Tr, &FacetNNN)) Tree_Add(Entity_Tr, &FacetNNN);
-        }
+
+        FacetNNN.ParentElement   = GeoElement->Num;
+        FacetNNN.LocalFacetIndex = i_Entity + 1;
+
+        if(!Tree_Search(Entity_Tr, &FacetNNN))
+          Tree_Add(Entity_Tr, &FacetNNN);
       }
     }
 
     *ExtendedList = Tree2List(Entity_Tr);
     Tree_Delete(Entity_Tr);
   }
-  else
+  else {
     *ExtendedList = NULL;
+  }
 }
 
 bool SameOrientation_EdgeNN(EdgeNN &e, EdgeNN &eref, double TOL,
@@ -716,6 +753,53 @@ public:
       Message::Warning("Could not find edge corresponding to reference edge "
                        "%d (nodes %d %d, barycenter %g %g %g)",
                        n->NumEdge, n->Node1, n->Node2, n->x, n->y, n->z);
+      return 0;
+    }
+  }
+};
+class FacetNNNRTree {
+private:
+  RTree<struct FacetNNN *, double, 3, double> *_rtree;
+  double _tol;
+  static bool rtree_callback(struct FacetNNN *v, void *ctx)
+  {
+    struct FacetNNN **out = static_cast<FacetNNN **>(ctx);
+    *out = v;
+    return false;
+  }
+
+public:
+  FacetNNNRTree(double tolerance = 1.e-8)
+  {
+    _rtree = new RTree<struct FacetNNN *, double, 3, double>();
+    _tol = tolerance;
+  }
+  ~FacetNNNRTree()
+  {
+    _rtree->RemoveAll();
+    delete _rtree;
+  }
+  void insert(struct FacetNNN *v)
+  {
+    struct FacetNNN *out;
+    double _min[3] = {v->x - _tol, v->y - _tol, v->z - _tol};
+    double _max[3] = {v->x + _tol, v->y + _tol, v->z + _tol};
+    if(!_rtree->Search(_min, _max, rtree_callback, &out))
+      _rtree->Insert(_min, _max, v);
+    else
+      Message::Warning("Facet %d already exists near (%g,%g,%g) tol=%g (duplicate %d)",
+                       v->NumFacet, v->x, v->y, v->z, _tol, out->NumFacet);
+  }
+  struct FacetNNN *find(struct FacetNNN *n)
+  {
+    struct FacetNNN *out = NULL;
+    double _min[3] = {n->x - _tol, n->y - _tol, n->z - _tol};
+    double _max[3] = {n->x + _tol, n->y + _tol, n->z + _tol};
+    if(_rtree->Search(_min, _max, rtree_callback, &out))
+      return out;
+    else {
+      Message::Warning("Could not find facet corresponding to reference facet %d (barycenter %.3g %.3g %.3g)",
+                       n->NumFacet, n->x, n->y, n->z);
       return 0;
     }
   }
@@ -1333,190 +1417,78 @@ void Generate_LinkEdges(struct ConstraintInFS *Constraint_P,
 /*| G e n e r a t e _ L i n k F a c e t s |*/
 /*-----------------------------------------*/
 
-void Generate_LinkFacets(struct ConstraintInFS *Constraint_P,
-                         struct Group *Group_P, struct Group *RegionRef_P,
-                         struct Group *SubRegionRef_P, List_T *Couples_L)
+// utility to find Geo_Element* by Num
+static Geo_Element *GetGeoElementByNum(int num)
 {
-  int Nbr_Entity, Nbr_EntityRef;
-
-  List_T *ExtendedListNodes_L;
-  List_T *CouplesOfNodes_L, *CouplesOfNodes2_L;
-  struct FacetNNN FacetNNN, FacetNNNRef;
-  List_T *FacetNNN_L, *FacetNNNRef_L;
-  List_T *ExtendedListRef_L, *ExtendedSuppListRef_L;
-
-  int i;
-  struct TwoIntOneDouble *TwoIntOneDouble_P, *TwoIntOneDouble2_P;
-  struct TwoIntOneDouble *TwoIntOneDouble3_P, TwoIntOneDouble;
-
-  List_T *ExtendedList_L;
-  // int  Save_Num1, Save_Num2, Save_Num3;
-  int Flag_Filter;
-
-  /* Couples of nodes */
-
-  Generate_ElementaryEntities(Group_P->InitialList, &ExtendedListNodes_L,
-                              NODESOF);
-
-  if((Nbr_Entity = List_Nbr(ExtendedListNodes_L)))
-    CouplesOfNodes_L =
-      List_Create(Nbr_Entity, 1, sizeof(struct TwoIntOneDouble));
-  else {
-    return; /* situation impossible... */
+  int N = Geo_GetNbrGeoElements();
+  for(int i = 0; i < N; ++i){
+    Geo_Element *ge = Geo_GetGeoElement(i);
+    if(ge && ge->Num == num) return ge;
   }
+  return NULL;
+}
 
-  if(Constraint_P->ConstraintPerRegion->Case.Link.FilterIndex2 < 0) {
-    Flag_Filter = 0;
-    CouplesOfNodes2_L = NULL;
-    Generate_LinkNodes(
-      Constraint_P, ExtendedListNodes_L, NULL, RegionRef_P, NULL,
-      Constraint_P->ConstraintPerRegion->Case.Link.FilterIndex,
-      Constraint_P->ConstraintPerRegion->Case.Link.FunctionIndex,
-      Constraint_P->ConstraintPerRegion->Case.Link.FunctionRefIndex,
-      Constraint_P->ConstraintPerRegion->Case.Link.CoefIndex,
-      Constraint_P->ConstraintPerRegion->Case.Link.ToleranceFactor,
-      CouplesOfNodes_L);
-  }
-  else {
-    Flag_Filter = 1;
-    CouplesOfNodes2_L =
-      List_Create(Nbr_Entity, 1, sizeof(struct TwoIntOneDouble));
+void Generate_LinkFacets(struct ConstraintInFS *Constraint_P,
+                         struct Group *Group_P,
+                         struct Group *RegionRef_P,
+                         struct Group *SubRegionRef_P,
+                         List_T *Couples_L)
+{
+  Message::Info("====> Begin Link Facet");
 
-    Generate_LinkNodes(
-      Constraint_P, ExtendedListNodes_L, NULL, RegionRef_P, NULL,
-      Constraint_P->ConstraintPerRegion->Case.Link.FilterIndex,
-      Constraint_P->ConstraintPerRegion->Case.Link.FunctionIndex,
-      Constraint_P->ConstraintPerRegion->Case.Link.FunctionRefIndex,
-      Constraint_P->ConstraintPerRegion->Case.Link.CoefIndex,
-      Constraint_P->ConstraintPerRegion->Case.Link.ToleranceFactor,
-      CouplesOfNodes_L);
-    Generate_LinkNodes(
-      Constraint_P, ExtendedListNodes_L, NULL, RegionRef_P, NULL,
-      Constraint_P->ConstraintPerRegion->Case.Link.FilterIndex2,
-      Constraint_P->ConstraintPerRegion->Case.Link.FunctionIndex2,
-      Constraint_P->ConstraintPerRegion->Case.Link.FunctionRefIndex,
-      Constraint_P->ConstraintPerRegion->Case.Link.CoefIndex2,
-      Constraint_P->ConstraintPerRegion->Case.Link.ToleranceFactor,
-      CouplesOfNodes2_L);
-  }
-
-  /* Couples of facets */
-
-  Message::Info("== Couples of facets ==");
-
-  /* Facets with Constraint */
-
-  Nbr_Entity = List_Nbr(Group_P->ExtendedList);
-
-  Generate_ElementaryEntities_FacetNNN(Group_P->InitialList, &ExtendedList_L,
-                                       FACETSOF);
+  // Build list of slave facets
+  List_T *ExtendedList_L, *ExtendedSuppList_L;
+  Generate_ElementaryEntities_FacetNNN(Group_P->InitialList, &ExtendedList_L, FACETSOF);
   if(Group_P->InitialSuppList)
-    Generate_ElementaryEntities_FacetNNN(Group_P->InitialSuppList,
-                                         &ExtendedSuppListRef_L, FACETSOF);
+    Generate_ElementaryEntities_FacetNNN(Group_P->InitialSuppList, &ExtendedSuppList_L, FACETSOF);
   else
-    ExtendedSuppListRef_L = NULL;
+    ExtendedSuppList_L = NULL;
 
-  FacetNNN_L = List_Create(Nbr_Entity, 1, sizeof(struct FacetNNN));
+  int Nbr_Entity = List_Nbr(ExtendedList_L);
+  List_T *FacetNNN_L = List_Create(Nbr_Entity, 1, sizeof(struct FacetNNN));
 
-  if(Nbr_Entity != List_Nbr(ExtendedList_L)) {
-    Message::Error("Constraint Link: strange...");
-    return;
-  }
+  for(int i = 0; i < Nbr_Entity; i++) {
+    struct FacetNNN f;
+    List_Read(ExtendedList_L, i, &f);
 
-  for(i = 0; i < Nbr_Entity; i++) {
-    List_Read(ExtendedList_L, i, &FacetNNN);
-    if(!(ExtendedSuppListRef_L &&
-         List_Search(ExtendedSuppListRef_L, &FacetNNN.NumFacet, fcmp_int))) {
-      // FIXME TODO
-      /*if (FacetNNN.Node3 < FacetNNN.Node2) {
-         Save_Num1 = FacetNNN.Node3 ;
-     FacetNNN.Node3 = FacetNNN.Node2 ;  FacetNNN.Node2 = Save_Num1 ;
+    // Skip suppressed ones
+    if(ExtendedSuppList_L && List_Search(ExtendedSuppList_L, &f.NumFacet, fcmp_int))
+      continue;
+
+    // Apply link mapping to the slave facet barycenter
+    f.x_orig = f.x;
+    f.y_orig = f.y;
+    f.z_orig = f.z;
+    if (Constraint_P->ConstraintPerRegion->Case.Link.FunctionIndex >= 0) {
+      double dx, dy, dz;
+      struct Value Value;
+      Current.x = f.x; Current.y = f.y; Current.z = f.z;
+      Get_ValueOfExpressionByIndex(
+          Constraint_P->ConstraintPerRegion->Case.Link.FunctionIndex,
+          NULL, 0., 0., 0., &Value);
+      dx = Value.Val[0] - f.x;
+      dy = Value.Val[1] - f.y;
+      dz = Value.Val[2] - f.z;
+      double shift2 = dx*dx + dy*dy + dz*dz;
+      if (shift2 > 1e-12 * Current.GeoData->CharacteristicLength *
+                      Current.GeoData->CharacteristicLength) {
+        f.x_orig = f.x;
+        f.y_orig = f.y;
+        f.z_orig = f.z;
+        f.x += dx;
+        f.y += dy;
+        f.z += dz;
       }
-      if (FacetNNN.Node3 < FacetNNN.Node1) {
-         Save_Num3 = FacetNNN.Node3 ;
-     FacetNNN.Node3 = FacetNNN.Node1 ;  FacetNNN.Node1 = Save_Num2 ;
-      }
-      if (FacetNNN.Node2 < FacetNNN.Node1) {
-         Save_Num3 = FacetNNN.Node2 ;
-     FacetNNN.Node2 = FacetNNN.Node1 ;  FacetNNN.Node1 = Save_Num3 ;
-      }*/
-
-      Message::Debug("Image %d: f%d, n%d - n%d - n%d", i, FacetNNN.NumFacet,
-                     FacetNNN.Node1, FacetNNN.Node2, FacetNNN.Node3);
-
-      TwoIntOneDouble_P = (struct TwoIntOneDouble *)List_PQuery(
-        CouplesOfNodes_L, &FacetNNN.Node1, fcmp_int);
-      TwoIntOneDouble2_P = (struct TwoIntOneDouble *)List_PQuery(
-        CouplesOfNodes_L, &FacetNNN.Node2, fcmp_int);
-      TwoIntOneDouble3_P = (struct TwoIntOneDouble *)List_PQuery(
-        CouplesOfNodes_L, &FacetNNN.Node3, fcmp_int);
-
-      if(!(TwoIntOneDouble_P && TwoIntOneDouble2_P && TwoIntOneDouble3_P)) {
-        if(Flag_Filter) {
-          TwoIntOneDouble_P = (struct TwoIntOneDouble *)List_PQuery(
-            CouplesOfNodes2_L, &FacetNNN.Node1, fcmp_int);
-          TwoIntOneDouble2_P = (struct TwoIntOneDouble *)List_PQuery(
-            CouplesOfNodes2_L, &FacetNNN.Node2, fcmp_int);
-          TwoIntOneDouble3_P = (struct TwoIntOneDouble *)List_PQuery(
-            CouplesOfNodes2_L, &FacetNNN.Node3, fcmp_int);
-          if(!TwoIntOneDouble_P)
-            Message::Error("1-Constraint Link: unknown node (%d)",
-                           FacetNNN.Node1);
-          if(!TwoIntOneDouble2_P)
-            Message::Error("2-Constraint Link: unknown node (%d)",
-                           FacetNNN.Node2);
-          if(!TwoIntOneDouble3_P)
-            Message::Error("3-Constraint Link: unknown node (%d)",
-                           FacetNNN.Node3);
-        }
-        else
-          Message::Error("4-Constraint Link: bad correspondance for facets");
-      }
-
-      FacetNNN.Node1 = TwoIntOneDouble_P->Int2;
-      FacetNNN.Node2 = TwoIntOneDouble2_P->Int2;
-      FacetNNN.Node3 = TwoIntOneDouble3_P->Int2;
-
-      if((fabs(TwoIntOneDouble_P->Double - TwoIntOneDouble2_P->Double) >
-          1.e-18) ||
-         (fabs(TwoIntOneDouble2_P->Double - TwoIntOneDouble3_P->Double) >
-          1.e-18) ||
-         (fabs(TwoIntOneDouble3_P->Double - TwoIntOneDouble_P->Double) >
-          1.e-18))
-        Message::Error("5-Constraint Link: Bad Coefficient for Facets");
-
-      FacetNNN.Coef = TwoIntOneDouble_P->Double;
-      FacetNNN.Coef2 = TwoIntOneDouble_P->Double2; /* LinkCplx */
-
-      // FIXME TODO
-      /*if (FacetNNN.Node3 < FacetNNN.Node2) {
-         Save_Num1 = FacetNNN.Node3 ;
-     FacetNNN.Node3 = FacetNNN.Node2 ;  FacetNNN.Node2 = Save_Num1 ;
-     FacetNNN.NumFacet *= -1 ;
-      }
-      if (FacetNNN.Node3 < FacetNNN.Node1) {
-         Save_Num2 = FacetNNN.Node3 ;
-     FacetNNN.Node3 = FacetNNN.Node1 ;  FacetNNN.Node1 = Save_Num2 ;
-     FacetNNN.NumFacet *= -1 ;
-      }
-      if (FacetNNN.Node2 < FacetNNN.Node1) {
-         Save_Num3 = FacetNNN.Node2 ;
-     FacetNNN.Node2 = FacetNNN.Node1 ;  FacetNNN.Node1 = Save_Num3 ;
-     FacetNNN.NumFacet *= -1 ;
-      } */
-
-      List_Add(FacetNNN_L, &FacetNNN);
-
-      Message::Debug("                         --- (whose source is) --->  "
-                     "f%d, n%d - n%d - n%d",
-                     FacetNNN.NumFacet, FacetNNN.Node1, FacetNNN.Node2,
-                     FacetNNN.Node3);
     }
+    Message::Info("Mapping slave facet %d: (%.3f,%.3f,%.3f) -> (%.3f,%.3f,%.3f)",
+                  f.NumFacet, f.x_orig, f.y_orig, f.z_orig, f.x, f.y, f.z);
+
+    List_Add(FacetNNN_L, &f);
   }
   Nbr_Entity = List_Nbr(FacetNNN_L);
 
-  /* Facets of reference (Link) */
-
+  // list of master facets (RegionRef_P)
+  List_T *ExtendedListRef_L, *ExtendedSuppListRef_L;
   Generate_ElementaryEntities_FacetNNN(RegionRef_P->InitialList,
                                        &ExtendedListRef_L, FACETSOF);
   if(SubRegionRef_P)
@@ -1525,78 +1497,112 @@ void Generate_LinkFacets(struct ConstraintInFS *Constraint_P,
   else
     ExtendedSuppListRef_L = NULL;
 
-  Nbr_EntityRef = List_Nbr(ExtendedListRef_L);
+  int Nbr_EntityRef = List_Nbr(ExtendedListRef_L);
+  List_T *FacetNNNRef_L = List_Create(Nbr_EntityRef, 1, sizeof(struct FacetNNN));
 
-  FacetNNNRef_L = List_Create(Nbr_EntityRef, 1, sizeof(struct FacetNNN));
+  for(int i = 0; i < Nbr_EntityRef; i++) {
+    struct FacetNNN fref;
+    List_Read(ExtendedListRef_L, i, &fref);
 
-  for(i = 0; i < Nbr_EntityRef; i++) {
-    List_Read(ExtendedListRef_L, i, &FacetNNNRef.NumFacet);
-    if(!(ExtendedSuppListRef_L &&
-         List_Search(ExtendedSuppListRef_L, &FacetNNNRef.NumFacet, fcmp_int))) {
-      // FIXME TODO
-      /*if (FacetNNNRef.Node3 < FacetNNNRef.Node2) {
-         Save_Num1 = FacetNNNRef.Node3 ;
-     FacetNNNRef.Node3 = FacetNNNRef.Node2 ;  FacetNNNRef.Node2 = Save_Num1 ;
-      }
-      if (FacetNNNRef.Node3 < FacetNNNRef.Node1) {
-         Save_Num2 = FacetNNNRef.Node3 ;
-     FacetNNNRef.Node3 = FacetNNNRef.Node1 ;  FacetNNNRef.Node1 = Save_Num2 ;
-      }
-      if (FacetNNNRef.Node2 < FacetNNNRef.Node1) {
-         Save_Num3 = FacetNNNRef.Node2 ;
-     FacetNNNRef.Node2 = FacetNNNRef.Node1 ;  FacetNNNRef.Node1 = Save_Num3 ;
-      } */
-      List_Add(FacetNNNRef_L, &FacetNNNRef);
+    if(ExtendedSuppListRef_L && List_Search(ExtendedSuppListRef_L, &fref.NumFacet, fcmp_int))
+      continue;
 
-      /* -- */
-      Message::Debug("Ref   %d: f%d, n%d - n%d  - n%d ", i,
-                     FacetNNNRef.NumFacet, FacetNNNRef.Node1, FacetNNNRef.Node2,
-                     FacetNNNRef.Node3);
-    }
+    List_Add(FacetNNNRef_L, &fref);
   }
   Nbr_EntityRef = List_Nbr(FacetNNNRef_L);
 
-  if(Nbr_EntityRef != Nbr_Entity) {
-    Message::Error(
-      "6-Constraint Link: bad correspondance of number of facets (%d, %d)",
-      Nbr_Entity, Nbr_EntityRef);
+  // build RTree from master facets
+  double TOL = Current.GeoData->CharacteristicLength *
+               Constraint_P->ConstraintPerRegion->Case.Link.ToleranceFactor;
+  FacetNNNRTree rt(TOL);
+
+  List_T *tmp = List_Create(List_Nbr(FacetNNNRef_L), 1, sizeof(struct FacetNNN));
+  List_Copy(FacetNNNRef_L, tmp);
+  List_Reset(FacetNNNRef_L);
+
+  for(int i = 0; i < List_Nbr(tmp); i++)
+    rt.insert((struct FacetNNN *)List_Pointer(tmp, i));
+
+  // Find matching master facet for each slave
+  for(int i = 0; i < List_Nbr(FacetNNN_L); i++) {
+    struct FacetNNN *n = (struct FacetNNN *)List_Pointer(FacetNNN_L, i);
+    struct FacetNNN *ref = rt.find(n);
+    if(ref) List_Add(FacetNNNRef_L, ref);
+  }
+
+  List_Delete(tmp);
+
+  if(List_Nbr(FacetNNNRef_L) != List_Nbr(FacetNNN_L)) {
+    Message::Error("Constraint Link: bad correspondance of number of facets (%d, %d)",
+                   List_Nbr(FacetNNN_L), List_Nbr(FacetNNNRef_L));
     return;
   }
 
-  List_Sort(FacetNNN_L, fcmp_NNN);
-  List_Sort(FacetNNNRef_L, fcmp_NNN);
+  // Pair slave/master facets
+  for(int i = 0; i < List_Nbr(FacetNNN_L); i++) {
+    struct FacetNNN f  = *(struct FacetNNN*)List_Pointer(FacetNNN_L, i);
+    struct FacetNNN fr = *(struct FacetNNN*)List_Pointer(FacetNNNRef_L, i);
+    double dot = f.nx * fr.nx + f.ny * fr.ny + f.nz * fr.nz;
 
-  for(i = 0; i < Nbr_Entity; i++) {
-    List_Read(FacetNNN_L, i, &FacetNNN);
-    List_Read(FacetNNNRef_L, i, &FacetNNNRef);
+    Message::Debug("Facet %d→%d normals: slave(%.3f,%.3f,%.3f) "
+                  "master(%.3f,%.3f,%.3f) dot=%.3f",
+                  f.NumFacet, fr.NumFacet,
+                  f.nx, f.ny, f.nz,
+                  fr.nx, fr.ny, fr.nz, dot);
 
-    Message::Debug("Final : %d: a%d, n%d - n%d - n%d (%.16g + %.16g i) / a%d, "
-                   "n%d - n%d - n%d",
-                   i, FacetNNN.NumFacet, FacetNNN.Node1, FacetNNN.Node2,
-                   FacetNNN.Node3, FacetNNN.Coef, FacetNNN.Coef2,
-                   FacetNNNRef.NumFacet, FacetNNNRef.Node1, FacetNNNRef.Node2,
-                   FacetNNNRef.Node3);
+    TwoIntOneDouble TwoIntOneDouble;
+    TwoIntOneDouble.Int1 = f.NumFacet;
+    TwoIntOneDouble.Int2 = fr.NumFacet;
 
-    if(FacetNNN.Node1 != FacetNNNRef.Node1 ||
-       FacetNNN.Node2 != FacetNNNRef.Node2 ||
-       FacetNNN.Node3 != FacetNNNRef.Node3) {
-      Message::Error("7-Constraint Link: bad correspondance of facets (%d, %d)",
-                     FacetNNN.NumFacet, FacetNNNRef.NumFacet);
-      return;
+    // extract global nodes for each facet
+    struct Geo_Element *elem_slave  = GetGeoElementByNum(f.ParentElement);
+    struct Geo_Element *elem_master = GetGeoElementByNum(fr.ParentElement);
+
+    int *numNodes_slave  = Geo_GetNodesOfFacetInElement(elem_slave,  f.LocalFacetIndex - 1);
+    int *numNodes_master = Geo_GetNodesOfFacetInElement(elem_master, fr.LocalFacetIndex - 1);
+
+    // // Get node coordinates
+    // double xs[3], ys[3], zs[3];
+    // double xm[3], ym[3], zm[3];
+    // for(int i = 0; i < 3; i++){
+    //   Geo_GetNodesCoordinates(1, &elem_slave->NumNodes[numNodes_slave[i]-1],
+    //                           &xs[i], &ys[i], &zs[i]);
+    //   Geo_GetNodesCoordinates(1, &elem_master->NumNodes[numNodes_master[i]-1],
+    //                           &xm[i], &ym[i], &zm[i]);
+    // }
+
+    // global node ids to provide in BF_Edge_3.cpp 
+    int globalNodes_master[3];
+    int globalNodes_slave[3];
+    for(int i=0;i<3;i++){
+      globalNodes_master[i] = elem_master->NumNodes[numNodes_master[i]-1];
+      globalNodes_slave[i] = elem_slave->NumNodes[numNodes_slave[i]-1];
     }
 
-    TwoIntOneDouble.Int1 = FacetNNN.NumFacet;
-    TwoIntOneDouble.Int2 = FacetNNNRef.NumFacet;
-    TwoIntOneDouble.Double = FacetNNN.Coef;
-    TwoIntOneDouble.Double2 = FacetNNN.Coef2; /* LinkCplx */
+    // extern function used in BF_Edge_3.cpp 
+    PeriodicCV_Set_ByNodes3(globalNodes_slave[0], globalNodes_slave[1], globalNodes_slave[2]);
+    PeriodicCV_Set_ByNodes3(globalNodes_master[0], globalNodes_master[1], globalNodes_master[2]);
+    Message::Debug("Slave facet nodes tri(%d,%d,%d)", globalNodes_slave[0], globalNodes_slave[1], globalNodes_slave[2]);
+    Message::Debug("Master facet nodes tri(%d,%d,%d)", globalNodes_master[0], globalNodes_master[1], globalNodes_master[2]);
+
+    struct Value Value;
+    Get_ValueOfExpressionByIndex(
+        Constraint_P->ConstraintPerRegion->Case.Link.CoefIndex,
+        NULL, 0., 0., 0., &Value);
+    TwoIntOneDouble.Double  = Value.Val[0];
+    TwoIntOneDouble.Double2 = (Current.NbrHar == 1) ? 0. : Value.Val[MAX_DIM];
+
+    // // checking orientation is useless in our case
+    // if(!SameOrientation_FacetNNN(
+    //     f, fr, TOL,
+    //     Constraint_P->ConstraintPerRegion->Case.Link.FunctionIndex,
+    //     Constraint_P->ConstraintPerRegion->Case.Link.FunctionRefIndex))
+    //   Couple.Int1 *= 1;
 
     List_Add(Couples_L, &TwoIntOneDouble);
   }
-
   List_Delete(FacetNNN_L);
   List_Delete(FacetNNNRef_L);
-  List_Delete(CouplesOfNodes_L);
-  List_Delete(CouplesOfNodes2_L);
 
   Message::Info("====> End Link Facet");
 }
@@ -1697,6 +1703,7 @@ void Generate_Link(struct ConstraintInFS *Constraint_P, int Flag_New)
     Generate_LinkFacets(Constraint_P, Group_P, RegionRef_P, SubRegionRef_P,
                         Active->Case.Link.Couples);
     /*Message::Error("Link not yet implemented for FACETSOF") ;*/
+    Message::Warning("Linking facets only works for translated faces");
     break;
   case REGION:
     Generate_LinkRegions(Constraint_P, Group_P->InitialList,
