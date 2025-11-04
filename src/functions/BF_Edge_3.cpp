@@ -11,6 +11,9 @@
 #if defined(HAVE_KERNEL)
 #include "GeoData.h"
 #endif
+
+#include <algorithm>
+#include <unordered_map>
 // simple sort by string key
 static inline std::string tri_key_from_nodes(int a, int b, int c)
 {
