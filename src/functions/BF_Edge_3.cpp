@@ -281,7 +281,7 @@ void BF_Edge_3F(struct Element *Element, int NumEntity, int Index, double u,
   case TETRAHEDRON_4:
     switch(NumEntity) {
     case 1:
-      switch(Get_FacetFunctionIndex(Element, NumEntity, Index)) {
+      switch(Get_FacetFunctionIndexPeriodic(Element, NumEntity, Index)) {
       case 4:
         s[0] = 0.;
         s[1] = 0.;
@@ -300,7 +300,7 @@ void BF_Edge_3F(struct Element *Element, int NumEntity, int Index, double u,
       }
       break;
     case 2:
-      switch(Get_FacetFunctionIndex(Element, NumEntity, Index)) {
+      switch(Get_FacetFunctionIndexPeriodic(Element, NumEntity, Index)) {
       case 2:
         s[0] = v * (1 - u - v - w);
         s[1] = 0.;
@@ -319,7 +319,7 @@ void BF_Edge_3F(struct Element *Element, int NumEntity, int Index, double u,
       }
       break;
     case 3:
-      switch(Get_FacetFunctionIndex(Element, NumEntity, Index)) {
+      switch(Get_FacetFunctionIndexPeriodic(Element, NumEntity, Index)) {
       case 3:
         s[0] = 0.;
         s[1] = (1. - u - v - w) * w;
@@ -338,7 +338,7 @@ void BF_Edge_3F(struct Element *Element, int NumEntity, int Index, double u,
       }
       break;
     case 4:
-      switch(Get_FacetFunctionIndex(Element, NumEntity, Index)) {
+      switch(Get_FacetFunctionIndexPeriodic(Element, NumEntity, Index)) {
       case 4:
         s[0] = 0.;
         s[1] = 0.;
@@ -521,7 +521,7 @@ void BF_CurlEdge_3F(struct Element *Element, int NumEntity, int Index, double u,
   case TETRAHEDRON_4:
     switch(NumEntity) {
     case 1:
-      switch(Get_FacetFunctionIndex(Element, NumEntity, Index)) {
+      switch(Get_FacetFunctionIndexPeriodic(Element, NumEntity, Index)) {
       case 4:
         s[0] = -u;
         s[1] = -1. + 2. * u + v + w;
@@ -540,7 +540,7 @@ void BF_CurlEdge_3F(struct Element *Element, int NumEntity, int Index, double u,
       }
       break;
     case 2:
-      switch(Get_FacetFunctionIndex(Element, NumEntity, Index)) {
+      switch(Get_FacetFunctionIndexPeriodic(Element, NumEntity, Index)) {
       case 2:
         s[0] = 0.;
         s[1] = -v;
@@ -559,7 +559,7 @@ void BF_CurlEdge_3F(struct Element *Element, int NumEntity, int Index, double u,
       }
       break;
     case 3:
-      switch(Get_FacetFunctionIndex(Element, NumEntity, Index)) {
+      switch(Get_FacetFunctionIndexPeriodic(Element, NumEntity, Index)) {
       case 3:
         s[0] = -1. + u + v + 2. * w;
         s[1] = 0.;
@@ -578,7 +578,7 @@ void BF_CurlEdge_3F(struct Element *Element, int NumEntity, int Index, double u,
       }
       break;
     case 4:
-      switch(Get_FacetFunctionIndex(Element, NumEntity, Index)) {
+      switch(Get_FacetFunctionIndexPeriodic(Element, NumEntity, Index)) {
       case 4:
         s[0] = u;
         s[1] = -v;
