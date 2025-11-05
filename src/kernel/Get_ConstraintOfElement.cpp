@@ -1480,7 +1480,7 @@ void Generate_LinkFacets(struct ConstraintInFS *Constraint_P,
         f.z += dz;
       }
     }
-    Message::Info("Mapping slave facet %d: (%.3f,%.3f,%.3f) -> (%.3f,%.3f,%.3f)",
+    Message::Debug("Mapping slave facet %d: (%.3f,%.3f,%.3f) -> (%.3f,%.3f,%.3f)",
                   f.NumFacet, f.x_orig, f.y_orig, f.z_orig, f.x, f.y, f.z);
 
     List_Add(FacetNNN_L, &f);
@@ -1579,11 +1579,16 @@ void Generate_LinkFacets(struct ConstraintInFS *Constraint_P,
       globalNodes_slave[i] = elem_slave->NumNodes[numNodes_slave[i]-1];
     }
 
-    // extern function used in BF_Edge_3.cpp 
+    // extern function used by Get_FacetFunctionIndexPeriodic in BF_Edge_3.cpp 
     PeriodicCV_Set_ByNodes3(globalNodes_slave[0], globalNodes_slave[1], globalNodes_slave[2]);
     PeriodicCV_Set_ByNodes3(globalNodes_master[0], globalNodes_master[1], globalNodes_master[2]);
-    Message::Debug("Slave facet nodes tri(%d,%d,%d)", globalNodes_slave[0], globalNodes_slave[1], globalNodes_slave[2]);
-    Message::Debug("Master facet nodes tri(%d,%d,%d)", globalNodes_master[0], globalNodes_master[1], globalNodes_master[2]);
+    
+    Message::Debug("Slave facet %d (elem %d) global nodes {%d,%d,%d}", 
+      f.NumFacet, f.ParentElement, 
+      globalNodes_slave[0],globalNodes_slave[1], globalNodes_slave[2]);
+    Message::Debug("Master facet %d (elem %d) global nodes {%d,%d,%d}", 
+      fr.NumFacet, fr.ParentElement, 
+      globalNodes_master[0], globalNodes_master[1], globalNodes_master[2]);
 
     struct Value Value;
     Get_ValueOfExpressionByIndex(
@@ -1592,13 +1597,13 @@ void Generate_LinkFacets(struct ConstraintInFS *Constraint_P,
     TwoIntOneDouble.Double  = Value.Val[0];
     TwoIntOneDouble.Double2 = (Current.NbrHar == 1) ? 0. : Value.Val[MAX_DIM];
 
-    // // checking orientation is useless in our case
+    // // we do not need to worry about orientation (see Get_FacetFunctionIndexPeriodic)
     // if(!SameOrientation_FacetNNN(
     //     f, fr, TOL,
     //     Constraint_P->ConstraintPerRegion->Case.Link.FunctionIndex,
     //     Constraint_P->ConstraintPerRegion->Case.Link.FunctionRefIndex))
     //   Couple.Int1 *= 1;
-
+    
     List_Add(Couples_L, &TwoIntOneDouble);
   }
   List_Delete(FacetNNN_L);
