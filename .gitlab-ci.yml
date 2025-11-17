@@ -18,7 +18,7 @@ variables:
 # ---------------------------------------------
 
 linux_ci:
-  image: onelab/ubuntu20.04
+  image: onelab/ci
   script:
     - mkdir build
     - cd build
@@ -380,7 +380,7 @@ macosarm_official_petsc_real_mh_release:
 # ----------------------------------------------
 
 .source_official: &source_official
-  image: onelab/ubuntu20.04
+  image: onelab/ci
   only:
     - master@getdp/getdp
   <<: *ssh_config
@@ -412,7 +412,7 @@ source_official_release:
 
 doc_official_snapshot:
   stage: .post
-  image: onelab/ubuntu20.04
+  image: onelab/ci
   only:
     - master@getdp/getdp
   <<: *ssh_config
@@ -431,7 +431,7 @@ doc_official_snapshot:
 
 doc_official_release:
   stage: .post
-  image: onelab/ubuntu20.04
+  image: onelab/ci
   variables:
     EXTRA_OPTION: "-DGETDP_RELEASE=1"
   only:
