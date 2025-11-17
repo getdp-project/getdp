@@ -440,8 +440,6 @@ void Treatment_FemFormulation(struct Formulation *Formulation_P)
   extern struct Group *Generate_Group;
   extern double **MH_Moving_Matrix;
 
-  extern int MHMoving_assemblyType;
-
   /* --------------------------------------------------------------- */
   /* 0.  Initialization of an active zone (QuantityStorage) for each */
   /*     DefineQuantity                                              */
@@ -560,6 +558,21 @@ void Treatment_FemFormulation(struct Formulation *Formulation_P)
     }
   }
 
+  if(Formulation_P->Has_MovingBand2D_Term) { 
+    // moving mesh -> maps must be re-initialized at each system generation
+    // We could also simply use MH_Moving_Matrix.
+    if(Formulation_P->RegionToEquationTermIDsIsInit) {
+      for(int i_Element = 0; i_Element < Nbr_Element; i_Element++) {
+        Element.Region = Geo_GetGeoElement(i_Element)->Region;
+        (*Formulation_P->RegionToEquationTermIDs)[Element.Region].clear();
+      }
+    }
+    delete Formulation_P->RegionToEquationTermIDs;
+    Formulation_P->RegionToEquationTermIDsIsInit = 0;
+    Formulation_P->ElementListEquationTermIDs.clear();
+    Formulation_P->ElementListEquationTermIDsIsInit = 0;
+  }
+
   for(int i_Element = 0; i_Element < Nbr_Element; i_Element++) {
     if(Generate_Group) {
       Element.Region = Geo_GetGeoElement(i_Element)->Region;
@@ -608,16 +621,6 @@ void Treatment_FemFormulation(struct Formulation *Formulation_P)
     // this way is particularly efficient for handling degenerate cases, 
     // such as many equation terms of type RegionList (e.g. more terms than elements)
 
-    if(MHMoving_assemblyType == 1) { 
-      // moving mesh -> maps must be re-initialized at each system generation
-      // We could also simply use MH_Moving_Matrix.
-      (*Formulation_P->RegionToEquationTermIDs)[Element.Region].clear();
-      delete Formulation_P->RegionToEquationTermIDs;
-      Formulation_P->RegionToEquationTermIDsIsInit = 0;
-      Formulation_P->ElementListEquationTermIDs.clear();
-      Formulation_P->ElementListEquationTermIDsIsInit = 0;
-    }
-
     if(Formulation_P->RegionToEquationTermIDsIsInit == 0) {
       if(i_Element == 0) {
         Formulation_P->RegionToEquationTermIDs = new std::unordered_map<int, std::vector<int>>();
@@ -640,6 +643,10 @@ void Treatment_FemFormulation(struct Formulation *Formulation_P)
           if(Formulation_P->ElementListEquationTermIDsIsInit == 0 && GroupIn_P->Type == ELEMENTLIST) {
             // storing indices of ELEMENTLIST terms for later use
             Formulation_P->ElementListEquationTermIDs.push_back(i_EquTerm);
+          }
+          if(GroupIn_P->MovingBand2D)
+          {
+            Formulation_P->Has_MovingBand2D_Term = 1;
           }
         }
       }
