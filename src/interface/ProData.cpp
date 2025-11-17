@@ -235,7 +235,11 @@ void Free_Group(struct Group *a)
 void Free_Expression(struct Expression *a) {}
 void Free_FunctinSpace(struct FunctionSpace *a) {}
 void Free_Constraint(struct Constraint *a) {}
-void Free_Formulation(struct Formuation *a) {}
+void Free_Formulation(struct Formulation *a) {
+  delete a->RegionToEquationTermIDs;
+  a->RegionToEquationTermIDs = nullptr;
+  a->RegionToEquationTermIDsIsInit = 0;
+}
 void Free_JacobianMethod(struct JacobianMethod *a) {}
 void Free_IntegrationMethod(struct IntegrationMethod *a) {}
 void Free_Resolution(struct Resolution *a) {}
@@ -269,7 +273,7 @@ void Free_ProblemStructure()
   }
   if(Problem_S.Formulation) {
     for(int i = 0; i < List_Nbr(Problem_S.Formulation); i++)
-      Free_Formulation((Formuation *)List_Pointer(Problem_S.Formulation, i));
+      Free_Formulation((Formulation *)List_Pointer(Problem_S.Formulation, i));
     List_Delete(Problem_S.Formulation);
   }
   if(Problem_S.JacobianMethod) {

@@ -611,13 +611,17 @@ void Treatment_FemFormulation(struct Formulation *Formulation_P)
     if(MHMoving_assemblyType == 1) { 
       // moving mesh -> maps must be re-initialized at each system generation
       // We could also simply use MH_Moving_Matrix.
-      Formulation_P->RegionToEquationTermIDs[Element.Region].clear();
+      (*Formulation_P->RegionToEquationTermIDs)[Element.Region].clear();
+      delete Formulation_P->RegionToEquationTermIDs;
       Formulation_P->RegionToEquationTermIDsIsInit = 0;
       Formulation_P->ElementListEquationTermIDs.clear();
       Formulation_P->ElementListEquationTermIDsIsInit = 0;
     }
 
     if(Formulation_P->RegionToEquationTermIDsIsInit == 0) {
+      if(i_Element == 0) {
+        Formulation_P->RegionToEquationTermIDs = new std::unordered_map<int, std::vector<int>>();
+      }
       // trick is to perform one dummy assembly path here to detect which equation terms are relevant
       for(int i_EquTerm = 0; i_EquTerm < Nbr_EquationTerm; i_EquTerm++) {
         EquationTerm_P = EquationTerm_P0 + i_EquTerm;
@@ -627,10 +631,10 @@ void Treatment_FemFormulation(struct Formulation *Formulation_P)
             Problem_S.Group, EquationTerm_P->Case.LocalTerm.InIndex);
           if((GroupIn_P->Type != ELEMENTLIST && List_Nbr(GroupIn_P->InitialList) &&
             List_Search(GroupIn_P->InitialList, &Element.Region, fcmp_int))) {
-            if(Formulation_P->RegionToEquationTermIDs[Element.Region].size() == 0 ||
-              Formulation_P->RegionToEquationTermIDs[Element.Region].back() < i_EquTerm) {
+            if((*Formulation_P->RegionToEquationTermIDs)[Element.Region].size() == 0 ||
+              (*Formulation_P->RegionToEquationTermIDs)[Element.Region].back() < i_EquTerm) {
                 // only add if not already present (to avoid duplicates)
-                Formulation_P->RegionToEquationTermIDs[Element.Region].push_back(i_EquTerm);
+                (*Formulation_P->RegionToEquationTermIDs)[Element.Region].push_back(i_EquTerm);
             }
           }
           if(Formulation_P->ElementListEquationTermIDsIsInit == 0 && GroupIn_P->Type == ELEMENTLIST) {
@@ -645,9 +649,9 @@ void Treatment_FemFormulation(struct Formulation *Formulation_P)
     // first Loop for all equation terms with GroupIn_P->TYPE != ELEMENTLIST
     // it is performed by looping only on the relevant equation terms for the current Element.Region
     for(int i_EquTermIdx = 0;
-        i_EquTermIdx < (int)Formulation_P->RegionToEquationTermIDs[Element.Region].size();
+        i_EquTermIdx < (int)(*Formulation_P->RegionToEquationTermIDs)[Element.Region].size();
         i_EquTermIdx++) {
-      int i_EquTerm = Formulation_P->RegionToEquationTermIDs[Element.Region][i_EquTermIdx];
+      int i_EquTerm = (*Formulation_P->RegionToEquationTermIDs)[Element.Region][i_EquTermIdx];
       EquationTerm_P = EquationTerm_P0 + i_EquTerm;
 
       if(true) { // we already checked that Element.Region is in the support of integration of the term

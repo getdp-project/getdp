@@ -515,7 +515,7 @@ struct Formulation {
   int Type;
   List_T *DefineQuantity, *Equation;
 
-  std::unordered_map<int, std::vector<int>> RegionToEquationTermIDs;
+  std::unordered_map<int, std::vector<int>> *RegionToEquationTermIDs;
   int RegionToEquationTermIDsIsInit = 0;
 
   std::vector<int> ElementListEquationTermIDs;
