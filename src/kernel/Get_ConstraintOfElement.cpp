@@ -1466,6 +1466,7 @@ void Generate_LinkFacets(struct ConstraintInFS *Constraint_P,
       Get_ValueOfExpressionByIndex(
           Constraint_P->ConstraintPerRegion->Case.Link.FunctionIndex,
           NULL, 0., 0., 0., &Value);
+      Message::Info(" building slave Value.Val (%.1f,%.1f,%.1f)",Value.Val[0],Value.Val[1],Value.Val[2]);
       dx = Value.Val[0] - f.x;
       dy = Value.Val[1] - f.y;
       dz = Value.Val[2] - f.z;
@@ -1480,8 +1481,9 @@ void Generate_LinkFacets(struct ConstraintInFS *Constraint_P,
         f.z += dz;
       }
     }
-    Message::Debug("Mapping slave facet %d: (%.3f,%.3f,%.3f) -> (%.3f,%.3f,%.3f)",
-                  f.NumFacet, f.x_orig, f.y_orig, f.z_orig, f.x, f.y, f.z);
+    Message::Info("Mapping slave facet %d {%d,%d,%d}: orig (%.3f,%.3f,%.3f) -> master (%.3f,%.3f,%.3f)",
+                  f.NumFacet, f.Node1, f.Node2, f.Node3, 
+                  f.x_orig, f.y_orig, f.z_orig, f.x, f.y, f.z);
 
     List_Add(FacetNNN_L, &f);
   }
@@ -1544,11 +1546,84 @@ void Generate_LinkFacets(struct ConstraintInFS *Constraint_P,
     struct FacetNNN fr = *(struct FacetNNN*)List_Pointer(FacetNNNRef_L, i);
     double dot = f.nx * fr.nx + f.ny * fr.ny + f.nz * fr.nz;
 
-    Message::Debug("Facet %d→%d normals: slave(%.3f,%.3f,%.3f) "
-                  "master(%.3f,%.3f,%.3f) dot=%.3f",
+    Message::Debug("Facet %d→%d global nodes: slave(%d,%d,%d) "
+                  "master(%d,%d,%d)",
                   f.NumFacet, fr.NumFacet,
-                  f.nx, f.ny, f.nz,
-                  fr.nx, fr.ny, fr.nz, dot);
+                  f.Node1, f.Node2, f.Node2,
+                  fr.Node1, fr.Node2, fr.Node3);
+
+    // Message::Debug("Facet %d→%d normals: slave(%.3f,%.3f,%.3f) "
+    //               "master(%.3f,%.3f,%.3f) dot=%.3f",
+    //               f.NumFacet, fr.NumFacet,
+    //               f.nx, f.ny, f.nz,
+    //               fr.nx, fr.ny, fr.nz, dot);
+
+    // begin Check mapping of nodes one by one (again):
+    if (Constraint_P->ConstraintPerRegion->Case.Link.FunctionIndex >= 0) {
+      double xs1, ys1, zs1, xs2, ys2, zs2, xs3, ys3, zs3; // slave
+      double xr1, yr1, zr1, xr2, yr2, zr2, xr3, yr3, zr3; // ref
+      Geo_GetNodesCoordinates(1, &f.Node1, &xs1, &ys1, &zs1);
+      Geo_GetNodesCoordinates(1, &f.Node2, &xs2, &ys2, &zs2);
+      Geo_GetNodesCoordinates(1, &f.Node3, &xs3, &ys3, &zs3);
+      Geo_GetNodesCoordinates(1, &fr.Node1, &xr1, &yr1, &zr1);
+      Geo_GetNodesCoordinates(1, &fr.Node2, &xr2, &yr2, &zr2);
+      Geo_GetNodesCoordinates(1, &fr.Node3, &xr3, &yr3, &zr3);
+      double small_delta = 1e-12 * Current.GeoData->CharacteristicLength;
+      // Apply mapping:
+      struct Value Value1;
+      struct Value Value2;
+      struct Value Value3;
+      Current.x = xs1; Current.y = ys1; Current.z = zs1;
+      Get_ValueOfExpressionByIndex(
+          Constraint_P->ConstraintPerRegion->Case.Link.FunctionIndex,
+          NULL, 0., 0., 0., &Value1);
+
+      Current.x = xs2; Current.y = ys2; Current.z = zs2;
+      Get_ValueOfExpressionByIndex(
+          Constraint_P->ConstraintPerRegion->Case.Link.FunctionIndex,
+          NULL, 0., 0., 0., &Value2);
+      
+      Current.x = xs3; Current.y = ys3; Current.z = zs3;
+      Get_ValueOfExpressionByIndex(
+          Constraint_P->ConstraintPerRegion->Case.Link.FunctionIndex,
+          NULL, 0., 0., 0., &Value3);
+
+      double xsm1, ysm1, zsm1, xsm2, ysm2, zsm2, xsm3, ysm3, zsm3;
+      xsm1 = Value1.Val[0];
+      xsm2 = Value2.Val[0];
+      xsm3 = Value3.Val[0];
+      ysm1 = Value1.Val[1];
+      ysm2 = Value2.Val[1];
+      ysm3 = Value3.Val[1];
+      zsm1 = Value1.Val[2];
+      zsm2 = Value2.Val[2];
+      zsm3 = Value3.Val[2];
+      double d1, d2, d3;
+      d1 = sqrt((xr1-xsm1)*(xr1-xsm1)+(yr1-ysm1)*(yr1-ysm1)+(zr1-zsm1));
+      d2 = sqrt((xr2-xsm2)*(xr2-xsm2)+(yr2-ysm2)*(yr2-ysm2)+(zr2-zsm2));
+      d3 = sqrt((xr3-xsm3)*(xr3-xsm3)+(yr3-ysm3)*(yr3-ysm3)+(zr3-zsm3));
+      Message::Info("Facet sla %d coords : N1(%.1f,%.1f,%.1f) N2(%.1f,%.1f,%.1f) N3(%.1f,%.1f,%.1f)",
+              f.NumFacet,
+              xs1,ys1,zs1,
+              xs2,ys2,zs2,
+              xs3,ys3,zs3);
+      Message::Info("Facet mas %d coords : N1(%.1f,%.1f,%.1f) N2(%.1f,%.1f,%.1f) N3(%.1f,%.1f,%.1f)",
+              fr.NumFacet,
+              xr1,yr1,zr1,
+              xr2,yr2,zr2,
+              xr3,yr3,zr3);
+      Message::Info("Facet %d→%d Val=(%.1f,%.1f,%.1f) d=(%.1f,%.1f,%.1f)",
+              f.NumFacet, fr.NumFacet,
+              Value2.Val[0], Value2.Val[1], Value2.Val[2],d1,d2,d3);
+      // TODO ToleranceFactor in args
+      double ToleranceFactor = 1.e-8;
+      double TOL = Current.GeoData->CharacteristicLength * ToleranceFactor;
+      if (d1>TOL || d2>TOL || d3 > TOL){
+        Message::Warning("Facets %d,%d are not aligned",f.NumFacet, fr.NumFacet);
+      }
+    }
+    // end Check mapping of nodes one by one (again) : What is Value2 in fact ???
+
 
     TwoIntOneDouble TwoIntOneDouble;
     TwoIntOneDouble.Int1 = f.NumFacet;
