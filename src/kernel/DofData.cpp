@@ -1238,7 +1238,6 @@ void Dof_DefineInitFixedDof(int D1, int D2, int NbrHar, double *Val,
       LinAlg_SetScalar(&Dof.Val2, &Val2[k]);
       // old version: number as we go
       // Dof.Case.Unknown.NumDof = ++(CurrentDofData->NbrDof) ;
-      ++(CurrentDofData->NbrDof);
       Dof.Case.Unknown.NumDof = -1;
       Dof.Case.Unknown.PartitionOrNonLocal = PartitionOrNonLocal;
       Tree_Add(CurrentDofData->DofTree, &Dof);
@@ -1264,7 +1263,6 @@ void Dof_DefineInitSolveDof(int D1, int D2, int NbrHar)
       Dof.Type = DOF_UNKNOWN_INIT;
       // old version: number as we go
       // Dof.Case.Unknown.NumDof = ++(CurrentDofData->NbrDof) ;
-      ++(CurrentDofData->NbrDof);
       Dof.Case.Unknown.NumDof = -1;
       Dof.Case.Unknown.PartitionOrNonLocal = 0;
       Tree_Add(CurrentDofData->DofTree, &Dof);
@@ -1336,7 +1334,6 @@ void Dof_DefineUnknownDof(int D1, int D2, int NbrHar, int PartitionOrNonLocal)
       Dof.Type = DOF_UNKNOWN;
       // old version: number as we go
       // Dof.Case.Unknown.NumDof = ++(CurrentDofData->NbrDof) ;
-      ++(CurrentDofData->NbrDof);
       Dof.Case.Unknown.NumDof = -1;
       Dof.Case.Unknown.PartitionOrNonLocal = PartitionOrNonLocal;
       Tree_Add(CurrentDofData->DofTree, &Dof);
@@ -1369,15 +1366,14 @@ void Dof_NumberUnknownDof(void)
   CurrentDofData->PartitionSplit.clear();
   CurrentDofData->PartitionSplit.push_back(0);
   // number dofs by partition and keep track of last dof in each partition
-  int N = 0;
   for(auto &p : UnnumberedUnknownDofs) {
     if(p.first > 0) {
       Message::Debug("Numbering %lu dofs in partition %d", p.second.size(),
                      p.first);
       for(auto &d : p.second) {
-        d->Case.Unknown.NumDof = ++N;
+        d->Case.Unknown.NumDof = ++(CurrentDofData->NbrDof);
       }
-      CurrentDofData->PartitionSplit.push_back(N);
+      CurrentDofData->PartitionSplit.push_back(CurrentDofData->NbrDof);
     }
   }
 
@@ -1387,9 +1383,9 @@ void Dof_NumberUnknownDof(void)
       Message::Debug("Numbering %lu global or non-partitioned dofs",
                      p.second.size());
       for(auto &d : p.second) {
-        d->Case.Unknown.NumDof = ++N;
+        d->Case.Unknown.NumDof = ++(CurrentDofData->NbrDof);
         if(p.first < 0)
-          CurrentDofData->NonLocalEquations.push_back(N);
+          CurrentDofData->NonLocalEquations.push_back(CurrentDofData->NbrDof);
       }
     }
   }
@@ -1406,22 +1402,19 @@ void Dof_NumberUnknownDof(void)
 
 #else
 
-static int _N = 0;
-
 static void NumberUnnumberedUnknownDof(void *a, void *b)
 {
   struct Dof *Dof_P = (struct Dof *)a;
   if(Dof_P->Type == DOF_UNKNOWN || Dof_P->Type == DOF_UNKNOWN_INIT) {
     if(Dof_P->Case.Unknown.NumDof == -1)
-      Dof_P->Case.Unknown.NumDof = ++_N;
+      Dof_P->Case.Unknown.NumDof = ++(CurrentDofData->NbrDof) ;
     if(Dof_P->Case.Unknown.PartitionOrNonLocal == -1)
-      CurrentDofData->NonLocalEquations.push_back(_N);
+      CurrentDofData->NonLocalEquations.push_back(Dof_P->Case.Unknown.NumDof);
   }
 }
 
 void Dof_NumberUnknownDof(void)
 {
-  _N = 0;
   if(CurrentDofData->DofTree)
     Tree_Action(CurrentDofData->DofTree, NumberUnnumberedUnknownDof);
   else
@@ -1467,6 +1460,9 @@ void Dof_DefineAssociateDof(int E1, int E2, int D1, int D2, int NbrHar,
           CurrentDofData->NonLocalEquations.push_back(Dof.Case.Unknown.NumDof);
           Tree_Add(CurrentDofData->DofTree, &Dof);
         }
+        else{
+          Message::Warning("Fixed with associate Equ for non-existing Dof!");
+        }
         break;
       case DOF_FIXED_SOLVE:
         Equ_P->Type = DOF_FIXEDWITHASSOCIATE_SOLVE;
@@ -1485,6 +1481,9 @@ void Dof_DefineAssociateDof(int E1, int E2, int D1, int D2, int NbrHar,
           Dof.Case.Unknown.PartitionOrNonLocal = -1;
           CurrentDofData->NonLocalEquations.push_back(Dof.Case.Unknown.NumDof);
           Tree_Add(CurrentDofData->DofTree, &Dof);
+        }
+        else{
+          Message::Warning("Fixed with associate Equ for non-existing Dof!");
         }
         break;
       case DOF_UNKNOWN:
