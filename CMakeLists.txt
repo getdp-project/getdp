@@ -58,8 +58,8 @@ else()
   project(getdp CXX C)
 endif()
 
-# require C++11 and request C99
-set(CMAKE_CXX_STANDARD 11)
+# require C++17 and request C99
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_C_STANDARD 99)
 
