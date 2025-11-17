@@ -560,7 +560,6 @@ void Treatment_FemFormulation(struct Formulation *Formulation_P)
 
   if(Formulation_P->Has_MovingBand2D_Term) { 
     // moving mesh -> maps must be re-initialized at each system generation
-    // We could also simply use MH_Moving_Matrix.
     if(Formulation_P->RegionToEquationTermIDsIsInit) {
       for(int i_Element = 0; i_Element < Nbr_Element; i_Element++) {
         Element.Region = Geo_GetGeoElement(i_Element)->Region;
