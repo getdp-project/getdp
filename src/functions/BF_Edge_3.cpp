@@ -117,6 +117,18 @@ int Get_FacetFunctionIndexPeriodic(struct Element *Element, int NumEntity, int N
     return Element->SortedNodesByFacet[NumEntity - 1][NumIndex - 1].Int1;
   }
   else{
+
+
+    // int g2[3] = {0,0,0};
+    // for(int i=0; i<3; i++){
+    //   g2[i] = Element->GeoElement->NumNodes[i];
+    // }
+    Message::Info("key from %s => {%d,%d,%d}",key.c_str(),g[0],g[1],g[2]);
+
+
+
+
+    
     return NumIndex;
     // this is a periodic face, then the default sorting scheme fails:
     // we cannot guaranty that global nodes will be sorted in the same

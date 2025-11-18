@@ -1481,9 +1481,6 @@ void Generate_LinkFacets(struct ConstraintInFS *Constraint_P,
         f.z += dz;
       }
     }
-    Message::Info("Mapping slave facet %d {%d,%d,%d}: orig (%.3f,%.3f,%.3f) -> master (%.3f,%.3f,%.3f)",
-                  f.NumFacet, f.Node1, f.Node2, f.Node3, 
-                  f.x_orig, f.y_orig, f.z_orig, f.x, f.y, f.z);
 
     List_Add(FacetNNN_L, &f);
   }
@@ -1546,11 +1543,15 @@ void Generate_LinkFacets(struct ConstraintInFS *Constraint_P,
     struct FacetNNN fr = *(struct FacetNNN*)List_Pointer(FacetNNNRef_L, i);
     double dot = f.nx * fr.nx + f.ny * fr.ny + f.nz * fr.nz;
 
-    Message::Debug("Facet %d→%d global nodes: slave(%d,%d,%d) "
-                  "master(%d,%d,%d)",
-                  f.NumFacet, fr.NumFacet,
-                  f.Node1, f.Node2, f.Node2,
-                  fr.Node1, fr.Node2, fr.Node3);
+    // Message::Debug("Facet %d→%d global nodes: slave(%d,%d,%d) "
+    //               "master(%d,%d,%d)",
+    //               f.NumFacet, fr.NumFacet,
+    //               f.Node1, f.Node2, f.Node2,
+    //               fr.Node1, fr.Node2, fr.Node3);
+    Message::Info("Mapping slave=>master %d{%d,%d,%d}=>%d{%d,%d,%d} (%.1f,%.1f,%.1f)=>(%.1f,%.1f,%.1f)",
+              f.NumFacet, f.Node1, f.Node2, f.Node3, 
+              fr.NumFacet, fr.Node1, fr.Node2, fr.Node3, 
+              f.x_orig, f.y_orig, f.z_orig, f.x, f.y, f.z);
 
     // Message::Debug("Facet %d→%d normals: slave(%.3f,%.3f,%.3f) "
     //               "master(%.3f,%.3f,%.3f) dot=%.3f",
