@@ -89,7 +89,7 @@ int Get_FacetFunctionIndexPeriodic(struct Element *Element, int NumEntity, int N
   
   int g[3] = {0,0,0};
   for(int i=0; loc[i]; ++i)
-    g[i] = Element->GeoElement->NumNodes[i];
+    g[i] = Element->GeoElement->NumNodes[loc[i] - 1];
 
   std::string key = tri_key_from_nodes(g[0], g[1], g[2]);
   auto it = _periodicFacets.find(key);
@@ -123,12 +123,15 @@ int Get_FacetFunctionIndexPeriodic(struct Element *Element, int NumEntity, int N
     // for(int i=0; i<3; i++){
     //   g2[i] = Element->GeoElement->NumNodes[i];
     // }
-    Message::Info("key from %s => {%d,%d,%d}",key.c_str(),g[0],g[1],g[2]);
+    Message::Info("NumEntity  key from %s => {%d,%d,%d}",key.c_str(),g[0],g[1],g[2]);
+    // TODO : build a dict of master cv - the key is the nodes master triplet
+    // when hitting a salve face, it takes the CV of the master instead.
+    // this will work if the nodes are "aligned" by default by gmsh as I suspect
 
 
 
 
-    
+    // this would have been nice but does not work ;)
     return NumIndex;
     // this is a periodic face, then the default sorting scheme fails:
     // we cannot guaranty that global nodes will be sorted in the same
