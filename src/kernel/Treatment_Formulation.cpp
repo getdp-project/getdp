@@ -565,11 +565,11 @@ void Treatment_FemFormulation(struct Formulation *Formulation_P)
         Element.Region = Geo_GetGeoElement(i_Element)->Region;
         (*Formulation_P->RegionToEquationTermIDs)[Element.Region].clear();
       }
+      delete Formulation_P->RegionToEquationTermIDs;
+      Formulation_P->RegionToEquationTermIDsIsInit = 0;
+      Formulation_P->ElementListEquationTermIDs.clear();
+      Formulation_P->ElementListEquationTermIDsIsInit = 0;
     }
-    delete Formulation_P->RegionToEquationTermIDs;
-    Formulation_P->RegionToEquationTermIDsIsInit = 0;
-    Formulation_P->ElementListEquationTermIDs.clear();
-    Formulation_P->ElementListEquationTermIDsIsInit = 0;
   }
 
   for(int i_Element = 0; i_Element < Nbr_Element; i_Element++) {
