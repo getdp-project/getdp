@@ -18,7 +18,7 @@ variables:
 # ---------------------------------------------
 
 linux_ci:
-  image: onelab/ubuntu20.04
+  image: onelab/ci
   script:
     - mkdir build
     - cd build
@@ -55,7 +55,7 @@ windows_ci:
   script:
     - mkdir build
     - cd build
-    - cmake -DGETDP_HOST=getdp.info -DENABLE_SPARSKIT=0 -DENABLE_PETSC=1 -DPETSC_ARCH=complex_mumps_seq -DPETSC_DIR=/petsc-3.14.4 -DSLEPC_DIR=/slepc-3.14.1 ${EXTRA_OPTION} ..
+    - cmake -DGETDP_HOST=getdp.info -DENABLE_SPARSKIT=0 -DENABLE_PETSC=1 -DPETSC_ARCH=complex_mumps_seq -DPETSC_DIR=/petsc-3.23.2 -DSLEPC_DIR=/slepc-3.23.2 ${EXTRA_OPTION} ..
     - make package -j 8
     - PKG=`ls getdp-*.tar*`; scp ${PKG} geuzaine@getdp.info:.wwwgetdp/bin/Linux/${PKG/\.tar\.gz/c\.tgz}
     - ctest -j 8 --output-on-failure
@@ -70,7 +70,7 @@ windows_ci:
   script:
     - mkdir build
     - cd build
-    - cmake -DGETDP_HOST=getdp.info -DENABLE_SPARSKIT=0 -DENABLE_PETSC=1 -DPETSC_ARCH=real_mumps_seq -DPETSC_DIR=/petsc-3.14.4 -DSLEPC_DIR=/slepc-3.14.1 ${EXTRA_OPTION} ..
+    - cmake -DGETDP_HOST=getdp.info -DENABLE_SPARSKIT=0 -DENABLE_PETSC=1 -DPETSC_ARCH=real_mumps_seq -DPETSC_DIR=/petsc-3.23.2 -DSLEPC_DIR=/slepc-3.23.2 ${EXTRA_OPTION} ..
     - make package -j 8
     - PKG=`ls getdp-*.tar*`; scp ${PKG} geuzaine@getdp.info:.wwwgetdp/bin/Linux/${PKG/\.tar\.gz/r\.tgz}
     - ctest -j 8 --output-on-failure
@@ -85,7 +85,7 @@ windows_ci:
   script:
     - mkdir build
     - cd build
-    - cmake -DGETDP_HOST=getdp.info -DENABLE_SPARSKIT=0 -DENABLE_PETSC=1 -DPETSC_ARCH=real_mumps_seq -DPETSC_DIR=/petsc-3.14.4 -DSLEPC_DIR=/slepc-3.14.1 -DENABLE_MULTIHARMONIC=1 ${EXTRA_OPTION} ..
+    - cmake -DGETDP_HOST=getdp.info -DENABLE_SPARSKIT=0 -DENABLE_PETSC=1 -DPETSC_ARCH=real_mumps_seq -DPETSC_DIR=/petsc-3.23.2 -DSLEPC_DIR=/slepc-3.23.2 -DENABLE_MULTIHARMONIC=1 ${EXTRA_OPTION} ..
     - make package -j 8
     - PKG=`ls getdp-*.tar*`; scp ${PKG} geuzaine@getdp.info:.wwwgetdp/bin/Linux/${PKG/\.tar\.gz/r-MH\.tgz}
     - ctest -j 1 --output-on-failure
@@ -94,13 +94,13 @@ windows_ci:
     - docker
 
 linux_official_petsc_complex_snapshot:
-  image: onelab/debian.stretch.64bit
+  image: onelab/debian.buster
   <<: *linux_official_petsc_complex
   except:
     - tags
 
 linux_official_petsc_complex_release:
-  image: onelab/debian.stretch.64bit
+  image: onelab/debian.buster
   variables:
     EXTRA_OPTION: "-DGETDP_RELEASE=1"
   <<: *linux_official_petsc_complex
@@ -108,13 +108,13 @@ linux_official_petsc_complex_release:
     - /^getdp_.*$/
 
 linux_official_petsc_real_snapshot:
-  image: onelab/debian.stretch.64bit
+  image: onelab/debian.buster
   <<: *linux_official_petsc_real
   except:
     - tags
 
 linux_official_petsc_real_release:
-  image: onelab/debian.stretch.64bit
+  image: onelab/debian.buster
   variables:
     EXTRA_OPTION: "-DGETDP_RELEASE=1"
   <<: *linux_official_petsc_real
@@ -122,13 +122,13 @@ linux_official_petsc_real_release:
     - /^getdp_.*$/
 
 linux_official_petsc_real_mh_snapshot:
-  image: onelab/debian.stretch.64bit
+  image: onelab/debian.buster
   <<: *linux_official_petsc_real_mh
   except:
     - tags
 
 linux_official_petsc_real_mh_release:
-  image: onelab/debian.stretch.64bit
+  image: onelab/debian.buster
   variables:
     EXTRA_OPTION: "-DGETDP_RELEASE=1"
   <<: *linux_official_petsc_real_mh
@@ -380,7 +380,7 @@ macosarm_official_petsc_real_mh_release:
 # ----------------------------------------------
 
 .source_official: &source_official
-  image: onelab/ubuntu20.04
+  image: onelab/ci
   only:
     - master@getdp/getdp
   <<: *ssh_config
@@ -412,7 +412,7 @@ source_official_release:
 
 doc_official_snapshot:
   stage: .post
-  image: onelab/ubuntu20.04
+  image: onelab/ci
   only:
     - master@getdp/getdp
   <<: *ssh_config
@@ -431,7 +431,7 @@ doc_official_snapshot:
 
 doc_official_release:
   stage: .post
-  image: onelab/ubuntu20.04
+  image: onelab/ci
   variables:
     EXTRA_OPTION: "-DGETDP_RELEASE=1"
   only:
