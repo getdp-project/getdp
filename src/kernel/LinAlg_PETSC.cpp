@@ -51,7 +51,7 @@ extern struct CurrentData Current;
 // for GMRES with ILU(0), with a restart of 500 and a stopping
 // criterion of 1e-6.
 
-static MPI_Comm MyComm = MPI_COMM_SELF;
+static MPI_Comm MyComm = PETSC_COMM_SELF;
 static PetscViewer MyPetscViewer;
 
 static void _try(int ierr)
@@ -156,7 +156,7 @@ void LinAlg_CreateSolver(gSolver *Solver, const char *SolverDataFileName)
 
 static bool _usePartitions()
 {
-  if(Message::GetCommSize() == 1)
+  if(Message::GetCommSize() == 1 || MyComm == PETSC_COMM_SELF)
     return false; // sequential
 
   if((int)Current.DofData->PartitionSplit.size() == Message::GetCommSize() + 1)
@@ -241,7 +241,7 @@ void LinAlg_CreateMatrix(gMatrix *M, gSolver *Solver, int n, int m, bool silent)
                  Message::GetCommSize(), Message::GetIsCommWorld());
 
   if(Current.DofData->SparsityPattern->size() &&
-     (!Message::GetIsCommWorld() || Message::GetCommSize() == 1)) {
+     (Message::GetCommSize() == 1 || MyComm == PETSC_COMM_SELF)) {
     Message::Debug("... SeqAIJ matrix with exact sparsity pattern");
     // we add 1 to account for the diagonal element enforced below
     std::vector<PetscInt> nnz;
@@ -290,7 +290,7 @@ void LinAlg_CreateMatrix(gMatrix *M, gSolver *Solver, int n, int m, bool silent)
   }
   else {
     // use heuristics
-    PetscInt nloc = (!Message::GetIsCommWorld() || Message::GetCommSize() == 1) ?
+    PetscInt nloc = (Message::GetCommSize() == 1 || MyComm == PETSC_COMM_SELF) ?
       n : _getLocalSize();
     PetscInt mloc = nloc;
     PetscInt prealloc = 100.;
@@ -322,7 +322,7 @@ void LinAlg_CreateMatrix(gMatrix *M, gSolver *Solver, int n, int m, bool silent)
     if(!silent && set_prealloc_full)
       Message::Info("Setting PETSc prealloc_full to %d", prealloc_full);
 
-    if(!Message::GetIsCommWorld() || Message::GetCommSize() == 1) {
+    if(Message::GetCommSize() == 1 || MyComm == PETSC_COMM_SELF) {
       Message::Debug("... SeqAIJ matrix with heuristic allocation");
       std::vector<PetscInt> nnz;
       nnz.resize(n, prealloc);
@@ -1634,8 +1634,6 @@ static void _solveNL(gMatrix *A, gVector *B, gMatrix *J, gVector *R,
     return;
   }
 
-  // either we are on sequential (!GetIsCommWorld) or in parallel with rank = 0
-  // (GetIsCommWorld)
   Message::Info("N: %ld", (long)n);
 
   if(solverIndex != 0)
