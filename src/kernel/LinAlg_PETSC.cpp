@@ -51,7 +51,7 @@ extern struct CurrentData Current;
 // for GMRES with ILU(0), with a restart of 500 and a stopping
 // criterion of 1e-6.
 
-static MPI_Comm MyComm = MPI_COMM_SELF;
+static MPI_Comm MyComm = PETSC_COMM_SELF;
 static PetscViewer MyPetscViewer;
 
 static void _try(int ierr)
@@ -156,7 +156,7 @@ void LinAlg_CreateSolver(gSolver *Solver, const char *SolverDataFileName)
 
 static bool _usePartitions()
 {
-  if(Message::GetCommSize() == 1)
+  if(Message::GetCommSize() == 1 || MyComm == PETSC_COMM_SELF)
     return false; // sequential
 
   if((int)Current.DofData->PartitionSplit.size() == Message::GetCommSize() + 1)
@@ -237,7 +237,12 @@ static void _fillseq(gVector *V)
 
 void LinAlg_CreateMatrix(gMatrix *M, gSolver *Solver, int n, int m, bool silent)
 {
-  if(Current.DofData->SparsityPattern->size() && Message::GetCommSize() == 1) {
+  Message::Debug("Creating matrix with MPI_CommSize=%d and MPI_IsCommWorld=%d",
+                 Message::GetCommSize(), Message::GetIsCommWorld());
+
+  if(Current.DofData->SparsityPattern->size() &&
+     (Message::GetCommSize() == 1 || MyComm == PETSC_COMM_SELF)) {
+    Message::Debug("... SeqAIJ matrix with exact sparsity pattern");
     // we add 1 to account for the diagonal element enforced below
     std::vector<PetscInt> nnz;
     nnz.resize(n, 1);
@@ -255,6 +260,7 @@ void LinAlg_CreateMatrix(gMatrix *M, gSolver *Solver, int n, int m, bool silent)
     _try(MatAssemblyEnd(M->M, MAT_FLUSH_ASSEMBLY));
   }
   else if(Current.DofData->SparsityPattern->size() && _usePartitions()) {
+    Message::Debug("... MPIAIJ matrix with exact sparsity pattern");
     PetscInt nloc = _getLocalSize();
     PetscInt mloc = nloc;
     std::vector<PetscInt> d_nnz, o_nnz;
@@ -284,10 +290,11 @@ void LinAlg_CreateMatrix(gMatrix *M, gSolver *Solver, int n, int m, bool silent)
   }
   else {
     // use heuristics
-    PetscInt nloc = (Message::GetCommSize() > 1) ? _getLocalSize() : n;
+    PetscInt nloc = (Message::GetCommSize() == 1 || MyComm == PETSC_COMM_SELF) ?
+      n : _getLocalSize();
     PetscInt mloc = nloc;
     PetscInt prealloc = 100.;
-    PetscInt prealloc_full = mloc;
+    PetscInt prealloc_full = (mloc > 0) ? mloc : n;
     int nonloc = Current.DofData->NonLocalEquations.size();
 
     // heuristic for global rows: don't prelloc more than 500 Mb
@@ -305,15 +312,18 @@ void LinAlg_CreateMatrix(gMatrix *M, gSolver *Solver, int n, int m, bool silent)
                        &set_prealloc_full);
 
     // prealloc cannot be bigger than the number of columns!
-    prealloc = (prealloc > mloc) ? mloc : prealloc;
-    prealloc_full = (prealloc_full > mloc) ? mloc : prealloc_full;
+    prealloc = (mloc > 0 && prealloc > mloc) ? mloc :
+      (prealloc > n) ? n : prealloc;
+    prealloc_full = (mloc > 0 && prealloc_full > mloc) ? mloc :
+      (prealloc_full > n) ? n : prealloc_full;
 
     if(!silent && set_prealloc)
       Message::Info("Setting PETSc prealloc to %d", prealloc);
     if(!silent && set_prealloc_full)
       Message::Info("Setting PETSc prealloc_full to %d", prealloc_full);
 
-    if(Message::GetCommSize() == 1) {
+    if(Message::GetCommSize() == 1 || MyComm == PETSC_COMM_SELF) {
+      Message::Debug("... SeqAIJ matrix with heuristic allocation");
       std::vector<PetscInt> nnz;
       nnz.resize(n, prealloc);
       for(int i = 0; i < nonloc; i++)
@@ -329,6 +339,7 @@ void LinAlg_CreateMatrix(gMatrix *M, gSolver *Solver, int n, int m, bool silent)
       _try(MatAssemblyEnd(M->M, MAT_FLUSH_ASSEMBLY));
     }
     else {
+      Message::Debug("... MPIAIJ matrix with heuristic allocation");
 #if((PETSC_VERSION_MAJOR == 3) && (PETSC_VERSION_MINOR >= 3))
       _try(MatCreateAIJ(MyComm, nloc, mloc, n, m, prealloc, PETSC_NULL,
                         prealloc, PETSC_NULL, &M->M));
@@ -1623,8 +1634,6 @@ static void _solveNL(gMatrix *A, gVector *B, gMatrix *J, gVector *R,
     return;
   }
 
-  // either we are on sequential (!GetIsCommWorld) or in parallel with rank = 0
-  // (GetIsCommWorld)
   Message::Info("N: %ld", (long)n);
 
   if(solverIndex != 0)
