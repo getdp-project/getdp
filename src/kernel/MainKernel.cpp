@@ -68,8 +68,9 @@ static void Info(int level, char *arg0)
       "  -cache                    cache network computations to disk\n"
 #if defined(HAVE_PETSC)
       "  -sparsity                 compute sparsity and parallel layout once "
-      "per system\n"
-      "  -sparsity-all             always compute sparsity and parallel layout\n"
+      "per system (or -s)\n"
+      "  -sparsity-all             always compute sparsity and parallel layout "
+      "(or -sa)\n"
 #endif
       "Linear solver options:\n"
 #if defined(HAVE_PETSC)
@@ -166,11 +167,13 @@ static void Get_Options(int argc, char *argv[], int *sargc, char **sargv,
         Flag_NETWORK_CACHE = 1;
         i++;
       }
-      else if(!strcmp(argv[i] + 1, "sparsity")) {
+      else if(!strcmp(argv[i] + 1, "sparsity") ||
+              !strcmp(argv[i] + 1, "s")) {
         Flag_SPARSITY_PATTERN = 1;
         i++;
       }
-      else if(!strcmp(argv[i] + 1, "sparsity-all")) {
+      else if(!strcmp(argv[i] + 1, "sparsity-all") ||
+              !strcmp(argv[i] + 1, "sa")) {
         Flag_SPARSITY_PATTERN = 2;
         i++;
       }

@@ -2,6 +2,10 @@
 //
 // See the LICENSE.txt file for license information. Please report all
 // issues on https://gitlab.onelab.info/getdp/getdp/issues.
+//
+// Contributor(s):
+//   Louis Denis
+//
 
 #include "ProData.h"
 #include "GeoData.h"
@@ -31,11 +35,14 @@ struct Dof *Cal_FemGlobalEquation2(int Index_DefineQuantity, int Num_Region,
                                    struct DefineQuantity *DefineQuantity_P0,
                                    struct QuantityStorage *QuantityStorage_P0)
 {
-  struct DefineQuantity *DefineQuantity_P = DefineQuantity_P0 + Index_DefineQuantity;
-  struct QuantityStorage *QuantityStorage_P = QuantityStorage_P0 + Index_DefineQuantity;
-  struct GlobalQuantity *GlobalQuantity_P = (struct GlobalQuantity *)List_Pointer(
-    QuantityStorage_P->FunctionSpace->GlobalQuantity,
-    *(int *)List_Pointer(DefineQuantity_P->IndexInFunctionSpace, 0));
+  struct DefineQuantity *DefineQuantity_P =
+    DefineQuantity_P0 + Index_DefineQuantity;
+  struct QuantityStorage *QuantityStorage_P =
+    QuantityStorage_P0 + Index_DefineQuantity;
+  struct GlobalQuantity *GlobalQuantity_P =
+    (struct GlobalQuantity *)List_Pointer(
+      QuantityStorage_P->FunctionSpace->GlobalQuantity,
+      *(int *)List_Pointer(DefineQuantity_P->IndexInFunctionSpace, 0));
 
   struct QuantityStorage QuaSto_S;
   Get_DofOfRegion(Num_Region, GlobalQuantity_P,
@@ -62,22 +69,23 @@ void Cal_FemGlobalEquation(struct EquationTerm *EquationTerm_P,
     struct Dof *Dof;
   };
 
-  /* Liste des Regions auxquelles on associe des Equations de Type 'Network' */
-
+  // List of Regions to which we associate Equations of Type 'Network'
   List_T *RegionIndex_L = List_Create(50, 50, sizeof(int));
 
   struct Constraint *Constraint_P = (struct Constraint *)List_Pointer(
     Problem_S.Constraint, EquationTerm_P->Case.GlobalEquation.ConstraintIndex);
   int Nbr_MCPR = List_Nbr(Constraint_P->MultiConstraintPerRegion);
   for(int i_MCPR = 0; i_MCPR < Nbr_MCPR; i_MCPR++) {
-    struct MultiConstraintPerRegion *MCPR_P = (struct MultiConstraintPerRegion *)
-      List_Pointer(Constraint_P->MultiConstraintPerRegion, i_MCPR);
+    struct MultiConstraintPerRegion *MCPR_P =
+      (struct MultiConstraintPerRegion *)List_Pointer(
+        Constraint_P->MultiConstraintPerRegion, i_MCPR);
     int Nbr_CPR = List_Nbr(MCPR_P->ConstraintPerRegion);
     for(int i_CPR = 0; i_CPR < Nbr_CPR; i_CPR++) {
-      struct ConstraintPerRegion *CPR_P = (struct ConstraintPerRegion *)
-        List_Pointer(MCPR_P->ConstraintPerRegion, i_CPR);
-      struct Group *Group_P = (struct Group *)
-        List_Pointer(Problem_S.Group, CPR_P->RegionIndex);
+      struct ConstraintPerRegion *CPR_P =
+        (struct ConstraintPerRegion *)List_Pointer(MCPR_P->ConstraintPerRegion,
+                                                   i_CPR);
+      struct Group *Group_P =
+        (struct Group *)List_Pointer(Problem_S.Group, CPR_P->RegionIndex);
       int Num_Region;
       List_Read(Group_P->InitialList, 0, &Num_Region);
       if(!List_Search(RegionIndex_L, &Num_Region, fcmp_int))
@@ -93,22 +101,27 @@ void Cal_FemGlobalEquation(struct EquationTerm *EquationTerm_P,
   int Nbr_EquAndDof = List_Nbr(RegionIndex_L);
   if(!Nbr_EquAndDof) { return; }
 
-  List_T *DofGlobal_Equ_L = List_Create(Nbr_EquAndDof, 1, sizeof(struct DofGlobal));
-  List_T *DofGlobal_DofNode_L = List_Create(Nbr_EquAndDof, 1, sizeof(struct DofGlobal));
-  List_T *DofGlobal_DofLoop_L = List_Create(Nbr_EquAndDof, 1, sizeof(struct DofGlobal));
+  List_T *DofGlobal_Equ_L =
+    List_Create(Nbr_EquAndDof, 1, sizeof(struct DofGlobal));
+  List_T *DofGlobal_DofNode_L =
+    List_Create(Nbr_EquAndDof, 1, sizeof(struct DofGlobal));
+  List_T *DofGlobal_DofLoop_L =
+    List_Create(Nbr_EquAndDof, 1, sizeof(struct DofGlobal));
 
-  /* Construction des listes de Dof globaux pour Equ, DofNode, DofLoop */
+  // Construction of global Dof lists for Equ, DofNode, DofLoop
 
   int Nbr_GlobalEquationTerm =
     List_Nbr(EquationTerm_P->Case.GlobalEquation.GlobalEquationTerm);
-  for(int i_GlobalEquationTerm = 0; i_GlobalEquationTerm < Nbr_GlobalEquationTerm;
-      i_GlobalEquationTerm++) {
+  for(int i_GlobalEquationTerm = 0;
+      i_GlobalEquationTerm < Nbr_GlobalEquationTerm; i_GlobalEquationTerm++) {
     struct GlobalEquationTerm *GlobalEquationTerm_P =
-      (struct GlobalEquationTerm *)List_Pointer
-      (EquationTerm_P->Case.GlobalEquation.GlobalEquationTerm, i_GlobalEquationTerm);
+      (struct GlobalEquationTerm *)List_Pointer(
+        EquationTerm_P->Case.GlobalEquation.GlobalEquationTerm,
+        i_GlobalEquationTerm);
     List_T *InitialListInIndex_L =
-      ((struct Group *)List_Pointer(Problem_S.Group, GlobalEquationTerm_P->InIndex))
-      ->InitialList;
+      ((struct Group *)List_Pointer(Problem_S.Group,
+                                    GlobalEquationTerm_P->InIndex))
+        ->InitialList;
     int Nbr_Region = List_Nbr(InitialListInIndex_L);
     List_Sort(InitialListInIndex_L, fcmp_int);
 
@@ -141,9 +154,12 @@ void Cal_FemGlobalEquation(struct EquationTerm *EquationTerm_P,
     return;
   }
 
-  struct DofGlobal *DofGlobal_Equ = (struct DofGlobal *)List_Pointer(DofGlobal_Equ_L, 0);
-  struct DofGlobal *DofGlobal_DofNode = (struct DofGlobal *)List_Pointer(DofGlobal_DofNode_L, 0);
-  struct DofGlobal *DofGlobal_DofLoop = (struct DofGlobal *)List_Pointer(DofGlobal_DofLoop_L, 0);
+  struct DofGlobal *DofGlobal_Equ =
+    (struct DofGlobal *)List_Pointer(DofGlobal_Equ_L, 0);
+  struct DofGlobal *DofGlobal_DofNode =
+    (struct DofGlobal *)List_Pointer(DofGlobal_DofNode_L, 0);
+  struct DofGlobal *DofGlobal_DofLoop =
+    (struct DofGlobal *)List_Pointer(DofGlobal_DofLoop_L, 0);
   for(int k = 0; k < List_Nbr(DofGlobal_Equ_L); k++) {
     if(DofGlobal_Equ[k].Dof->Type == DOF_FIXED ||
        DofGlobal_Equ[k].Dof->Type == DOF_LINK) {
@@ -154,38 +170,41 @@ void Cal_FemGlobalEquation(struct EquationTerm *EquationTerm_P,
     }
   }
 
-  /* Construction des equations (assemblage) */
+  // Construction of the equations (assembly)
 
   int Num_Equ = 0;
 
   Nbr_MCPR = List_Nbr(Constraint_P->MultiConstraintPerRegion);
   for(int i_MCPR = 0; i_MCPR < Nbr_MCPR; i_MCPR++) {
-    struct MultiConstraintPerRegion *MCPR_P = (struct MultiConstraintPerRegion *)
-      List_Pointer(Constraint_P->MultiConstraintPerRegion, i_MCPR);
+    struct MultiConstraintPerRegion *MCPR_P =
+      (struct MultiConstraintPerRegion *)List_Pointer(
+        Constraint_P->MultiConstraintPerRegion, i_MCPR);
 
     if(!MCPR_P->Active)
       MCPR_P->Active =
         Generate_Network(MCPR_P->Name, MCPR_P->ConstraintPerRegion);
 
-    for(int i_Node = 0; i_Node < MCPR_P->Active->Case.Network.NbrNode; i_Node++) {
+    for(int i_Node = 0; i_Node < MCPR_P->Active->Case.Network.NbrNode;
+        i_Node++) {
       for(int j_Branch = 0; j_Branch < MCPR_P->Active->Case.Network.NbrBranch;
           j_Branch++) {
         if(MCPR_P->Active->Case.Network.MatNode[i_Node][j_Branch]) {
-          struct Group *Group_P = (struct Group *)List_Pointer(Problem_S.Group,
-                         ((struct ConstraintPerRegion *)
-                          List_Pointer(MCPR_P->ConstraintPerRegion, j_Branch))
-                         ->RegionIndex);
+          struct Group *Group_P = (struct Group *)List_Pointer(
+            Problem_S.Group, ((struct ConstraintPerRegion *)List_Pointer(
+                                MCPR_P->ConstraintPerRegion, j_Branch))
+                               ->RegionIndex);
           int Num_Region;
           List_Read(Group_P->InitialList, 0, &Num_Region);
 
-          struct DofGlobal *DofGlobal_P = (struct DofGlobal *)
-            List_PQuery(DofGlobal_DofNode_L, &Num_Region, fcmp_int);
+          struct DofGlobal *DofGlobal_P = (struct DofGlobal *)List_PQuery(
+            DofGlobal_DofNode_L, &Num_Region, fcmp_int);
 
           Val[0] =
             (double)(MCPR_P->Active->Case.Network.MatNode[i_Node][j_Branch]);
           if(Current.NbrHar > 1) {
             Val[1] = 0.;
-            for(int k = 2; k < std::min(NBR_MAX_HARMONIC, Current.NbrHar); k += 2) {
+            for(int k = 2; k < std::min(NBR_MAX_HARMONIC, Current.NbrHar);
+                k += 2) {
               Val[k] = Val[0];
               Val[k + 1] = 0.;
             }
@@ -204,10 +223,10 @@ void Cal_FemGlobalEquation(struct EquationTerm *EquationTerm_P,
       }
 
       Num_Equ++;
-    } /* for i_Node ... */
+    } // for i_Node ...
 
-    for(int i_Loop = 0; i_Loop < MCPR_P->Active->Case.Network.NbrLoop; i_Loop++) {
-
+    for(int i_Loop = 0; i_Loop < MCPR_P->Active->Case.Network.NbrLoop;
+        i_Loop++) {
       for(int j_Branch = 0; j_Branch < MCPR_P->Active->Case.Network.NbrBranch;
           j_Branch++) {
         if(MCPR_P->Active->Case.Network.MatLoop[i_Loop][j_Branch]) {
@@ -218,14 +237,15 @@ void Cal_FemGlobalEquation(struct EquationTerm *EquationTerm_P,
           int Num_Region;
           List_Read(Group_P->InitialList, 0, &Num_Region);
 
-          struct DofGlobal *DofGlobal_P = (struct DofGlobal *)
-            List_PQuery(DofGlobal_DofLoop_L, &Num_Region, fcmp_int);
+          struct DofGlobal *DofGlobal_P = (struct DofGlobal *)List_PQuery(
+            DofGlobal_DofLoop_L, &Num_Region, fcmp_int);
 
           Val[0] =
             (double)(MCPR_P->Active->Case.Network.MatLoop[i_Loop][j_Branch]);
           if(Current.NbrHar > 1) {
             Val[1] = 0.;
-            for(int k = 2; k < std::min(NBR_MAX_HARMONIC, Current.NbrHar); k += 2) {
+            for(int k = 2; k < std::min(NBR_MAX_HARMONIC, Current.NbrHar);
+                k += 2) {
               Val[k] = Val[0];
               Val[k + 1] = 0.;
             }
@@ -244,9 +264,9 @@ void Cal_FemGlobalEquation(struct EquationTerm *EquationTerm_P,
       }
 
       Num_Equ++;
-    } /* for i_Loop ... */
+    } // for i_Loop ...
 
-  } /* for i_MCPR ... */
+  } // for i_MCPR ...
 
   List_Delete(DofGlobal_Equ_L);
   List_Delete(DofGlobal_DofNode_L);
@@ -258,20 +278,18 @@ void Cal_FemGlobalEquation(struct EquationTerm *EquationTerm_P,
 /*  T r e a t m e n t _ F e m F o r m u l a t i o n _ L o c a l T e r m     */
 /* ------------------------------------------------------------------------ */
 
-void Treatment_FemFormulation_LocalTerm(struct Element *Element,
-                                        struct EquationTerm *EquationTerm_P,
-                                        struct QuantityStorage *QuantityStorage_P0,
-                                        struct QuantityStorage *QuantityStorage_P,
-                                        struct DefineQuantity *DefineQuantity_P0,
-                                        struct DefineQuantity *DefineQuantity_P,
-                                        struct Formulation *Formulation_P)
+void Treatment_FemFormulation_LocalTerm(
+  struct Element *Element, struct EquationTerm *EquationTerm_P,
+  struct QuantityStorage *QuantityStorage_P0,
+  struct QuantityStorage *QuantityStorage_P,
+  struct DefineQuantity *DefineQuantity_P0,
+  struct DefineQuantity *DefineQuantity_P, struct Formulation *Formulation_P)
 {
   gMatrix A = Current.DofData->A;
   gVector b = Current.DofData->b;
   int Flag_Only = 0;
 
-  Current.IntegrationSupportIndex =
-    EquationTerm_P->Case.LocalTerm.InIndex;
+  Current.IntegrationSupportIndex = EquationTerm_P->Case.LocalTerm.InIndex;
 
   if(EquationTerm_P->Case.LocalTerm.SubRegion >= 0) {
     struct Group *GroupSubRegion_P = (struct Group *)List_Pointer(
@@ -293,8 +311,7 @@ void Treatment_FemFormulation_LocalTerm(struct Element *Element,
 
   std::vector<struct QuantityStorage *> QuantityStorageTrace;
 
-  for(int i = 0;
-      i < EquationTerm_P->Case.LocalTerm.Term.NbrQuantityIndex;
+  for(int i = 0; i < EquationTerm_P->Case.LocalTerm.Term.NbrQuantityIndex;
       i++) {
     int Index_DefineQuantity =
       EquationTerm_P->Case.LocalTerm.Term.QuantityIndexTable[i];
@@ -304,32 +321,31 @@ void Treatment_FemFormulation_LocalTerm(struct Element *Element,
     int TraceGroupIndex_DefineQuantity =
       EquationTerm_P->Case.LocalTerm.Term.QuantityTraceGroupIndexTable[i];
 
-    /* Only one analysis for each function space, unless we have a Trace
-            (note that a quantity involved in a Trace cannot appear in
-        the same term outside of a Trace) */
+    // Only one analysis for each function space, unless we have a Trace (note
+    // that a quantity involved in a Trace cannot appear in the same term
+    // outside of a Trace)
 
     if(QuantityStorage_P->NumLastElementForFunctionSpace != Element->Num ||
-        TraceGroupIndex_DefineQuantity >= 0) {
+       TraceGroupIndex_DefineQuantity >= 0) {
       switch(DefineQuantity_P->Type) {
       case LOCALQUANTITY:
         if(TraceGroupIndex_DefineQuantity >= 0 &&
-            Get_InitElementTrace(Element, TraceGroupIndex_DefineQuantity)) {
-          /* Fill QuantityStorage for the first trace element; others
-              (e.g. for mortaring on nonconformal meshes) will be handled
-              in a loop over the Cal_GalerkinTermOfFemEquation */
+           Get_InitElementTrace(Element, TraceGroupIndex_DefineQuantity)) {
+          // Fill QuantityStorage for the first trace element; others (e.g. for
+          // mortaring on nonconformal meshes) will be handled in a loop over
+          // the Cal_GalerkinTermOfFemEquation
           QuantityStorage_P->NumLastElementForFunctionSpace =
             Element->ElementTrace->Num;
-          Get_DofOfElement(
-            Element->ElementTrace, QuantityStorage_P->FunctionSpace,
-            QuantityStorage_P, DefineQuantity_P->IndexInFunctionSpace);
+          Get_DofOfElement(Element->ElementTrace,
+                           QuantityStorage_P->FunctionSpace, QuantityStorage_P,
+                           DefineQuantity_P->IndexInFunctionSpace);
           QuantityStorageTrace.push_back(QuantityStorage_P);
         }
         else {
-          QuantityStorage_P->NumLastElementForFunctionSpace =
-            Element->Num;
+          QuantityStorage_P->NumLastElementForFunctionSpace = Element->Num;
           Get_DofOfElement(Element, QuantityStorage_P->FunctionSpace,
-                            QuantityStorage_P,
-                            DefineQuantity_P->IndexInFunctionSpace);
+                           QuantityStorage_P,
+                           DefineQuantity_P->IndexInFunctionSpace);
         }
         break;
       case INTEGRALQUANTITY:
@@ -337,11 +353,11 @@ void Treatment_FemFormulation_LocalTerm(struct Element *Element,
         break;
       default:
         Message::Error("Bad kind of Quantity in Formulation '%s'",
-                        Formulation_P->Name);
+                       Formulation_P->Name);
         break;
       }
     }
-  } /* for i = 0, 1 ... */
+  } // for i = 0, 1 ...
 
   /* -------------------------------------- */
   /* 2.1.2.  Treatment of the equation term */
@@ -361,9 +377,9 @@ void Treatment_FemFormulation_LocalTerm(struct Element *Element,
       if(EquationTerm_P->Case.LocalTerm.MatrixIndex == -1)
         EquationTerm_P->Case.LocalTerm.MatrixIndex = 0;
 
-      int j = List_ISearch(Current.DofData->OnlyTheseMatrices,
-                            &EquationTerm_P->Case.LocalTerm.MatrixIndex,
-                            fcmp_int);
+      int j =
+        List_ISearch(Current.DofData->OnlyTheseMatrices,
+                     &EquationTerm_P->Case.LocalTerm.MatrixIndex, fcmp_int);
       if(j != -1) {
         Flag_Only = 1;
         switch(EquationTerm_P->Case.LocalTerm.MatrixIndex) {
@@ -381,25 +397,24 @@ void Treatment_FemFormulation_LocalTerm(struct Element *Element,
           break;
         }
       }
-    } /* Only the matrices that vary are recalculated */
+    } // Only the matrices that vary are recalculated
 
     if(!Current.DofData->Flag_Only ||
-        (Current.DofData->Flag_Only && Flag_Only)) {
+       (Current.DofData->Flag_Only && Flag_Only)) {
       if(EquationTerm_P->Type == GALERKIN) {
         Cal_GalerkinTermOfFemEquation(Element, EquationTerm_P,
                                       QuantityStorage_P0);
 
-        /* if multiple candidate Trace elements, assemble the additional
-          * contributions */
+        // if multiple candidate Trace elements, assemble the additional
+        // contributions
         while(Get_NextElementTrace(Element)) {
           for(std::size_t k = 0; k < QuantityStorageTrace.size(); k++) {
             QuantityStorage_P = QuantityStorageTrace[k];
             QuantityStorage_P->NumLastElementForFunctionSpace =
               Element->ElementTrace->Num;
-            Get_DofOfElement(Element->ElementTrace,
-                              QuantityStorage_P->FunctionSpace,
-                              QuantityStorage_P,
-                              DefineQuantity_P->IndexInFunctionSpace);
+            Get_DofOfElement(
+              Element->ElementTrace, QuantityStorage_P->FunctionSpace,
+              QuantityStorage_P, DefineQuantity_P->IndexInFunctionSpace);
           }
           Cal_GalerkinTermOfFemEquation(Element, EquationTerm_P,
                                         QuantityStorage_P0);
@@ -410,7 +425,7 @@ void Treatment_FemFormulation_LocalTerm(struct Element *Element,
         Current.DofData->b = b;
       }
 
-    } /* Flag_Only */
+    } // Flag_Only
     break;
 
   case STATUS_CST:
@@ -474,7 +489,7 @@ void Treatment_FemFormulation(struct Formulation *Formulation_P)
        QuantityStorage_S.DefineQuantity->IntegralQuantity
            .DefineQuantityIndexDof < 0) {
       QuantityStorage_S.FunctionSpace = NULL;
-      QuantityStorage_S.TypeQuantity = VECTOR; /* to change */
+      QuantityStorage_S.TypeQuantity = VECTOR; // to change
     }
     else {
       QuantityStorage_S.FunctionSpace = (struct FunctionSpace *)List_Pointer(
@@ -547,8 +562,10 @@ void Treatment_FemFormulation(struct Formulation *Formulation_P)
   bool partitioned = false;
   if(Message::GetCommSize() > 1 && Current.DofData->ElementRanks->size() &&
      Current.TypeAssembly != ASSEMBLY_SPARSITY_PATTERN) {
-    if((int)Current.DofData->PartitionSplit.size() == Message::GetCommSize() + 1 ||
-       (int)Current.DofData->PartitionSplit.size() == Message::GetCommSize() + 2) {
+    if((int)Current.DofData->PartitionSplit.size() ==
+         Message::GetCommSize() + 1 ||
+       (int)Current.DofData->PartitionSplit.size() ==
+         Message::GetCommSize() + 2) {
       partitioned = true;
     }
     else {
@@ -558,7 +575,7 @@ void Treatment_FemFormulation(struct Formulation *Formulation_P)
     }
   }
 
-  if(Formulation_P->Has_MovingBand2D_Term) { 
+  if(Formulation_P->Has_MovingBand2D_Term) {
     // moving mesh -> maps must be re-initialized at each system generation
     if(Formulation_P->RegionToEquationTermIDsIsInit) {
       for(int i_Element = 0; i_Element < Nbr_Element; i_Element++) {
@@ -601,81 +618,98 @@ void Treatment_FemFormulation(struct Formulation *Formulation_P)
       }
       if(skip) continue;
     }
-           
+
     /* ---------------------------- */
     /* 2.1.  Loop on equation terms */
     /* ---------------------------- */
 
-    // Instead of looping over all equation terms for all elements at every assembly,
-    // we optimize the assembly by first determining which equation terms are relevant
-    // for the current element (i.e. which terms contain the element in their support), 
-    // and only looping over these terms.
-    // Two sets of equation terms are considered:
+    // Instead of looping over all equation terms for all elements at every
+    // assembly, in GetDP 4 we optimize the assembly by first determining which
+    // equation terms are relevant for the current element (i.e. which terms
+    // contain the element in their support), and only looping over these
+    // terms. Two sets of equation terms are considered:
+    //
     // 1. those with GroupType != ELEMENTLIST
     // 2. those with GroupType == ELEMENTLIST
-    // First type is handled by precomputing a map from RegionID to equation term indices 
-    // with this RegionID in their support of integration -> RegionToEquationTermIDs
-    // Second type is handled by storing separately the list of all equation term indices 
-    // of type ELEMENTLIST, independent from the Element -> ElementListEquationTermIDs
-    // this way is particularly efficient for handling degenerate cases, 
-    // such as many equation terms of type RegionList (e.g. more terms than elements)
+    //
+    // Case 1. is handled by precomputing a map from RegionID to equation term
+    // indices with this RegionID in their support of integration ->
+    // RegionToEquationTermIDs
+    //
+    // Case 2. is handled by storing separately the list of all equation term
+    // indices of type ELEMENTLIST, independent from the Element ->
+    // ElementListEquationTermIDs
+    //
+    // This is particularly efficient for handling degenerate cases, such as
+    // when we more equation terms than elements (!) - yes that can happen
+    // e.g. in CERN's use of thin shell formulations ;-)
 
     if(Formulation_P->RegionToEquationTermIDsIsInit == 0) {
       if(i_Element == 0) {
-        Formulation_P->RegionToEquationTermIDs = new std::unordered_map<int, std::vector<int>>();
+        Formulation_P->RegionToEquationTermIDs =
+          new std::unordered_map<int, std::vector<int> >();
       }
-      // trick is to perform one dummy assembly path here to detect which equation terms are relevant
+      // trick is to perform one dummy assembly path here to detect which
+      // equation terms are relevant
       for(int i_EquTerm = 0; i_EquTerm < Nbr_EquationTerm; i_EquTerm++) {
         EquationTerm_P = EquationTerm_P0 + i_EquTerm;
-        
-        if(EquationTerm_P->Type == GALERKIN) { // only GALERKIN are considered here
+
+        if(EquationTerm_P->Type == GALERKIN) { // only GALERKIN are considered
           struct Group *GroupIn_P = (struct Group *)List_Pointer(
             Problem_S.Group, EquationTerm_P->Case.LocalTerm.InIndex);
-          if((GroupIn_P->Type != ELEMENTLIST && List_Nbr(GroupIn_P->InitialList) &&
-            List_Search(GroupIn_P->InitialList, &Element.Region, fcmp_int))) {
-            if((*Formulation_P->RegionToEquationTermIDs)[Element.Region].size() == 0 ||
-              (*Formulation_P->RegionToEquationTermIDs)[Element.Region].back() < i_EquTerm) {
-                // only add if not already present (to avoid duplicates)
-                (*Formulation_P->RegionToEquationTermIDs)[Element.Region].push_back(i_EquTerm);
+          if((GroupIn_P->Type != ELEMENTLIST &&
+              List_Nbr(GroupIn_P->InitialList) &&
+              List_Search(GroupIn_P->InitialList, &Element.Region, fcmp_int))) {
+            if((*Formulation_P->RegionToEquationTermIDs)[Element.Region]
+                   .size() == 0 ||
+               (*Formulation_P->RegionToEquationTermIDs)[Element.Region]
+                   .back() < i_EquTerm) {
+              // only add if not already present (to avoid duplicates)
+              (*Formulation_P->RegionToEquationTermIDs)[Element.Region]
+                .push_back(i_EquTerm);
             }
           }
-          if(Formulation_P->ElementListEquationTermIDsIsInit == 0 && GroupIn_P->Type == ELEMENTLIST) {
+          if(Formulation_P->ElementListEquationTermIDsIsInit == 0 &&
+             GroupIn_P->Type == ELEMENTLIST) {
             // storing indices of ELEMENTLIST terms for later use
             Formulation_P->ElementListEquationTermIDs.push_back(i_EquTerm);
           }
-          if(GroupIn_P->MovingBand2D)
-          {
+          if(GroupIn_P->MovingBand2D) {
             Formulation_P->Has_MovingBand2D_Term = 1;
           }
         }
       }
-      Formulation_P->ElementListEquationTermIDsIsInit = 1; // this element list is independent of Element.Region, so we only need to init it once
+      // this element list is independent of Element.Region, so we only need to
+      // init it once
+      Formulation_P->ElementListEquationTermIDsIsInit = 1;
     }
 
-    // first Loop for all equation terms with GroupIn_P->TYPE != ELEMENTLIST
-    // it is performed by looping only on the relevant equation terms for the current Element.Region
+    // first Loop for all equation terms with GroupIn_P->TYPE != ELEMENTLIST it
+    // is performed by looping only on the relevant equation terms for the
+    // current Element.Region
     for(int i_EquTermIdx = 0;
-        i_EquTermIdx < (int)(*Formulation_P->RegionToEquationTermIDs)[Element.Region].size();
+        i_EquTermIdx <
+        (int)(*Formulation_P->RegionToEquationTermIDs)[Element.Region].size();
         i_EquTermIdx++) {
-      int i_EquTerm = (*Formulation_P->RegionToEquationTermIDs)[Element.Region][i_EquTermIdx];
+      int i_EquTerm =
+        (*Formulation_P->RegionToEquationTermIDs)[Element.Region][i_EquTermIdx];
       EquationTerm_P = EquationTerm_P0 + i_EquTerm;
 
-      if(true) { // we already checked that Element.Region is in the support of integration of the term
+      if(true) { // we already checked that Element.Region is in the support of
+                 // integration of the term
         if(Message::GetVerbosity() == 10)
           printf("==> Element #%d, EquationTerm #%d/%d\n", Element.Num,
-                  i_EquTerm + 1, Nbr_EquationTerm);
-        Treatment_FemFormulation_LocalTerm(&Element, EquationTerm_P,
-                                          QuantityStorage_P0,
-                                          QuantityStorage_P,
-                                          DefineQuantity_P0,
-                                          DefineQuantity_P,
-                                          Formulation_P);
-      } /* if Support */
+                 i_EquTerm + 1, Nbr_EquationTerm);
+        Treatment_FemFormulation_LocalTerm(
+          &Element, EquationTerm_P, QuantityStorage_P0, QuantityStorage_P,
+          DefineQuantity_P0, DefineQuantity_P, Formulation_P);
+      } // if Support
 
-    } /* for i_EquTerm ... */
+    } // for i_EquTerm ...
 
-    // second Loop over all equation terms with a test only if GroupIn_P->TYPE == ELEMENTLIST
-    // we loop on all these terms stored in ElementListEquationTermIDs
+    // second Loop over all equation terms with a test only if GroupIn_P->TYPE
+    // == ELEMENTLIST we loop on all these terms stored in
+    // ElementListEquationTermIDs
     for(int i_EquTermIdx = 0;
         i_EquTermIdx < (int)Formulation_P->ElementListEquationTermIDs.size();
         i_EquTermIdx++) {
@@ -688,29 +722,27 @@ void Treatment_FemFormulation(struct Formulation *Formulation_P)
       if(Check_IsEntityInExtendedGroup(GroupIn_P, Element.Num, 0)) { // if Support
         if(Message::GetVerbosity() == 10)
           printf("==> Element #%d, EquationTerm #%d/%d\n", Element.Num,
-                  i_EquTerm + 1, Nbr_EquationTerm);
-                  
-        Treatment_FemFormulation_LocalTerm(&Element, EquationTerm_P,
-                                          QuantityStorage_P0,
-                                          QuantityStorage_P,
-                                          DefineQuantity_P0,
-                                          DefineQuantity_P,
-                                          Formulation_P);
+                 i_EquTerm + 1, Nbr_EquationTerm);
 
-      } /* if Support ... */
+        Treatment_FemFormulation_LocalTerm(
+          &Element, EquationTerm_P, QuantityStorage_P0, QuantityStorage_P,
+          DefineQuantity_P0, DefineQuantity_P, Formulation_P);
 
-    } /* for i_EquTerm ... */
+      } // if Support ...
+
+    } // for i_EquTerm ...
 
     Message::ProgressMeter(i_Element + 1, Nbr_Element,
                            (TreatmentStatus == STATUS_PRE) ?
-                           "Pre-processing" :
+                             "Pre-processing" :
                            (Current.TypeAssembly == ASSEMBLY_SPARSITY_PATTERN) ?
-                           "Processing (Sparsity)" :
-                           "Processing (Generate)");
+                             "Processing (Sparsity)" :
+                             "Processing (Generate)");
     if(Message::GetErrorCount()) break;
-  } /* for i_Element ... */
+  } // for i_Element ...
 
-  Formulation_P->RegionToEquationTermIDsIsInit = 1; // mark as initialized for next assembly
+  // mark as initialized for next assembly:
+  Formulation_P->RegionToEquationTermIDsIsInit = 1;
 
   if(MH_Moving_Matrix) {
     List_Delete(FemLocalTermActive_L);
@@ -765,20 +797,17 @@ void Treatment_FemFormulation(struct Formulation *Formulation_P)
         }
 
         // Possible mutual terms (need of double-piece-wise Function fct[r1,r2])
-        for(int i_Region_Dof = i_Region_Dof_ini; i_Region_Dof < i_Region_Dof_end;
-            i_Region_Dof++) {
+        for(int i_Region_Dof = i_Region_Dof_ini;
+            i_Region_Dof < i_Region_Dof_end; i_Region_Dof++) {
           if(i_Region_Dof != i_Region_Dof_skip) {
             int Num_Region_Dof;
             List_Read(InitialListInIndex_L, i_Region_Dof, &Num_Region_Dof);
             Current.SubRegion =
               Num_Region_Dof; // used in double-piece-wise Function
 
-            /* ----------------------------------------------------------------
-             */
-            /* 3.1.1.   Loop on Quantities (test functions and shape functions)
-             */
-            /* ----------------------------------------------------------------
-             */
+            /* -------------------------------------------------------------- */
+            /* 3.1.1.   Loop on Quantities (test and shape functions)         */
+            /* -------------------------------------------------------------- */
 
             for(int i = 0;
                 i < EquationTerm_P->Case.GlobalTerm.Term.NbrQuantityIndex;
@@ -792,8 +821,7 @@ void Treatment_FemFormulation(struct Formulation *Formulation_P)
                 *(int *)List_Pointer(DefineQuantity_P->IndexInFunctionSpace,
                                      0));
 
-              /* Only one Function space analysis */
-              /* -------------------------------- */
+              // Only one Function space analysis
               if(QuantityStorage_P->NumLastElementForFunctionSpace !=
                  Num_Region_Dof) {
                 QuantityStorage_P->NumLastElementForFunctionSpace =
@@ -829,7 +857,7 @@ void Treatment_FemFormulation(struct Formulation *Formulation_P)
                 }
               }
 
-            } /* for i = 0, 1 ... */
+            } // for i = 0, 1 ...
 
             // QuantityStorage for Equ and Dof (can differ for SubType Mutual)
             EquationTerm_P->Case.GlobalTerm.Active->QuantityStorageEqu_P =
@@ -871,8 +899,8 @@ void Treatment_FemFormulation(struct Formulation *Formulation_P)
         } // for i_Region_Dof
       } // for i_Region
 
-    } /* if GLOBALTERM ... */
-  } /* for i_EquTerm ... */
+    } // if GLOBALTERM ...
+  } // for i_EquTerm ...
 
   /* --------------------------------------------------------- */
   /* 4.  Loop on equation terms :                              */
@@ -896,8 +924,8 @@ void Treatment_FemFormulation(struct Formulation *Formulation_P)
           break;
         }
 
-    } /* if GLOBALEQUATION ... */
-  } /* for i_EquTerm ... */
+    } // if GLOBALEQUATION ...
+  } // for i_EquTerm ...
 
   /* -------------------------- */
   /* 5.   End of FEM treatment  */
