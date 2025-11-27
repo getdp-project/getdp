@@ -8,6 +8,7 @@
 
 #include <string>
 #include <map>
+#include <unordered_map>
 #include <vector>
 #include "GetDPConfig.h"
 #include "ListUtils.h"
@@ -513,6 +514,14 @@ struct Formulation {
   char *Name;
   int Type;
   List_T *DefineQuantity, *Equation;
+
+  std::unordered_map<int, std::vector<int>> *RegionToEquationTermIDs;
+  int RegionToEquationTermIDsIsInit = 0;
+
+  std::vector<int> ElementListEquationTermIDs;
+  int ElementListEquationTermIDsIsInit = 0;
+
+  int Has_MovingBand2D_Term = 0;
 };
 
 /* Formulation.Type */
