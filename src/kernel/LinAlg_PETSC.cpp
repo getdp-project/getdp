@@ -191,7 +191,14 @@ static int _getLocalSize()
 void LinAlg_CreateVector(gVector *V, gSolver *Solver, int n)
 {
   _try(VecCreate(MyComm, &V->V));
-  _try(VecSetSizes(V->V, _getLocalSize(), n));
+
+  int nloc = _getLocalSize();
+  if(nloc > n) {
+    Message::Debug("Creating distributed vector with n (%d) < nloc (%d)",
+                   n, nloc);
+    nloc = n;
+  }
+  _try(VecSetSizes(V->V, nloc, n));
 
   // override the default options with the ones from the option
   // database (if any)
