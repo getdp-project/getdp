@@ -151,8 +151,8 @@ void InitLEPostOperation(Resolution *Resolution_P, DofData *DofData_P0,
         &((struct Solution *)List_Pointer(PostOpSolutions_P->Solutions_L, 0))
            ->x,
         &PostOpSolLength);
-      LinAlg_CreateVector(&PostOpSolution_S, &DofData_P0->Solver,
-                          PostOpSolLength);
+      LinAlg_CreateVector(&PostOpSolution_S, &DofData_P0->Solver, PostOpSolLength,
+                          true); // sequential!
       List_Add(PostOpSolution_L, &PostOpSolution_S);
     }
   }

@@ -641,8 +641,8 @@ void Treatment_FemFormulation(struct Formulation *Formulation_P)
     // ElementListEquationTermIDs
     //
     // This is particularly efficient for handling degenerate cases, such as
-    // when we more equation terms than elements (!) - yes that can happen
-    // e.g. in CERN's use of thin shell formulations ;-)
+    // when there are more equation terms than elements (!) - yes that can
+    // happen e.g. in CERN's use of thin shell formulations ;-)
 
     if(Formulation_P->RegionToEquationTermIDsIsInit == 0) {
       if(i_Element == 0) {

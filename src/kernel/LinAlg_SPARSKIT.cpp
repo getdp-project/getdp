@@ -111,7 +111,7 @@ void LinAlg_CreateSolver(gSolver *Solver, const char *SolverDataFileName)
 
 void LinAlg_SetGlobalSolverOptions(const std::string &opt) {}
 
-void LinAlg_CreateVector(gVector *V, gSolver *Solver, int n)
+void LinAlg_CreateVector(gVector *V, gSolver *Solver, int n, bool sequential)
 {
   init_vector(n, &V->V);
   V->N = n;

@@ -113,7 +113,8 @@ double CalcMaxErrorRatio(Resolution *Resolution_P, DofData *DofData_P0,
     xCurrent_P = &Solution_P->x;
 
     LinAlg_GetVectorSize(xCurrent_P, &PostOpSolLength);
-    LinAlg_CreateVector(&xError, &DofData_P0->Solver, PostOpSolLength);
+    LinAlg_CreateVector(&xError, &DofData_P0->Solver, PostOpSolLength,
+                        true); // sequential!
 
     // Vector of errors: xError = xCurrent - xPrevious
     LinAlg_CopyVector(xCurrent_P, &xError);

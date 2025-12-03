@@ -292,7 +292,8 @@ void Pos_ResampleTime(struct PostOperation *PostOperation_P)
     Solution_S.Time = ResampleTimeStart + i * ResampleTimeStep;
     Solution_S.TimeImag = 0.0;
     Solution_S.SolutionExist = 1;
-    LinAlg_CreateVector(&Solution_S.x, &Current.DofData->Solver, xLength);
+    LinAlg_CreateVector(&Solution_S.x, &Current.DofData->Solver, xLength,
+                        true); // sequential!
     List_Add(NewSolutions_L, &Solution_S);
   }
 

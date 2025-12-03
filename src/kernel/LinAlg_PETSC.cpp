@@ -188,8 +188,14 @@ static int _getLocalSize()
   return s;
 }
 
-void LinAlg_CreateVector(gVector *V, gSolver *Solver, int n)
+void LinAlg_CreateVector(gVector *V, gSolver *Solver, int n, bool sequential)
 {
+  if(sequential) {
+    _try(VecCreateSeq(PETSC_COMM_SELF, n, &V->V));
+    V->haveSeq = 0; // no Vseq is created!
+    return;
+  }
+
   _try(VecCreate(MyComm, &V->V));
 
   int nloc = _getLocalSize();

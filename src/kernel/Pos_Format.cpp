@@ -1936,7 +1936,7 @@ void Format_PostFooter(struct PostSubOperation *PSO_P, int Store,
       Solution_S.SolutionExist = 1;
       Solution_S.TimeFunctionValues = NULL;
       LinAlg_CreateVector(&Solution_S.x, &Current.DofData->Solver,
-                          List_Nbr(PostOpResults_L));
+                          List_Nbr(PostOpResults_L), true); // sequential!
       for(int i = 0; i < List_Nbr(PostOpResults_L); i++) {
         List_Read(PostOpResults_L, i, &valr);
         LinAlg_SetDoubleInVector(valr, &Solution_S.x, i);

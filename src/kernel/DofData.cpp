@@ -700,7 +700,8 @@ void Dof_WriteFileRES_ExtendMH(char *Name_File, struct DofData *DofData_P,
   fprintf(File_RES, "%d 0 0 0 \n", DofData_P->Num);
 
   LinAlg_CreateVector(&x, &DofData_P->Solver,
-                      (DofData_P->NbrDof / Current.NbrHar) * NbrH);
+                      (DofData_P->NbrDof / Current.NbrHar) * NbrH,
+                      true); // sequential!
 
   LinAlg_ZeroVector(&x);
 
@@ -746,7 +747,8 @@ void Dof_WriteFileRES_MHtoTime(char *Name_File, struct DofData *DofData_P,
     Pulsation = DofData_P->Val_Pulsation;
 
     LinAlg_CreateVector(&x, &DofData_P->Solver,
-                        DofData_P->NbrDof / Current.NbrHar);
+                        DofData_P->NbrDof / Current.NbrHar,
+                        true); // sequential!
 
     LinAlg_ZeroVector(&x);
 
