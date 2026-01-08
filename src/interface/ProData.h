@@ -1041,6 +1041,7 @@ struct Operation {
     struct {
       char *FileName;
       char *TableName;
+      int ExprIndex;
     } ReadTable;
     struct {
       int ExpressionIndex;

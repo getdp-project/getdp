@@ -5244,10 +5244,13 @@ Writes the a Gmsh field to disk. (The format is guessed from the file extension.
 Clears all Gmsh data (loaded with @code{GmshRead} and friends).
 
 @item ReadTable
-@code{[@var{expression-char}, @var{expression-char}]}
+@code{[@var{expression-char}, @var{expression-char} <, @var{expression} >]}
 
 Reads tabular data in the same format as @code{ListFromFile}, and stores
-in the run-time table named after the second @var{expression-char}.
+in the run-time table named after the second @var{expression-char}. If
+@var{expression} is provided, the filename given in the first
+@var{expression-char} is used as a standard C-format string to create
+the final file name.
 
 @item DeleteFile
 @code{[@var{expression-char}]}

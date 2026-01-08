@@ -2470,8 +2470,22 @@ void Treatment_Operation(struct Resolution *Resolution_P, List_T *Operation_L,
     } break;
 
     case OPERATION_READTABLE:
-      Read_Table(Operation_P->Case.ReadTable.FileName,
-                 Operation_P->Case.ReadTable.TableName);
+      if(Operation_P->Case.ReadTable.ExprIndex >= 0) {
+        // TODO: it would be nice to have a mechanism to build strings at
+        // run-time for all the operations that use e.g. filenames (SaveMesh,
+        // CreateDirectory, DeleteFile, ...) - the ad-hoc solution for ReadTable
+        // and SaveMesh is not great; idem for the AppendExpressionToFileName in
+        // PostOperations
+        Get_ValueOfExpressionByIndex(Operation_P->Case.ReadTable.ExprIndex, NULL,
+                                     0., 0., 0., &Value);
+        char tmp[256];
+        sprintf(tmp, Operation_P->Case.ReadTable.FileName, Value.Val[0]);
+        Read_Table(tmp, Operation_P->Case.ReadTable.TableName);
+      }
+      else {
+        Read_Table(Operation_P->Case.ReadTable.FileName,
+                   Operation_P->Case.ReadTable.TableName);
+      }
       break;
 
       /*  -->  G m s h R e a d                        */

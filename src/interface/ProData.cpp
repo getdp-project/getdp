@@ -445,8 +445,9 @@ void Finalize_ProblemStructure()
   MacroManager::Instance()->clear();
 }
 
-char *Get_ExpressionName(int Index)
+const char *Get_ExpressionName(int Index)
 {
+  if(Index < 0) return "<None>";
   return (
     ((struct Expression *)List_Pointer(Problem_S.Expression, Index))->Name);
 }
@@ -1417,12 +1418,17 @@ void Print_Operation(struct Resolution *RE, List_T *Operation_L)
 
     switch(OPE->Type) {
     case OPERATION_GENERATE:
-    case OPERATION_GENERATEONLY:
-    case OPERATION_SOLVE:
+    case OPERATION_GENERATE_CUMULATIVE:
     case OPERATION_GENERATEJAC:
+    case OPERATION_GENERATEJAC_CUMULATIVE:
+    case OPERATION_GENERATERHS:
+    case OPERATION_GENERATERHS_CUMULATIVE:
+    case OPERATION_GENERATEONLY:
+    case OPERATION_GENERATEONLYJAC:
+    case OPERATION_GENERATESEPARATE:
+    case OPERATION_SOLVE:
     case OPERATION_SOLVEJAC:
     case OPERATION_SOLVENL:
-    case OPERATION_GENERATESEPARATE:
     case OPERATION_INITSOLUTION:
     case OPERATION_SAVESOLUTION:
     case OPERATION_SAVESOLUTIONS:
@@ -1555,6 +1561,18 @@ void Print_Operation(struct Resolution *RE, List_T *Operation_L)
                      Get_ExpressionName(OPE->Case.SetTime.ExpressionIndex));
       break;
 
+    case OPERATION_SETDTIME:
+      for(i = 0; i < 2 * NbrBlk; i++) Message::Check(" ");
+      Message::Check("      SetDTime [ Exp[%s] ];\n",
+                     Get_ExpressionName(OPE->Case.SetTime.ExpressionIndex));
+      break;
+
+    case OPERATION_SETTIMESTEP:
+      for(i = 0; i < 2 * NbrBlk; i++) Message::Check(" ");
+      Message::Check("      SetTimeStep [ Exp[%s] ];\n",
+                     Get_ExpressionName(OPE->Case.SetTime.ExpressionIndex));
+      break;
+
     case OPERATION_SETFREQUENCY:
       for(i = 0; i < 2 * NbrBlk; i++) Message::Check(" ");
       Message::Check(
@@ -1572,8 +1590,14 @@ void Print_Operation(struct Resolution *RE, List_T *Operation_L)
 
     case OPERATION_SYSTEMCOMMAND:
       for(i = 0; i < 2 * NbrBlk; i++) Message::Check(" ");
-      Message::Check("      SystemCommand \" %s \";\n",
+      Message::Check("      SystemCommand [ \"%s\" ];\n",
                      OPE->Case.SystemCommand.String);
+      break;
+
+    case OPERATION_ERROR:
+      for(i = 0; i < 2 * NbrBlk; i++) Message::Check(" ");
+      Message::Check("      Error [ \"%s\" ];\n",
+                     OPE->Case.Error.String);
       break;
 
     case OPERATION_TEST:
@@ -1704,6 +1728,14 @@ void Print_Operation(struct Resolution *RE, List_T *Operation_L)
 
     case OPERATION_CREATEDIR:
       Message::Check("      CreateDir [%s]; \n", OPE->Case.CreateDir.DirName);
+      break;
+
+    case OPERATION_READTABLE:
+      for(i = 0; i < 2 * NbrBlk; i++) Message::Check(" ");
+      Message::Check("      ReadTable [ %s , %s , Exp[%s] ] ;\n",
+                     OPE->Case.ReadTable.FileName,
+                     OPE->Case.ReadTable.TableName,
+                     Get_ExpressionName(OPE->Case.ReadTable.ExprIndex));
       break;
 
     default: Message::Check("      ???;\n"); break;

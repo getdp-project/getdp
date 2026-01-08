@@ -5824,6 +5824,18 @@ OperationTerm :
       Operation_P->Type = OPERATION_READTABLE;
       Operation_P->Case.ReadTable.FileName = strSave(Fix_RelativePath($3).c_str());
       Operation_P->Case.ReadTable.TableName = $5;
+      Operation_P->Case.ReadTable.ExprIndex = -1;
+      Free($3);
+    }
+
+  | tReadTable '[' CharExpr ',' CharExpr ',' Expression ']' tEND
+    {
+      Operation_P = (struct Operation*)
+	List_Pointer(Operation_L, List_Nbr(Operation_L)-1);
+      Operation_P->Type = OPERATION_READTABLE;
+      Operation_P->Case.ReadTable.FileName = strSave(Fix_RelativePath($3).c_str());
+      Operation_P->Case.ReadTable.TableName = $5;
+      Operation_P->Case.ReadTable.ExprIndex = $7;
       Free($3);
     }
 
