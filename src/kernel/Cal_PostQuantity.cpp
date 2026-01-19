@@ -179,7 +179,9 @@ void Pos_LocalOrIntegralQuantity(struct PostQuantity *PostQuantity_P,
     IntegrationCase_P =
       Get_IntegrationCase(Element, IntegrationCase_L, CriterionIndex);
 
-    if(IntegrationCase_P->Type != GAUSS) {
+    if(IntegrationCase_P->Type != GAUSS &&
+       IntegrationCase_P->Type != GAUSSLEGENDRE &&
+       IntegrationCase_P->Type != COLLOCATION) {
       Message::Error("Only numerical integration is available "
                      "in Integral PostQuantities");
       return;
