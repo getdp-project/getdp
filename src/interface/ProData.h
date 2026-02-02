@@ -1027,7 +1027,7 @@ struct Operation {
     } Error;
     struct {
       char *FileName, *RunTimeVar;
-      int ViewTag;
+      int ViewTag, ExprIndex;
     } GmshRead;
     struct {
       char *FileName;

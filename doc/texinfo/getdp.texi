@@ -5210,7 +5210,7 @@ When GetDP is linked with the Gmsh library, read a file using Gmsh. This
 file can be in any format recognized by Gmsh. If the file contains one
 or multiple post-processing fields, these fields will be evaluated using
 the built-in @code{Field[]}, @code{ScalarField[]}, @code{VectorField[]},
-etc..
+etc.
 
 (Note that @code{GmshOpen} and @code{GmshMerge} can be used instead of
 @code{GmshRead} to force Gmsh to do classical ``open'' and ``merge''
@@ -5219,12 +5219,14 @@ post-processing datasets, i.e., creating new models on the fly if
 necessary.)
 
 @item GmshRead
-@code{[@var{expression-char}, @var{expression-cst}]}
+@code{[@var{expression-char}, @var{expression-cst} <, @var{expression} >]}
 
 Same thing as the @code{GmshRead} command above, except that the field
 is forced to be stored with the given tag. The tag can be used to
 retrieve the given field with the built-in functions @code{Field[]},
-@code{ScalarField[]}, @code{VectorField[]}, etc..
+@code{ScalarField[]}, @code{VectorField[]}, etc. If @var{expression} is
+provided, the filename given in the first @var{expression-char} is used
+as a standard C-format string to create the final file name.
 
 @item GmshRead
 @code{[@var{expression-char}, @code{$}@var{string}]}

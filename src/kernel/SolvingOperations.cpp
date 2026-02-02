@@ -2505,16 +2505,29 @@ void Treatment_Operation(struct Resolution *Resolution_P, List_T *Operation_L,
         GmshMergePostProcessingFile(tmp);
       }
       else {
+        char name[256];
+        if(Operation_P->Case.GmshRead.ExprIndex >= 0) {
+          // TODO: it would be nice to have a mechanism to build strings at
+          // run-time for all the operations that use e.g. filenames (SaveMesh,
+          // CreateDirectory, DeleteFile, ...) - the ad-hoc solution for
+          // ReadTable and SaveMesh is not great; idem for the
+          // AppendExpressionToFileName in PostOperations
+          Get_ValueOfExpressionByIndex(Operation_P->Case.GmshRead.ExprIndex, NULL,
+                                       0., 0., 0., &Value);
+          sprintf(name, Operation_P->Case.GmshRead.FileName, Value.Val[0]);
+        }
+        else {
+          strcpy(name, Operation_P->Case.GmshRead.FileName);
+        }
         if(Operation_P->Case.GmshRead.ViewTag >= 0) {
           PView::setGlobalTag(Operation_P->Case.GmshRead.ViewTag);
-          Message::Info("GmshRead[%s] -> View[%d]",
-                        Operation_P->Case.GmshRead.FileName,
+          Message::Info("GmshRead[%s] -> View[%d]", name,
                         Operation_P->Case.GmshRead.ViewTag);
         }
         else {
-          Message::Info("GmshRead[%s]", Operation_P->Case.GmshRead.FileName);
+          Message::Info("GmshRead[%s]", name);
         }
-        GmshMergePostProcessingFile(Operation_P->Case.GmshRead.FileName);
+        GmshMergePostProcessingFile(name);
       }
 #else
       Message::Error(
