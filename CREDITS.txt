@@ -1,4 +1,4 @@
-                 GetDP is copyright (C) 1997-2025
+                 GetDP is copyright (C) 1997-2026
 
                           Patrick Dular
 
