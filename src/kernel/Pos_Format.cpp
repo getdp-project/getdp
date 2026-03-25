@@ -1542,6 +1542,10 @@ void Format_PostHeader(struct PostSubOperation *PSO_P, int NbTimeStep,
     if(PostStream && Flag_GMSH_VERSION != 2) {
       if(Flag_BIN) { /* bricolage */
         fprintf(PostStream, "$View /* %s */\n", name);
+        // old binary format does not support names with whitespace:
+        for(int i = 0; i < strlen(name); i++) {
+          if(name[i] == ' ') name[i] = '^';
+        }
         fprintf(PostStream, "%s ", name);
       }
       else {
