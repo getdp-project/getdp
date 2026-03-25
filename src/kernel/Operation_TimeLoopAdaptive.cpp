@@ -187,14 +187,12 @@ void CalcIntegrationCoefficients(Resolution *Resolution_P, DofData *DofData_P0,
    * exactness constraints.
    * E.g. for CorrOder=3 we have:
    *
-   *  _                                                        _     _    _ _ _
-   * | 1        1          1          0                         |   | a_0  |   |
-   * 1         | | (t_n)^1  (t_n-1)^1  (t_n-2)^1  1*(t_n+1 - t_n)           | |
-   * a_1  |   | (t_n+1)^1 | | (t_n)^2  (t_n-1)^2  (t_n-2)^2  2*(t_n+1 -
-   * t_n)*(t_n+1)^1 | * | a_2  | = | (t_n+1)^2 | | (t_n)^3  (t_n-1)^3  (t_n-2)^3
-   * 3*(t_n+1 - t_n)*(t_n+1)^2 |   | b_-1 |   | (t_n+1)^3 |
-   * |_                                                        _|   |_    _| |_
-   * _|
+   *  _                                                        _     _    _    _           _
+   * | 1        1          1          0                         |   | a_0  |   |    1      |
+   * | (t_n)^1  (t_n-1)^1  (t_n-2)^1  1*(t_n+1 - t_n)           |   | a_1  |   | (t_n+1)^1 |
+   * | (t_n)^2  (t_n-1)^2  (t_n-2)^2  2*(t_n+1 - t_n)*(t_n+1)^1 | * | a_2  | = | (t_n+1)^2 |
+   * | (t_n)^3  (t_n-1)^3  (t_n-2)^3  3*(t_n+1 - t_n)*(t_n+1)^2 |   | b_-1 |   | (t_n+1)^3 |
+   * |_                                                        _|   |_    _|   |_         _|
    *
    */
 
