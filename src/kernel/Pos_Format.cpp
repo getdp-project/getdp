@@ -1465,7 +1465,7 @@ void VTU_PrintNodeTable(FILE *PostStream, bool multiComponent)
   //fprintf(PostStream, "<CellData>\n");
   //fprintf(PostStream, "</CellData>\n");
 
-  fprintf(PostStream, "<Points Vectors=\"b\">\n");
+  fprintf(PostStream, "<Points>\n");
 
   fprintf(PostStream, "<DataArray type=\"Float64\" NumberOfComponents=\"3\" "
           "Format=\"ascii\">\n");
