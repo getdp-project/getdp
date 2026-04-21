@@ -1428,7 +1428,7 @@ void VTU_PrintNodeTable(FILE *PostStream, bool multiComponent)
 
   fprintf(PostStream, "<PointData>\n");
 
-  fprintf(PostStream, "<DataArray type=\"Float64\" NumberOfComponents=\"1\" "
+  fprintf(PostStream, "<DataArray type=\"Float64\" "
           "Name=\"Material_settings\" Format=\"ascii\">\n");
   // TODO
   for(std::size_t i = 0; i < NodeTable.size(); i++) {
@@ -1438,8 +1438,12 @@ void VTU_PrintNodeTable(FILE *PostStream, bool multiComponent)
 
   int numComp = NodeTable.begin()->second.size();
   if(multiComponent) {
-    fprintf(PostStream, "<DataArray type=\"Float64\" NumberOfComponents=\"%d\" "
-            "Name=\"%s\" Format=\"ascii\">\n", numComp, VTU_FieldName.c_str());
+    if(numComp > 1)
+      fprintf(PostStream, "<DataArray type=\"Float64\" NumberOfComponents=\"%d\" "
+              "Name=\"%s\" Format=\"ascii\">\n", numComp, VTU_FieldName.c_str());
+    else
+      fprintf(PostStream, "<DataArray type=\"Float64\" "
+              "Name=\"%s\" Format=\"ascii\">\n", VTU_FieldName.c_str());
     for(auto &it : NodeTable) {
       for(std::size_t i = 0; i < it.second.size(); i++) {
         fprintf(PostStream, " %.16g", it.second[i]);
@@ -1450,7 +1454,7 @@ void VTU_PrintNodeTable(FILE *PostStream, bool multiComponent)
   }
   else{
     for(int comp = 0; comp < numComp; comp++) {
-      fprintf(PostStream, "<DataArray type=\"Float64\" NumberOfComponents=\"1\" "
+      fprintf(PostStream, "<DataArray type=\"Float64\" "
               "Name=\"%s,_%s_component\" Format=\"ascii\">\n",
               VTU_FieldName.c_str(), (comp == 0) ? "x" : (comp == 1) ? "y" : "z");
       for(auto &it : NodeTable) {
