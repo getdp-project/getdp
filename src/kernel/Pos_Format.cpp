@@ -1218,13 +1218,24 @@ static void Tabular_PrintElement(struct PostSubOperation *PSO_P, int Format,
 // each element)
 static int NodeTable_StartNew = 0;
 static std::map<int, std::vector<double> > NodeTable;
+static std::map<int, std::vector<int> > ElementNodeTable;
 
 static void NodeTable_PrintElement(int TimeStep, int NbTimeStep,
-                                   int NbrHarmonics, struct PostElement *PE)
+                                   int NbrHarmonics, struct PostElement *PE,
+                                   bool StoreElementNodes = false)
 {
   if(NodeTable_StartNew) {
     NodeTable_StartNew = 0;
     NodeTable.clear();
+    ElementNodeTable.clear();
+  }
+  if(StoreElementNodes) {
+    if(PE->Index >= 0 && PE->Index < Geo_GetNbrGeoElements()) {
+      int numEle = Geo_GetGeoElement(PE->Index)->Num;
+      ElementNodeTable[numEle].resize(PE->NbrNodes);
+      for(int i = 0; i < PE->NbrNodes; i++)
+        ElementNodeTable[numEle][i] = PE->NumNodes[i];
+    }
   }
   for(int i = 0; i < PE->NbrNodes; i++) {
     int n = PE->NumNodes[i];
@@ -1372,17 +1383,147 @@ int NXUnv_DatasetLocation =
 
 void Unv_PrintHeader(FILE *PostStream, char *name, double Time, int TimeStep,
                      double &NXUnv_UnitFactor, int &NXUnv_DatasetLocation) NX
-  void Unv_PrintFooter(FILE *PostStream) NX
-  void Unv_PrintElement(FILE *PostStream, int Num_Element, int NbrNodes,
-                        struct Value *Value, int NbrHarmonics,
-                        int &NXUnv_DatasetLocation, double &NXUnv_UnitFactor) NX
-  void Unv_PrintNodeTable(FILE *PostStream,
-                          std::map<int, std::vector<double> > &NodeTable,
-                          double &NXUnv_UnitFactor) NX
-  void Unv_PrintRegion(FILE *PostStream, int Flag_Comma, int numRegion,
-                       int NbrHarmonics, int Size, struct Value *Value,
-                       double &NXUnv_UnitFactor) NX
+void Unv_PrintFooter(FILE *PostStream) NX
+void Unv_PrintElement(FILE *PostStream, int Num_Element, int NbrNodes,
+                      struct Value *Value, int NbrHarmonics,
+                      int &NXUnv_DatasetLocation, double &NXUnv_UnitFactor) NX
+void Unv_PrintNodeTable(FILE *PostStream,
+                        std::map<int, std::vector<double> > &NodeTable,
+                        double &NXUnv_UnitFactor) NX
+void Unv_PrintRegion(FILE *PostStream, int Flag_Comma, int numRegion,
+                     int NbrHarmonics, int Size, struct Value *Value,
+                     double &NXUnv_UnitFactor) NX
 #undef NX
+
+/* ------------------------------------------------------------------------ */
+/*  VTU (Unstructured VTK) format                                           */
+/* ------------------------------------------------------------------------ */
+
+static std::string VTU_FieldName;
+
+void VTU_PrintHeader(FILE *PostStream, char *name, double Time, int TimeStep)
+{
+  fprintf(PostStream, "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
+  fprintf(PostStream, "<VTKFile type=\"UnstructuredGrid\" version=\"0.1\" "
+          "byte_order=\"LittleEndian\">\n");
+  fprintf(PostStream, "<UnstructuredGrid>\n");
+  VTU_FieldName = name;
+}
+
+void VTU_PrintFooter(FILE *PostStream)
+{
+  fprintf(PostStream, "</UnstructuredGrid>\n");
+  fprintf(PostStream, "</VTKFile>\n");
+}
+
+void VTU_PrintNodeTable(FILE *PostStream, bool multiComponent)
+{
+  if(NodeTable.empty()) {
+    Message::Warning("Empty node data for VTU export");
+    return;
+  }
+
+  fprintf(PostStream, "<Piece NumberOfPoints=\"%zu\" NumberOfCells=\"%zu\">\n",
+          NodeTable.size(), ElementNodeTable.size());
+
+  fprintf(PostStream, "<PointData>\n");
+
+  fprintf(PostStream, "<DataArray type=\"Float64\" "
+          "Name=\"Material_settings\" Format=\"ascii\">\n");
+  // TODO
+  for(std::size_t i = 0; i < NodeTable.size(); i++) {
+    fprintf(PostStream, "0\n");
+  }
+  fprintf(PostStream, "</DataArray>\n");
+
+  int numComp = NodeTable.begin()->second.size();
+  if(multiComponent) {
+    if(numComp > 1)
+      fprintf(PostStream, "<DataArray type=\"Float64\" NumberOfComponents=\"%d\" "
+              "Name=\"%s\" Format=\"ascii\">\n", numComp, VTU_FieldName.c_str());
+    else
+      fprintf(PostStream, "<DataArray type=\"Float64\" "
+              "Name=\"%s\" Format=\"ascii\">\n", VTU_FieldName.c_str());
+    for(auto &it : NodeTable) {
+      for(std::size_t i = 0; i < it.second.size(); i++) {
+        fprintf(PostStream, " %.16g", it.second[i]);
+      }
+      fprintf(PostStream, "\n");
+    }
+    fprintf(PostStream, "</DataArray>\n");
+  }
+  else{
+    for(int comp = 0; comp < numComp; comp++) {
+      fprintf(PostStream, "<DataArray type=\"Float64\" "
+              "Name=\"%s,_%s_component\" Format=\"ascii\">\n",
+              VTU_FieldName.c_str(), (comp == 0) ? "x" : (comp == 1) ? "y" : "z");
+      for(auto &it : NodeTable) {
+        fprintf(PostStream, "%.16g\n", it.second[comp]);
+      }
+      fprintf(PostStream, "</DataArray>\n");
+    }
+  }
+
+  fprintf(PostStream, "</PointData>\n");
+
+  //fprintf(PostStream, "<CellData>\n");
+  //fprintf(PostStream, "</CellData>\n");
+
+  fprintf(PostStream, "<Points>\n");
+
+  fprintf(PostStream, "<DataArray type=\"Float64\" NumberOfComponents=\"3\" "
+          "Format=\"ascii\">\n");
+  std::map<int, int> nmap;
+  int index = 0;
+  for(auto &it : NodeTable) {
+    int num = it.first;
+    Geo_Node *n = Geo_GetGeoNodeOfNum(num);
+    fprintf(PostStream, "%.16g %.16g %.16g\n", n->x, n->y, n->z);
+    nmap[num] = index++;
+  }
+  fprintf(PostStream, "</DataArray>\n");
+
+  fprintf(PostStream, "</Points>\n");
+
+  fprintf(PostStream, "<Cells>\n");
+
+  fprintf(PostStream, "<DataArray type=\"Int32\" Name=\"connectivity\" "
+          "Format=\"ascii\">\n");
+  std::vector<int> offsets, types;
+  int o = 0;
+  for(auto &it : ElementNodeTable) {
+    int num = it.first;
+    Geo_Element *e = Geo_GetGeoElementOfNum(num);
+    switch(e->Type) {
+    case POINT_ELEMENT: types.push_back(8); break;
+    case LINE: types.push_back(3); break;
+    case TRIANGLE: types.push_back(5); break;
+    case QUADRANGLE: types.push_back(9); break;
+    case TETRAHEDRON: types.push_back(10); break;
+    case HEXAHEDRON: types.push_back(12); break;
+    case PRISM: types.push_back(13); break;
+    case PYRAMID: types.push_back(14); break;
+    default: types.push_back(0); break;
+    }
+    o += e->NbrNodes;
+    offsets.push_back(o);
+    for(int i = 0; i < e->NbrNodes; i++)
+      fprintf(PostStream, " %d", nmap[e->NumNodes[i]]);
+    fprintf(PostStream, "\n");
+  }
+  fprintf(PostStream, "</DataArray>\n");
+  fprintf(PostStream, "<DataArray type=\"Int32\" Name=\"offsets\" "
+          "Format=\"ascii\">\n");
+  for(auto o : offsets) fprintf(PostStream, "%d\n", o);
+  fprintf(PostStream, "</DataArray>\n");
+  fprintf(PostStream, "<DataArray type=\"UInt8\" Name=\"types\" "
+          "Format=\"ascii\">\n");
+  for(auto t : types) fprintf(PostStream, "%d\n", t);
+  fprintf(PostStream, "</DataArray>\n");
+
+  fprintf(PostStream, "</Cells>\n");
+  fprintf(PostStream, "</Piece>\n");
+}
 
 /* ------------------------------------------------------------------------ */
 /*  F o r m a t _ P o s t F o r m a t                                       */
@@ -1558,6 +1699,13 @@ void Format_PostHeader(struct PostSubOperation *PSO_P, int NbTimeStep,
       NodeTable_StartNew = 1;
       Unv_PrintHeader(PostStream, name, Time, TimeStep, NXUnv_UnitFactor,
                       NXUnv_DatasetLocation);
+    }
+    break;
+  case FORMAT_NODE_VTU:
+  case FORMAT_NODE_VTU_COMPONENT:
+    if(PostStream) {
+      NodeTable_StartNew = 1;
+      VTU_PrintHeader(PostStream, name, Time, TimeStep);
     }
     break;
   case FORMAT_GNUPLOT:
@@ -1846,6 +1994,13 @@ void Format_PostFooter(struct PostSubOperation *PSO_P, int Store,
       Unv_PrintFooter(PostStream);
     }
     break;
+  case FORMAT_NODE_VTU:
+  case FORMAT_NODE_VTU_COMPONENT:
+    if(PostStream) {
+      VTU_PrintNodeTable(PostStream, PSO_P->Format == FORMAT_NODE_VTU);
+      VTU_PrintFooter(PostStream);
+    }
+    break;
   case FORMAT_NODE_TABLE:
     if(PostStream && NodeTable.size()) {
       fprintf(PostStream, "%d\n", (int)NodeTable.size());
@@ -2084,6 +2239,12 @@ void Format_PostElement(struct PostSubOperation *PSO_P, int Contour, int Store,
                 3) // Data at elements or nodes on elements
         Unv_PrintElement(PostStream, Num_Element, PE->NbrNodes, PE->Value,
                          NbrHarmonics, NXUnv_DatasetLocation, NXUnv_UnitFactor);
+    }
+    break;
+  case FORMAT_NODE_VTU:
+  case FORMAT_NODE_VTU_COMPONENT:
+    if(PostStream) {
+      NodeTable_PrintElement(TimeStep, NbTimeStep, NbrHarmonics, PE, true);
     }
     break;
   case FORMAT_GMSH:

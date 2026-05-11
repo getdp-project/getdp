@@ -363,6 +363,8 @@ struct StringXDefine PostSubOperation_Format[] = {
   {"GmshParsed", FORMAT_GMSH_PARSED},
   {"Unv", FORMAT_NXUNV},
   {"NX", FORMAT_NXUNV},
+  {"NodeVTU", FORMAT_NODE_VTU},
+  {"NodeVTUComponent", FORMAT_NODE_VTU_COMPONENT},
   {"Gnuplot", FORMAT_GNUPLOT},
   {"Adaptation", FORMAT_ADAPT},
   {NULL, FORMAT_GMSH}};
