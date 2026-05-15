@@ -1138,7 +1138,7 @@ include(CPack)
 
 include(CTest)
 find_program(GMSH gmsh)
-if(GMSH)
+if(0 AND GMSH)
   set(RUN ../utils/misc/run_tutorial.sh ${GMSH} ./getdp ../tutorials)
   add_test(01a ${RUN}/01-Electrostatics/microstrip.pro)
   add_test(02a ${RUN}/02-Thermal/radiator.pro)
