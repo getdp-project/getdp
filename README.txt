@@ -4,19 +4,19 @@ GetDP is copyright (C) 1997-2026 P. Dular and C. Geuzaine, University of Liege,
 and is distributed under the terms of the GNU General Public License, Version 2
 or later. See LICENSE.txt and CREDITS.txt for more information.
 
-See the doc/ and examples/ directories for documentation. The reference manual is
-located in doc/texinfo/. See the web site http://getdp.info for additional
+See the doc/ and tutorials/ directories for documentation. The reference manual
+is located in doc/texinfo/. See the web site http://getdp.info for additional
 examples.
 
 Building a bare-bones version of GetDP from its source code requires a C++
 compiler and CMake (http://cmake.org). By default GetDP also uses the GSL
 (http://www.gnu.org/software/gsl) and PETSc (http://www.mcs.anl.gov/petsc),
 using either real or complex arithmetic. If PETSc is available, GetDP can use
-SLEPc (https://slepc.upv.es/) to solve eigenvalue problems. Instead of
-PETsc (and SLEPc), GetDP can also use a built-in set of linear solvers derived
-from Sparskit Version 2 (http://www-users.cs.umn.edu/~saad/) and eigensolvers
-from Arpack (http://www.caam.rice.edu/software/ARPACK). Sparskit and Arpack, as
-well GetDP's special mathematical functions require a Fortan compiler and
+SLEPc (https://slepc.upv.es/) to solve eigenvalue problems. Instead of PETsc
+(and SLEPc), GetDP can also use a built-in set of linear solvers derived from
+Sparskit Version 2 (http://www-users.cs.umn.edu/~saad/) and eigensolvers from
+Arpack (http://www.caam.rice.edu/software/ARPACK). Sparskit and Arpack, as well
+GetDP's special mathematical functions require a Fortan compiler and
 BLAS/LAPACK.
 
 Build GetDP using CMake's graphical user interface

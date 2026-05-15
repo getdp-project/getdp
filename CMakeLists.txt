@@ -644,7 +644,8 @@ if(ENABLE_PYTHON)
 endif()
 
 if(ENABLE_MULTIHARMONIC)
-  message(STATUS "Warning: building with multi-harmonic support (tested and working with a real version of Petsc!)")
+  message(STATUS "Warning: building with multi-harmonic support (tested and "
+          "working with a real version of Petsc!)")
   set_config_option(HAVE_MULTIHARMONIC "Multi-Harmonic")
 endif()
 
@@ -1023,7 +1024,7 @@ if(MAKEINFO)
                      ARGS ${TEX_DIR}/getdp.texi WORKING_DIRECTORY ${TEX_DIR})
   add_custom_target(txt DEPENDS ${TEX_DIR}/getdp.txt)
   add_custom_command(OUTPUT ${TEX_DIR}/getdp.html DEPENDS ${TEX_SRC}
-    COMMAND ${MAKEINFO} --html --css-ref=http://getdp.info/getdp.css
+    COMMAND ${MAKEINFO} --html --css-ref=https://getdp.info/getdp.css
     --no-split --set-customization-variable
     EXTRA_HEAD='<meta name="viewport" content="width=device-width,initial-scale=1.0">'
     ARGS ${TEX_DIR}/getdp.texi WORKING_DIRECTORY ${TEX_DIR})
@@ -1135,16 +1136,38 @@ endif()
 
 include(CPack)
 
-# comprehensive getdp testing is done through in the onelab documentation
-# project (as it also requires Gmsh)
 include(CTest)
-file(GLOB_RECURSE TESTS examples/magnet.pro)
-foreach(TESTFILE ${TESTS})
-  # use relative path for Cygwin/MinGW (the pure win exe built with the mingw
-  # compilers does not understand a full Cygwin-style path)
-  FILE(RELATIVE_PATH TEST ${CMAKE_CURRENT_BINARY_DIR} ${TESTFILE})
-  add_test(${TEST} getdp ${TEST} -solve \#1 -pos \#1)
-endforeach()
+find_program(GMSH gmsh)
+if(GMSH)
+  set(RUN ../utils/misc/run_tutorial.sh ${GMSH} ./getdp ../tutorials)
+  add_test(01a ${RUN}/01-Electrostatics/microstrip.pro)
+  add_test(02a ${RUN}/02-Thermal/radiator.pro)
+  add_test(02b ${RUN}/02-Thermal/radiator.pro -setnumber dim 3 -setnumber N 2)
+  add_test(02c ${RUN}/02-Thermal/radiator.pro -setnumber AnalysisType 1)
+  add_test(03a ${RUN}/03-Magnetostatics/electromagnet.pro)
+  add_test(03b ${RUN}/03-Magnetostatics/electromagnet.pro -setnumber SymmetryType 1)
+  add_test(03c ${RUN}/03-Magnetostatics/electromagnet.pro -setnumber NonlinearCore 1)
+  add_test(03d ${RUN}/03-Magnetostatics/electromagnet.pro -setnumber NonlinearCore 1 -setnumber Current 100)
+  add_test(03e ${RUN}/03-Magnetostatics/electromagnet.pro -setnumber NonlinearCore 1 -setnumber NewtonRaphson 0)
+  add_test(04a ${RUN}/04-Magneto-quasistatics/electromagnet.pro)
+  add_test(04b ${RUN}/04-Magneto-quasistatics/electromagnet.pro -setnumber Axisymmetric 1)
+  add_test(04c ${RUN}/04-Magneto-quasistatics/electromagnet.pro -setnumber AnalysisType 0)
+  add_test(05a ${RUN}/05-Full_wave/full_wave.pro)
+  add_test(05b ${RUN}/05-Full_wave/full_wave.pro -setnumber dim 3 -setnumber res 0.5)
+  add_test(06a ${RUN}/06-Global_quantities/microstrip.pro)
+  add_test(06b ${RUN}/06-Global_quantities/microstrip.pro -setnumber TypeBC 1)
+  add_test(06c ${RUN}/06-Global_quantities/microstrip.pro -setnumber DisplayGlobalBasisFunctions 1)
+  add_test(07a ${RUN}/07-Coupled_problems/busbar.pro)
+  add_test(07b ${RUN}/07-Coupled_problems/busbar.pro -setnumber NonLinear 0)
+  add_test(08a ${RUN}/08-Circuit_coupling/circuit.pro)
+  add_test(08b ${RUN}/08-Circuit_coupling/circuit.pro -setnumber dim 3 -setnumber s 1.5)
+  add_test(08c ${RUN}/08-Circuit_coupling/circuit.pro -setnumber AnalysisType 0)
+  add_test(09a ${RUN}/09-Template_library/transfo.pro)
+  add_test(09b ${RUN}/09-Template_library/transfo.pro -setnumber LoadType 1)
+  add_test(09c ${RUN}/09-Template_library/transfo.pro -setnumber LoadType 2)
+  add_test(10a ${RUN}/10-Gauging/transfo.pro)
+  add_test(10b ${RUN}/10-Gauging/transfo.pro -setnumber GaugeType 1)
+endif()
 
 message(STATUS "")
 message(STATUS "GetDP ${GETDP_VERSION} has been configured for ${GETDP_OS}:")
