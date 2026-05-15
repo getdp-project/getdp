@@ -21,7 +21,7 @@ tuto() {
     sed -i '' -e 's/GetDP tutorial/Tutorial/g' tmp.texi
     sed -i '' -e "/^@menu/i\\
 @center@image{images/$1,14cm,,Screenshot of tutorial $1}\\
-@center See @url{https://gitlab.onelab.info/getdp/tutorials/-/tree/main/$1,tutorials/$1}.\\
+@center See @url{https://gitlab.onelab.info/getdp/getdp/-/tree/master/tutorials/$1,tutorials/$1}.\\
 " tmp.texi
     sed -i '' -e '/^@menu$/d' tmp.texi
     sed -i '' -e '/^* Features::$/d' tmp.texi

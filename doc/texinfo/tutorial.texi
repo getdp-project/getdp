@@ -106,7 +106,7 @@ underlying FE machinery.
 A 2D electrostatic model of a microstrip line is considered, with only one half of the geometry modelled by symmetry. A 1mV voltage is imposed on the microstrip line, which sits on top of a dielectric substrate grounded on its lower side.
 
 @center@image{images/01-Electrostatics,14cm,,Screenshot of tutorial 01-Electrostatics}
-@center See @url{https://gitlab.onelab.info/getdp/tutorials/-/tree/main/01-Electrostatics,tutorials/01-Electrostatics}.
+@center See @url{https://gitlab.onelab.info/getdp/getdp/-/tree/master/tutorials/01-Electrostatics,tutorials/01-Electrostatics}.
 
 
 @subsection Features
@@ -148,7 +148,7 @@ To run the tutorial interactively with Gmsh: open @code{microstrip.pro} with ``F
 A 2D and 3D thermal model of an aluminum radiator is considered. A heat flux is applied to the bottom of the base plate of the radiator, while convection is modelled using Newton's law of cooling on the radiator fins. Periodic boundary conditions allow the simulation of non-symmetric elementary radiator cells. Both steady-state and transient simulations can be performed.
 
 @center@image{images/02-Thermal,14cm,,Screenshot of tutorial 02-Thermal}
-@center See @url{https://gitlab.onelab.info/getdp/tutorials/-/tree/main/02-Thermal,tutorials/02-Thermal}.
+@center See @url{https://gitlab.onelab.info/getdp/getdp/-/tree/master/tutorials/02-Thermal,tutorials/02-Thermal}.
 
 
 @subsection Features
@@ -201,7 +201,7 @@ Interactively with Gmsh: open @code{radiator.pro} with ``File->Open'', then pres
 A 2D magnetostatic model of an electromagnet is considered. A current density is imposed in the coil, and the ferromagnetic core can be modelled either using a linear or a nonlinear constitutive law. Infinite elements are used to accurately model the unbounded domain.
 
 @center@image{images/03-Magnetostatics,14cm,,Screenshot of tutorial 03-Magnetostatics}
-@center See @url{https://gitlab.onelab.info/getdp/tutorials/-/tree/main/03-Magnetostatics,tutorials/03-Magnetostatics}.
+@center See @url{https://gitlab.onelab.info/getdp/getdp/-/tree/master/tutorials/03-Magnetostatics,tutorials/03-Magnetostatics}.
 
 
 @subsection Features
@@ -247,7 +247,7 @@ Interactively with Gmsh: open @code{electromagnet.pro} with ``File->Open'', then
 We consider the same electromagnet model as in tutorial 3, but in magneto-quasistatic regime, i.e.@ allowing for time-dependent currents in the inductor and eddy currents in the core. We still consider an imposed current density in the inductor, neglecting skin and proximity effects in the coil turns. In addition to the 2D model (invariant along the z-axis) we also consider an axisymmetric model (invariant by rotation around the y-axis).
 
 @center@image{images/04-Magneto-quasistatics,14cm,,Screenshot of tutorial 04-Magneto-quasistatics}
-@center See @url{https://gitlab.onelab.info/getdp/tutorials/-/tree/main/04-Magneto-quasistatics,tutorials/04-Magneto-quasistatics}.
+@center See @url{https://gitlab.onelab.info/getdp/getdp/-/tree/master/tutorials/04-Magneto-quasistatics,tutorials/04-Magneto-quasistatics}.
 
 
 @subsection Features
@@ -293,7 +293,7 @@ Interactively with Gmsh: open @code{electromagnet.pro} with ``File->Open'', then
 A full-wave time-harmonic Maxwell model of a rectangular waveguide is considered, in both 2D and 3D. The electric field is discretized with edge elements, with perfectly electrically conducting (PEC) walls, a Silver-Muller absorbing boundary condition on the outer domain boundary, and a modal excitation imposed at the input port through an auxiliary projection resolution.
 
 @center@image{images/05-Full_wave,14cm,,Screenshot of tutorial 05-Full_wave}
-@center See @url{https://gitlab.onelab.info/getdp/tutorials/-/tree/main/05-Full_wave,tutorials/05-Full_wave}.
+@center See @url{https://gitlab.onelab.info/getdp/getdp/-/tree/master/tutorials/05-Full_wave,tutorials/05-Full_wave}.
 
 
 @subsection Features
@@ -346,7 +346,7 @@ Interactively with Gmsh: open @code{full_wave.pro} with ``File->Open'', then pre
 We consider the same model as in tutorial 1, i.e.@ a 2D electrostatic model of a microstrip line with only one half of the geometry modelled by symmetry. We introduce global quantities (voltage and charge) in the function space, which allows to naturally handle floating potentials and to compute the capacitance.
 
 @center@image{images/06-Global_quantities,14cm,,Screenshot of tutorial 06-Global_quantities}
-@center See @url{https://gitlab.onelab.info/getdp/tutorials/-/tree/main/06-Global_quantities,tutorials/06-Global_quantities}.
+@center See @url{https://gitlab.onelab.info/getdp/getdp/-/tree/master/tutorials/06-Global_quantities,tutorials/06-Global_quantities}.
 
 
 @subsection Features
@@ -388,7 +388,7 @@ Interactively with Gmsh: open @code{microstrip.pro} with ``File->Open'', then pr
 We consider a coupled 2D magneto-thermal model of a three-phase busbar system with insulation and a grounded metallic shield. The magnetic problem is solved with an a-v formulation, with global currents and voltages defined on all the conducting regions. The steady-state heat distribution due to the Joule losses is computed, taking the temperature-dependency of electrical conductivity into account.
 
 @center@image{images/07-Coupled_problems,14cm,,Screenshot of tutorial 07-Coupled_problems}
-@center See @url{https://gitlab.onelab.info/getdp/tutorials/-/tree/main/07-Coupled_problems,tutorials/07-Coupled_problems}.
+@center See @url{https://gitlab.onelab.info/getdp/getdp/-/tree/master/tutorials/07-Coupled_problems,tutorials/07-Coupled_problems}.
 
 
 @subsection Features
@@ -432,7 +432,7 @@ Interactively with Gmsh: open @code{busbar.pro} with ``File->Open'', then press 
 Two conductors modeled with finite elements are connected in parallel and driven by a voltage source through a series resistance and inductance. The lumped circuit elements and the finite element conductors are coupled through a network constraint that enforces Kirchhoff's laws via a global equation. In 3D, the vector potential is discretized with Whitney edge elements and a tree-cotree gauge ensures uniqueness. Both frequency-domain and time-domain analyses are supported.
 
 @center@image{images/08-Circuit_coupling,14cm,,Screenshot of tutorial 08-Circuit_coupling}
-@center See @url{https://gitlab.onelab.info/getdp/tutorials/-/tree/main/08-Circuit_coupling,tutorials/08-Circuit_coupling}.
+@center See @url{https://gitlab.onelab.info/getdp/getdp/-/tree/master/tutorials/08-Circuit_coupling,tutorials/08-Circuit_coupling}.
 
 
 @subsection Features
@@ -485,7 +485,7 @@ Interactively with Gmsh: open @code{circuit.pro} with ``File->Open'', then press
 We consider a 2D frequency-domain magneto-quasistatic model of a single-phase transformer. The primary winding is driven by a voltage source and the secondary winding feeds a selectable load (resistance, inductance or capacitance). Rather than building the formulation from scratch as in previous tutorials, we use a generic template library that provides the a-v formulation, function spaces, resolution and post-processing.
 
 @center@image{images/09-Template_library,14cm,,Screenshot of tutorial 09-Template_library}
-@center See @url{https://gitlab.onelab.info/getdp/tutorials/-/tree/main/09-Template_library,tutorials/09-Template_library}.
+@center See @url{https://gitlab.onelab.info/getdp/getdp/-/tree/master/tutorials/09-Template_library,tutorials/09-Template_library}.
 
 
 @subsection Features
@@ -535,7 +535,7 @@ Interactively with Gmsh: open @code{transfo.pro} with ``File->Open'', then press
 The electromagnet models from tutorials 3 (magnetostatics) and 4 (magneto-quasistatics) are reimplemented using the template library introduced in tutorial 9. The resulting model file is compact, yet supports static, time-domain and frequency-domain analyses, with or without axisymmetry. Using the library also makes it straightforward to drive the coil with a global current constraint instead of an imposed current density.
 
 @center@image{images/09-Template_library_bonus,14cm,,Screenshot of tutorial 09-Template_library/bonus}
-@center See @url{https://gitlab.onelab.info/getdp/tutorials/-/tree/main/09-Template_library/bonus,tutorials/09-Template_library/bonus}.
+@center See @url{https://gitlab.onelab.info/getdp/getdp/-/tree/master/tutorials/09-Template_library/bonus,tutorials/09-Template_library/bonus}.
 
 
 @subsection Running the tutorial
@@ -567,7 +567,7 @@ Interactively with Gmsh: open @code{electromagnet.pro} with ``File->Open'', then
 We consider a 3D version of the single-phase transformer of tutorial 9. The primary winding is driven by a voltage source and the secondary winding feeds a selectable load (resistance, inductance or capacitance). In 3D, the curl-curl equation does not uniquely determine the magnetic vector potential ``a'': gradient fields must be removed by imposing a gauge condition. Two strategies are presented and can be selected at runtime: tree-cotree gauging as in tutorial 8 (which constrains the degrees of freedom on a spanning tree of the mesh) and Coulomb gauging (which enforces ``div a = 0'' weakly via a scalar Lagrange multiplier). Both produce the same magnetic flux density ``b = curl a''.
 
 @center@image{images/10-Gauging,14cm,,Screenshot of tutorial 10-Gauging}
-@center See @url{https://gitlab.onelab.info/getdp/tutorials/-/tree/main/10-Gauging,tutorials/10-Gauging}.
+@center See @url{https://gitlab.onelab.info/getdp/getdp/-/tree/master/tutorials/10-Gauging,tutorials/10-Gauging}.
 
 
 @subsection Features
