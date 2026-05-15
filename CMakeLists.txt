@@ -904,6 +904,7 @@ file(GLOB EXAMPLE_FILES_TMP ${CMAKE_CURRENT_SOURCE_DIR}/examples/*.pre
                             ${CMAKE_CURRENT_SOURCE_DIR}/examples/*.par)
 set(TEX_DIR ${CMAKE_CURRENT_SOURCE_DIR}/doc/texinfo)
 file(GLOB TEX_SRC ${TEX_DIR}/*.texi)
+file(GLOB TEX_IMG ${TEX_DIR}/images/*.png)
 set(TEX_OBJ ${TEX_DIR}/getdp.aux ${TEX_DIR}/getdp.cp ${TEX_DIR}/getdp.cps
     ${TEX_DIR}/getdp.fn ${TEX_DIR}/getdp.html ${TEX_DIR}/getdp.info ${TEX_DIR}/getdp.ky
     ${TEX_DIR}/getdp.log ${TEX_DIR}/getdp.pdf ${TEX_DIR}/getdp.pg ${TEX_DIR}/getdp.toc
@@ -1030,6 +1031,7 @@ if(MAKEINFO)
     ARGS ${TEX_DIR}/getdp.texi WORKING_DIRECTORY ${TEX_DIR})
   add_custom_target(html DEPENDS ${TEX_DIR}/getdp.html)
   install(FILES ${TEX_DIR}/getdp.html DESTINATION ${GETDP_DOC} OPTIONAL)
+  install(FILES ${TEX_IMG} DESTINATION ${GETDP_DOC}/images OPTIONAL)
 endif()
 
 find_program(TEXI2PDF texi2pdf)
