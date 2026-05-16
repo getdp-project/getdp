@@ -14,7 +14,7 @@
 */
 
 Include "magnet_data.pro";
-Include "../templates/Lib_Materials.pro";
+Include "../Lib_Materials.pro";
 
 Group {
   // AIR, AIR_INF, etc. are variables defined in magnet_data.pro, and correspond
@@ -86,8 +86,7 @@ Constraint {
 
 // We include magnetostatic formulation from this template:
 modelPath = CurrentDirectory;
-Include "../templates/Lib_Magnetostatics_a_phi.pro"
-
+Include "../Lib_Magnetostatics_a_phi.pro"
 
 // And finally add some post-processing operations:
 eps = 1.e-5;

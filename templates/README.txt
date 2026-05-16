@@ -9,5 +9,4 @@ This directory contains GetDP templates for simple problems:
     further non-intercative use.
 
   - "Lib_*.pro" are templates for simple generic physical problems, which can be
-    included in your own ".pro" files. 
-
+    included in your own ".pro" files. See e.g. example/magnet.pro.
