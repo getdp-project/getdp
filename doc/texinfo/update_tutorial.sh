@@ -8,8 +8,8 @@
 
 pandoc -o tutorial.texi --shift-heading-level-by=0 ../../tutorials/README.md
 sed -i '' -e '/^@node Top$/d; /^@top Top$/d' tutorial.texi
-sed -i '' -e '/^@node GetDP Tutorials$/d; /^@chapter GetDP Tutorials$/d' tutorial.texi
-sed -i '' -e '/^@menu$/d; /^* GetDP Tutorials::$/d; /^@end menu$/d' tutorial.texi
+sed -i '' -e '/^@node GetDP Tutorial$/d; /^@chapter GetDP Tutorial$/d' tutorial.texi
+sed -i '' -e '/^@menu$/d; /^* GetDP Tutorial::$/d; /^@end menu$/d' tutorial.texi
 sed -i '' -e '/^* Further reading::$/d' tutorial.texi
 sed -i '' -e '/^@node Further reading$/d' tutorial.texi
 sed -i '' -e 's/@section Further reading/@unnumberedsec Further reading/g' tutorial.texi
@@ -20,7 +20,7 @@ tuto() {
     sed -i '' -e 's/^@top Top$/@page/g' tmp.texi
     sed -i '' -e 's/GetDP tutorial/Tutorial/g' tmp.texi
     sed -i '' -e "/^@menu/i\\
-@center@image{images/$1,12cm,,Screenshot of tutorial $1}\\
+@center@image{images/$1,14cm,,Screenshot of tutorial $1}\\
 @center See @url{https://gitlab.onelab.info/getdp/getdp/-/tree/master/tutorials/$1,tutorials/$1}.\\
 " tmp.texi
     sed -i '' -e '/^@menu$/d' tmp.texi

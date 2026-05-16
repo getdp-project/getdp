@@ -1027,7 +1027,7 @@ if(MAKEINFO)
   add_custom_command(OUTPUT ${TEX_DIR}/getdp.html DEPENDS ${TEX_SRC}
     COMMAND ${MAKEINFO} --html --css-ref=https://getdp.info/getdp.css
     --no-split --set-customization-variable
-    EXTRA_HEAD='<meta name="viewport" content="width=device-width,initial-scale=1.0">'
+    EXTRA_HEAD='<meta name="viewport" content="width=device-width,initial-scale=1.0"><style type="text/css"><!-- img {  width:66%\; max-width:768px } --></style>'
     ARGS ${TEX_DIR}/getdp.texi WORKING_DIRECTORY ${TEX_DIR})
   add_custom_target(html DEPENDS ${TEX_DIR}/getdp.html)
   install(FILES ${TEX_DIR}/getdp.html DESTINATION ${GETDP_DOC} OPTIONAL)

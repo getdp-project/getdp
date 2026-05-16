@@ -1,4 +1,4 @@
-# GetDP Tutorials
+# GetDP Tutorial
 
 The following tutorials provide a progressive introduction to GetDP. Each
 tutorial builds on the previous ones, introducing new modeling concepts,
