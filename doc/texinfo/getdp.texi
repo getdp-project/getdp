@@ -297,7 +297,7 @@ directly as input to GetDP.
 Solving a discrete problem with GetDP requires defining the ten objects
 listed below in a @file{.pro} file.
 
-@center@image{objects-wrap,14cm,}
+@center@image{images/objects,14cm,}
 
 @sp 1
 @example

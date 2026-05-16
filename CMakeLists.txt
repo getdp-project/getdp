@@ -909,7 +909,7 @@ set(TEX_OBJ ${TEX_DIR}/getdp.aux ${TEX_DIR}/getdp.cp ${TEX_DIR}/getdp.cps
     ${TEX_DIR}/getdp.fn ${TEX_DIR}/getdp.html ${TEX_DIR}/getdp.info ${TEX_DIR}/getdp.ky
     ${TEX_DIR}/getdp.log ${TEX_DIR}/getdp.pdf ${TEX_DIR}/getdp.pg ${TEX_DIR}/getdp.toc
     ${TEX_DIR}/getdp.tp ${TEX_DIR}/getdp.tps ${TEX_DIR}/getdp.txt ${TEX_DIR}/getdp.vr
-    ${TEX_DIR}/getdp.vrs)
+    ${TEX_DIR}/getdp.vrs ${TEX_DIR}/getdp.fns)
 
 macro(unix2dos VARNAME)
   file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/unix2dos)
@@ -1027,7 +1027,7 @@ if(MAKEINFO)
   add_custom_command(OUTPUT ${TEX_DIR}/getdp.html DEPENDS ${TEX_SRC}
     COMMAND ${MAKEINFO} --html --css-ref=https://getdp.info/getdp.css
     --no-split --set-customization-variable
-    EXTRA_HEAD='<meta name="viewport" content="width=device-width,initial-scale=1.0"><style type="text/css"><!-- img {  width:80%\; max-width:768px } --></style>'
+    EXTRA_HEAD='<meta name="viewport" content="width=device-width,initial-scale=1.0"><style type="text/css"><!-- img {  width:80%\; max-width:1024px } --></style>'
     ARGS ${TEX_DIR}/getdp.texi WORKING_DIRECTORY ${TEX_DIR})
   add_custom_target(html DEPENDS ${TEX_DIR}/getdp.html)
   install(FILES ${TEX_DIR}/getdp.html DESTINATION ${GETDP_DOC} OPTIONAL)
