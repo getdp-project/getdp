@@ -8,9 +8,6 @@
 
    * or type "getdp test -solve Magnetostatics_a -pos a" to solve the problem
      using a vector potential formulation
-
-   See https://gitlab.onelab.info/doc/tutorials/wikis/home for a step-by-step
-   GetDP/Gmsh tutorial.
 */
 
 Include "magnet_data.pro";
