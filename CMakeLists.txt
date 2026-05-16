@@ -70,6 +70,7 @@ if(NOT GETDP_EXTRA_VERSION)
   set(GETDP_EXTRA_VERSION "")
 endif()
 set(GETDP_EXTRA_VERSION_TEXI "${GETDP_EXTRA_VERSION}")
+set(GETDP_EXTRA_VERSION_ORIG ${GETDP_EXTRA_VERSION})
 
 if(NOT GETDP_RELEASE)
   find_package(Git)
@@ -892,16 +893,15 @@ set(WELCOME_FILE ${CMAKE_CURRENT_SOURCE_DIR}/doc/WELCOME.txt)
 set(LICENSE_FILE ${CMAKE_CURRENT_SOURCE_DIR}/LICENSE.txt)
 set(CREDITS_FILE ${CMAKE_CURRENT_SOURCE_DIR}/CREDITS.txt)
 set(CHANGELOG_FILE ${CMAKE_CURRENT_SOURCE_DIR}/CHANGELOG.txt)
-file(GLOB EXAMPLE_FILES ${CMAKE_CURRENT_SOURCE_DIR}/examples/*.pro
-                        ${CMAKE_CURRENT_SOURCE_DIR}/examples/*.geo
-                        ${CMAKE_CURRENT_SOURCE_DIR}/examples/*.msh)
 file(GLOB TEMPLATE_FILES ${CMAKE_CURRENT_SOURCE_DIR}/templates/*.pro
                          ${CMAKE_CURRENT_SOURCE_DIR}/templates/*.txt)
-file(GLOB EXAMPLE_FILES_TMP ${CMAKE_CURRENT_SOURCE_DIR}/examples/*.pre
-                            ${CMAKE_CURRENT_SOURCE_DIR}/examples/*.res
-                            ${CMAKE_CURRENT_SOURCE_DIR}/examples/*.txt
-                            ${CMAKE_CURRENT_SOURCE_DIR}/examples/*.pos
-                            ${CMAKE_CURRENT_SOURCE_DIR}/examples/*.par)
+set(TUTORIALS_README ${CMAKE_CURRENT_SOURCE_DIR}/tutorials/README.md)
+file(GLOB TUTORIALS ${CMAKE_CURRENT_SOURCE_DIR}/tutorials/*)
+foreach(SUBDIR ${TUTORIALS})
+  if(IS_DIRECTORY ${SUBDIR})
+    list(APPEND TUTORIALS_DIRS ${SUBDIR})
+  endif()
+endforeach()
 set(TEX_DIR ${CMAKE_CURRENT_SOURCE_DIR}/doc/texinfo)
 file(GLOB TEX_SRC ${TEX_DIR}/*.texi)
 file(GLOB TEX_IMG ${TEX_DIR}/images/*.png)
@@ -911,19 +911,19 @@ set(TEX_OBJ ${TEX_DIR}/getdp.aux ${TEX_DIR}/getdp.cp ${TEX_DIR}/getdp.cps
     ${TEX_DIR}/getdp.tp ${TEX_DIR}/getdp.tps ${TEX_DIR}/getdp.txt ${TEX_DIR}/getdp.vr
     ${TEX_DIR}/getdp.vrs ${TEX_DIR}/getdp.fns)
 
-macro(unix2dos VARNAME)
-  file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/unix2dos)
+macro(unix2dos VARNAME UNIQUEPATH)
+  file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/unix2dos/${UNIQUEPATH})
   set(UNIX2DOS_FILES)
   foreach(FILE ${${VARNAME}})
     file(READ ${FILE} F0)
     get_filename_component(N ${FILE} NAME)
     if(CYGWIN)
       string(REGEX REPLACE "\n" "\r\n" F1 "${F0}")
-      file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/unix2dos/${N} "${F1}")
+      file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/unix2dos/${UNIQUEPATH}/${N} "${F1}")
     else() # if not in Cygwin, cmake adds '\r's automatically
-      file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/unix2dos/${N} "${F0}")
+      file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/unix2dos/${UNIQUEPATH}/${N} "${F0}")
     endif()
-    list(APPEND UNIX2DOS_FILES ${CMAKE_CURRENT_BINARY_DIR}/unix2dos/${N})
+    list(APPEND UNIX2DOS_FILES ${CMAKE_CURRENT_BINARY_DIR}/unix2dos/${UNIQUEPATH}/${N})
   endforeach()
   set(${VARNAME} ${UNIX2DOS_FILES})
 endmacro()
@@ -935,14 +935,18 @@ if(WIN32 OR CYGWIN)
   set(GETDP_MAN .)
   set(GETDP_INC .)
   if(CYGWIN)
-    unix2dos(GETDP_API)
-    unix2dos(GETDP_PRIVATE_API)
-    unix2dos(WELCOME_FILE)
-    unix2dos(LICENSE_FILE)
-    unix2dos(CREDITS_FILE)
-    unix2dos(CHANGELOG_FILE)
-    unix2dos(EXAMPLE_FILES)
-    unix2dos(TEMPLATE_FILES)
+    unix2dos(GETDP_API "api")
+    unix2dos(GETDP_PRIVATE_API "private_api")
+    unix2dos(WELCOME_FILE "welcome")
+    unix2dos(LICENSE_FILE "license")
+    unix2dos(CREDITS_FILE "credits")
+    unix2dos(CHANGELOG_FILE "changelog")
+    unix2dos(TEMPLATE_FILES "templates")
+    unix2dos(TUTORIALS_README "tutorials")
+    foreach(DIR ${TUTORIALS_DIRS})
+      file(GLOB TUTORIALS_FILES ${DIR}/?*.*)
+      unix2dos(TUTORIALS_FILES "tutorials")
+    endforeach()
   endif()
 else()
   include(GNUInstallDirs)
@@ -971,8 +975,13 @@ endif()
 install(FILES ${WELCOME_FILE} DESTINATION ${GETDP_DOC} RENAME README.txt)
 install(FILES ${LICENSE_FILE} DESTINATION ${GETDP_DOC})
 install(FILES ${CREDITS_FILE} DESTINATION ${GETDP_DOC})
-install(FILES ${EXAMPLE_FILES} DESTINATION ${GETDP_DOC}/examples)
 install(FILES ${TEMPLATE_FILES} DESTINATION ${GETDP_DOC}/templates)
+install(FILES ${TUTORIALS_README} DESTINATION ${GETDP_DOC}/tutorials)
+foreach(DIR ${TUTORIALS_DIRS})
+  get_filename_component(TUTORIALS_DIR_NAME ${DIR} NAME)
+  file(GLOB TUTORIALS_FILES ${DIR}/?*.*)
+  install(FILES ${TUTORIALS_FILES} DESTINATION ${GETDP_DOC}/tutorials/${TUTORIALS_DIR_NAME})
+endforeach()
 if(UNIX AND NOT CYGWIN)
   install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/doc/getdp.1 DESTINATION ${GETDP_MAN})
 endif()
@@ -995,8 +1004,6 @@ if(ENABLE_WRAP_PYTHON)
     endif()
   endif()
 endif()
-
-add_custom_target(clean_examples COMMAND ${CMAKE_COMMAND} -E remove ${EXAMPLE_FILES_TMP})
 
 add_custom_target(get_headers
   COMMAND ${CMAKE_COMMAND} -E make_directory Headers/getdp
@@ -1032,12 +1039,14 @@ if(MAKEINFO)
   add_custom_target(html DEPENDS ${TEX_DIR}/getdp.html)
   install(FILES ${TEX_DIR}/getdp.html DESTINATION ${GETDP_DOC} OPTIONAL)
   install(FILES ${TEX_IMG} DESTINATION ${GETDP_DOC}/images OPTIONAL)
+else()
+  add_custom_target(html COMMAND ${CMAKE_COMMAND} -E touch ${TEX_DIR}/getdp.html)
 endif()
 
 find_program(TEXI2PDF texi2pdf)
 if(TEXI2PDF)
   add_custom_command(OUTPUT ${TEX_DIR}/getdp.pdf DEPENDS ${TEX_SRC}
-                     COMMAND ${TEXI2PDF} ARGS ${TEX_DIR}/getdp.texi
+                     COMMAND ${TEXI2PDF} ARGS getdp.texi
                      WORKING_DIRECTORY ${TEX_DIR})
   add_custom_target(pdf DEPENDS ${TEX_DIR}/getdp.pdf)
   install(FILES ${TEX_DIR}/getdp.pdf DESTINATION ${GETDP_DOC} OPTIONAL)
@@ -1049,12 +1058,11 @@ execute_process(COMMAND ${CMAKE_COMMAND} -E echo "${OPT_TEXI}"
 if(MAKEINFO AND TEXI2PDF)
   add_custom_target(doc COMMAND ${CMAKE_COMMAND} -E tar zcf
                     ${CMAKE_CURRENT_BINARY_DIR}/getdp-${GETDP_VERSION}-doc.tgz
-                    CREDITS.txt LICENSE.txt CHANGELOG.txt
-                    doc/getdp.1 doc/getdp.bib doc/texinfo/getdp.html
-                    doc/texinfo/getdp.info doc/texinfo/getdp.pdf doc/texinfo/getdp.txt
+                    CREDITS.txt LICENSE.txt CHANGELOG.txt doc/getdp.1 doc/getdp.css
+                    doc/texinfo/getdp.html doc/texinfo/images doc/texinfo/getdp.info
+                    doc/texinfo/getdp.pdf doc/texinfo/getdp.txt
                     COMMAND ${CMAKE_COMMAND} -E remove ${TEX_OBJ}
-                    DEPENDS ${TEX_DIR}/getdp.info ${TEX_DIR}/getdp.txt
-                    ${TEX_DIR}/getdp.html ${TEX_DIR}/getdp.pdf
+                    DEPENDS info txt html pdf
                     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 endif()
 
@@ -1097,8 +1105,8 @@ set(CPACK_PACKAGE_DESCRIPTION_FILE ${WELCOME_FILE})
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY
     "General Environment for the Treatment of Discrete Problems")
 if(GETDP_EXTRA_VERSION MATCHES "-git.*") # so that we'll overwrite the archives
-  set(CPACK_PACKAGE_FILE_NAME getdp-git-${GETDP_OS})
-  set(CPACK_SOURCE_PACKAGE_FILE_NAME getdp-git-source)
+  set(CPACK_PACKAGE_FILE_NAME getdp${GETDP_EXTRA_VERSION_ORIG}-git-${GETDP_OS})
+  set(CPACK_SOURCE_PACKAGE_FILE_NAME getdp${GETDP_EXTRA_VERSION_ORIG}-git-source)
 else()
   set(CPACK_PACKAGE_FILE_NAME getdp-${GETDP_VERSION}-${GETDP_OS})
   set(CPACK_SOURCE_PACKAGE_FILE_NAME getdp-${GETDP_VERSION}-source)
