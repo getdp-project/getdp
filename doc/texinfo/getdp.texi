@@ -273,13 +273,7 @@ studies.
 @c Numerical Tools as Objects
 @c -------------------------------------------------------------------------
 
-@menu
-* Numerical tools as objects::
-* Bug reports::
-@end menu
-
-@node Numerical tools as objects, Bug reports, Overview of GetDP, Overview of GetDP
-@section Numerical tools as objects
+@subheading Numerical tools as objects
 
 @cindex Objects, dependences
 @cindex Dependences, objects
@@ -346,26 +340,6 @@ results, defined in @code{PostOperation} objects, which produce outputs
 in various formats. This decomposition makes it possible to build
 templates that bundle the objects of the second group and apply to broad
 classes of problems sharing a common solution method.
-
-@c -------------------------------------------------------------------------
-@c Bug reports
-@c -------------------------------------------------------------------------
-
-@node Bug reports,  , Numerical tools as objects, Overview of GetDP
-@section Bug reports
-
-@cindex Bugs, reporting
-@cindex Reporting bugs
-
-Please file issues on
-@url{https://gitlab.onelab.info/getdp/getdp/issues}. Provide as precise
-a description of the problem as you can, including sample input files
-that produce the bug.  Don't forget to mention both the version of GetDP
-and the version of your operation system.
-
-See @ref{Frequently asked questions}, and the
-@url{https://gitlab.onelab.info/getdp/getdp/issues,bug tracking system}
-to see which problems we already know about.
 
 @c =========================================================================
 @c GetDP tutorial
