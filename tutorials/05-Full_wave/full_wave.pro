@@ -245,7 +245,7 @@ FunctionSpace {
 }
 
 Formulation {
-  // To derive the finite element formulation in terms of the electric field e
+  // To derive the finite element formulation in terms of the electric field "e"
   // in the frequency domain, we start from Faraday's law:
   //
   //   curl e = - i omega b,
@@ -272,7 +272,7 @@ Formulation {
   //   (curl (nu curl e), e')_Vol_Wav - (omega^2 epsilon e, e')_Vol_Wav = 0.
   //
   // holds for all test functions "e'". After integration by parts, the weak form
-  // becomes: find e such that, for all "e'":
+  // becomes: find "e" such that, for all "e'":
   //
   //   (nu curl e, curl e')_Vol_Wav + (n x nu curl e, e')_Bnd_Vol_Wav
   //      - (omega^2 epsilon e, e')_Vol_Wav = 0.
