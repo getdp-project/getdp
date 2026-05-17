@@ -27,9 +27,10 @@ order.
 10. **Gauging**: Tree-cotree vs. Coulomb gauge, 3D transformer model with
    global coil basis functions.
 
-Each tutorial directory contains a `.geo` file (geometry and mesh), a `.pro`
-file (finite element model) and a `README.md` with instructions. The `.pro` and
-`.geo` files are heavily commented -- the comments are the tutorial.
+Each [tutorial directory](https://gitlab.onelab.info/getdp/getdp/tree/master/tutorials/)
+contains a `.geo` file (geometry and mesh), a `.pro` file (finite element model)
+and a `README.md` with instructions. The `.pro` and `.geo` files are heavily
+commented -- the comments are the tutorial.
 
 All tutorials can be run interactively with Gmsh (open the `.pro` file, then
 press "Run") or from the command line (see the `README.md` in each directory).
