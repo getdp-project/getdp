@@ -22,13 +22,13 @@ See the comments in `circuit.pro` and `circuit.geo` for details.
 On the command line (2D analysis):
 ```
 > gmsh circuit.geo -2
-> getdp circuit.pro -solve Mag -pos MapMag
+> getdp circuit.pro -solve Mag -pos Map
 ```
 
 On the command line (3D analysis):
 ```
 > gmsh circuit.geo -3 -setnumber dim 3
-> getdp circuit.pro -solve Mag -pos MapMag -setnumber dim 3
+> getdp circuit.pro -solve Mag -pos Map -setnumber dim 3
 ```
 
 Interactively with Gmsh: open `circuit.pro` with "File->Open", then press "Run".

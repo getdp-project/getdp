@@ -578,7 +578,7 @@ PostProcessing {
 }
 
 PostOperation {
-  { Name MapMag; NameOfPostProcessing Mag;
+  { Name Map; NameOfPostProcessing Mag;
     Operation {
       Print[ a, OnElementsOf Vol_Mag, File "a.pos" ];
       Print[ b, OnElementsOf Vol_Mag, File "b.pos" ];
