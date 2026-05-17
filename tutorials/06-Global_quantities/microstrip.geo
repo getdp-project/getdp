@@ -1,35 +1,26 @@
-// Gmsh script describing the geometry of the microstrip line and the associated
-// meshing constraints.
+// Same geometry as in tutorial 1:
 
-// Dimensions (there are no units in Gmsh -- the following values should be
-// interpreted as dimensions in meters due to the definition of the physical
-// parameters in MKS units in "microstrip.pro"):
-h = 1.e-3; // thickness of dielectric substrate
-w = 4.72e-3; // width of microstrip line
-t = 0.035e-3; // thickness of microstrip line
-xBox = w/2. * 6.; // width of air box
-yBox = h * 12.; // height of air box
+h = 1.e-3;
+w = 4.72e-3;
+t = 0.035e-3;
+xBox = w / 2 * 6;
+yBox = h * 12;
 
-// Global mesh size factor (that can be modified interactively in the Gmsh
-// graphical interface):
 s = DefineNumber[1., Name "Parameters/Global mesh size factor"];
 
-// Target mesh sizes:
 p0 = h / 10 * s;
 pLine0 = w / 20 * s;
 pLine1 = w / 100 * s;
 pxBox = xBox / 10 * s;
 pyBox = yBox / 8 * s;
 
-// We create this first geometry in a bottom-up manner with the built-in Gmsh
-// CAD kernel, successively defining model points, lines, loops and surfaces:
 Point(1) = {0, 0, 0, p0};
 Point(2) = {xBox, 0, 0, pxBox};
 Point(3) = {xBox, h, 0, pxBox};
 Point(4) = {0, h, 0, pLine0};
-Point(5) = {w/2, h, 0, pLine1};
-Point(6) = {0, h+t, 0, pLine0};
-Point(7) = {w/2, h+t, 0, pLine1};
+Point(5) = {w / 2, h, 0, pLine1};
+Point(6) = {0, h + t, 0, pLine0};
+Point(7) = {w / 2, h + t, 0, pLine1};
 Point(8) = {0, yBox, 0, pyBox};
 Point(9) = {xBox, yBox, 0, pyBox};
 Line(1) = {1, 2};
@@ -47,12 +38,6 @@ Plane Surface(13) = {12};
 Curve Loop(14) = {10, -11, 8, 3, 4, 5};
 Plane Surface(15) = {14};
 
-// The last step is to define physical groups, assigning unique tags (and names)
-// to groups of model entities. Physical groups serve two purposes: when they
-// are defined they tell Gmsh which elements to save in the mesh file (by
-// default only elements belonging to at least one physical group are saved),
-// and they provide the tags that GetDP uses in "Region[]" to identify parts of
-// the domain.
 Physical Surface("Air", 1) = {15};
 Physical Surface("Dielectric", 2) = {13};
 Physical Curve("Ground", 10) = {1};

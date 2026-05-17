@@ -16,7 +16,7 @@
 h = 1.e-3; // thickness of dielectric substrate
 w = 4.72e-3; // width of microstrip line
 t = 0.035e-3; // thickness of microstrip line
-xBox = w / 2 * 6.; // width of air box
+xBox = w / 2 * 6; // width of air box
 yBox = h * 12; // height of air box
 
 // Global mesh size factor (that can be modified interactively in the Gmsh

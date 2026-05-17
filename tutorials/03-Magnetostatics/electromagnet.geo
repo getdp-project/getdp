@@ -6,9 +6,6 @@
 // and to the Y-axis (passing through the core) -- make it possible to model
 // only a half (or even a quarter) of the cut. The "SymmetryType" parameter
 // defined in "electromagnet_common.pro" selects which part is meshed.
-//
-// Note: tutorial 1 used the built-in Gmsh CAD kernel. Here we switch to
-// OpenCASCADE, which offers boolean operations on solid primitives.
 
 // We include a file with the dimensions as well as the symmetry type; the same
 // file will be included in electromagnet.pro to guarantee consistency between
