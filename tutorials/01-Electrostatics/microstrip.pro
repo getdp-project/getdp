@@ -146,10 +146,9 @@ Jacobian {
   }
   // "Sur" is used to map the reference line segment (1D) onto lines in the
   // plane (2D). It is not strictly needed in this particular example (because
-  // "Sur_Neu_Ele" is empty), but is defined here for completeness, so that
-  // any surface term that might be added later to the Formulation (for
-  // example the optional non-homogeneous Neumann term shown below) can
-  // readily refer to it:
+  // "Sur_Neu_Ele" is empty), but is defined here for completeness, so that any
+  // surface term that might be added later to the Formulation below (for
+  // example the optional non-homogeneous Neumann term) can readily refer to it:
   { Name Sur;
     Case {
       { Region All; Jacobian Sur; }
@@ -176,7 +175,7 @@ Integration {
 }
 
 Formulation {
-  // The Formulation encodes the weak formulation of the original partial
+  // The Formulation object encodes the weak formulation of the partial
   // differential equation, i.e. of "-div(epsilon grad v) = 0". This weak
   // formulation involves finding "v" such that
   //
@@ -281,9 +280,9 @@ Formulation {
   }
 }
 
-// In "Resolution" we specify what to do with a weak formulation: here we simply
-// generate a linear system, solve it and save the solution to disk (in a ".res"
-// file).
+// In the Resolution object we specify what to do with a weak formulation: here
+// we simply generate a linear system, solve it and save the solution to disk
+// (in a ".res" file).
 Resolution {
   { Name Ele;
     System {

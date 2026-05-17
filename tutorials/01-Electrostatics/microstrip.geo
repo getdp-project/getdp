@@ -16,29 +16,29 @@
 h = 1.e-3; // thickness of dielectric substrate
 w = 4.72e-3; // width of microstrip line
 t = 0.035e-3; // thickness of microstrip line
-xBox = w/2. * 6.; // width of air box
-yBox = h * 12.; // height of air box
+xBox = w / 2 * 6.; // width of air box
+yBox = h * 12; // height of air box
 
 // Global mesh size factor (that can be modified interactively in the Gmsh
-// graphical interface):
+// graphical interface), with a default value of "1":
 s = DefineNumber[1., Name "Parameters/Global mesh size factor"];
 
-// Target mesh sizes:
+// Target mesh sizes on some model points:
 p0 = h / 10 * s;
 pLine0 = w / 20 * s;
 pLine1 = w / 100 * s;
 pxBox = xBox / 10 * s;
 pyBox = yBox / 8 * s;
 
-// We create this first geometry in a bottom-up manner with the built-in Gmsh
-// CAD kernel, successively defining model points, lines, loops and surfaces:
+// We create the geometry in a bottom-up manner, successively defining model
+// points, lines, loops and surfaces:
 Point(1) = {0, 0, 0, p0};
 Point(2) = {xBox, 0, 0, pxBox};
 Point(3) = {xBox, h, 0, pxBox};
 Point(4) = {0, h, 0, pLine0};
-Point(5) = {w/2, h, 0, pLine1};
-Point(6) = {0, h+t, 0, pLine0};
-Point(7) = {w/2, h+t, 0, pLine1};
+Point(5) = {w / 2, h, 0, pLine1};
+Point(6) = {0, h + t, 0, pLine0};
+Point(7) = {w / 2, h + t, 0, pLine1};
 Point(8) = {0, yBox, 0, pyBox};
 Point(9) = {xBox, yBox, 0, pyBox};
 Line(1) = {1, 2};
