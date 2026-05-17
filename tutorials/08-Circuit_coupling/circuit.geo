@@ -25,9 +25,7 @@ Rectangle(1) = {0, 0, 0, w1, h};
 Rectangle(2) = {w1 + 1 * mm, 0, 0, w2, h};
 
 If(dim == 3)
-  // Extrude both rectangles along z. The "Extrude" command returns a list: the
-  // first element (index 0) is the top surface, and the second (index 1) is the
-  // newly created volume:
+  // Extrude both rectangles along z (see tutorial 2):
   left() = Extrude{0, 0, thick}{ Surface{1}; };
   cond1 = left(1);
   right() = Extrude{0, 0, thick}{ Surface{2}; };

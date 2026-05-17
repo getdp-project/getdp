@@ -26,6 +26,10 @@ Include "radiator_common.pro";
 DefineConstant[
   position = {0.5, Min 0.1, Max 0.9, Step 0.1,
     Name "Parameters/Fin position in [0,1]"}
+  // Note that a number prefix in a parameter name is invisible in the graphical
+  // user interface: "0Model dimension" will appear as "Model dimension". It
+  // enables sorting the menu entries, i.e. in this case making sure that "Model
+  // dimension" is the first entry in the "Parameters" menu.
   dim = {2, Choices{2="2D", 3="3D"},
     Name "Parameters/0Model dimension"}
   zh = {fh / 20, Min 1e-3, Max 2 * fh, Step 1e-3, Visible dim == 3,
@@ -38,22 +42,23 @@ For i In {0 : N - 1}
   Rectangle(2 * i + 2) = {x0, 0, 0, bw, bh}; // base plate
 EndFor
 
+// Compute the boolean union of all the surfaces:
 surf() = BooleanUnion{ Surface{1}; Delete; }{ Surface{2 : 2 * N}; Delete; };
 
+// Assign lc as target mesh size on all model points:
 MeshSize{:} = lc;
 
-// Note that a number prefix in a parameter name is invisible in the graphical
-// user interface ("0Model dimension" will appear as "Model dimension"). It
-// enables sorting the menu entries, i.e. in this case making sure that "Model
-// dimension" is the first entry in the "Parameters" menu.
-
-e = 1e-6; // small tolerance for bounding box searches below
+// Define a small tolerance for the bounding box searches below ("Curve In
+// BoundingBox", "Surface In BoundingBox"), which are used to identify model
+// boundaries:
+e = 1e-6;
 
 If(dim == 2)
   interior = surf(0);
   bottom() = Curve In BoundingBox{-e, -e, -e, N * bw + e, e, e};
   left() = Curve In BoundingBox{-e, -e, -e, e, bh + e, e};
   right() = Curve In BoundingBox{N * bw - e, -e, -e, N * bw + e, bh + e, e};
+  // Compute the boundary, then remove the bottom, left and right parts:
   top() = Boundary{ Surface{interior}; };
   top() -= {bottom(), left(), right()};
 
@@ -65,6 +70,9 @@ If(dim == 2)
   // the two boundaries node-by-node:
   Periodic Curve { right() } = { left() } Translate {N * bw, 0, 0};
 Else
+  // Extrude the surface along "z" to create the 3D model. The "Extrude" command
+  // returns a list: the first element (index 0) is the top surface, and the
+  // second (index 1) is the newly created volume:
   ex() = Extrude {0, 0, zh}{ Surface{surf()}; };
   interior = ex(1);
   bottom() = Surface In BoundingBox{-e, -e, -e, N * bw + e, e, zh + e};
