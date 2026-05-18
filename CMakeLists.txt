@@ -64,25 +64,6 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_C_STANDARD 99)
 
-if(ENABLE_COVERAGE)
-  if(NOT (CMAKE_C_COMPILER_ID MATCHES "GNU|Clang|AppleClang" AND
-          CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang|AppleClang"))
-    message(FATAL_ERROR "ENABLE_COVERAGE requires GCC or Clang")
-  endif()
-  if(NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
-    message(STATUS "Warning: CMAKE_BUILD_TYPE=Debug is recommended for "
-            "accurate counters when ENABLE_COVERAGE is on")
-  endif()
-  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} --coverage")
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} --coverage")
-  if(ENABLE_FORTRAN)
-    set(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} --coverage")
-  endif()
-  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} --coverage")
-  set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} --coverage")
-  set(CMAKE_MODULE_LINKER_FLAGS "${CMAKE_MODULE_LINKER_FLAGS} --coverage")
-endif()
-
 set(GETDP_MAJOR_VERSION 4)
 set(GETDP_MINOR_VERSION 0)
 set(GETDP_PATCH_VERSION 0)
@@ -227,6 +208,24 @@ if(ENABLE_OPENMP)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
     set(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} ${OpenMP_Fortran_FLAGS}")
   endif()
+endif()
+
+if(ENABLE_COVERAGE)
+  if(NOT (CMAKE_C_COMPILER_ID MATCHES "GNU|Clang|AppleClang" AND
+          CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang|AppleClang"))
+    message(FATAL_ERROR "ENABLE_COVERAGE requires GCC or Clang")
+  endif()
+  if(NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
+    message(STATUS "Warning: CMAKE_BUILD_TYPE=Debug is recommended for "
+            "accurate counters when ENABLE_COVERAGE is on")
+  endif()
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} --coverage")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} --coverage")
+  # Don't add --coverage to CMAKE_Fortran_FLAGS (on macOS the link driver is
+  # clang, but gfortran's --coverage instrumentation references gcc's libgcov)
+  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} --coverage")
+  set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} --coverage")
+  set(CMAKE_MODULE_LINKER_FLAGS "${CMAKE_MODULE_LINKER_FLAGS} --coverage")
 endif()
 
 macro(append_getdp_src DIRNAME FILES)
@@ -1252,6 +1251,7 @@ if(ENABLE_COVERAGE)
                       --remove ${COV_RAW}
                         "${CMAKE_SOURCE_DIR}/contrib/*"
                         "${CMAKE_BINARY_DIR}/*"
+                        "petsc/include/*"
                         "/usr/*" "/opt/*" "/Library/*" "/Applications/*"
                       ${LCOV_IGNORE}
                       --output-file ${COV_FILTERED}
