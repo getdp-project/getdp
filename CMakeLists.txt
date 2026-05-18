@@ -31,7 +31,7 @@ opt(BUILD_SHARED "Enable 'shared' target for building shared GetDP library" OFF)
 opt(BUILD_DYNAMIC "Enable dynamic GetDP executable (linked with shared lib)" OFF)
 opt(BUILD_ANDROID "Enable Android NDK library target (experimental)" OFF)
 opt(BUILD_IOS "Enable iOS (ARM) library target (experimental)" OFF)
-opt(COVERAGE "Enable code coverage report" OFF)
+opt(COVERAGE "Enable code coverage instrumentation (GCC/Clang only)" OFF)
 opt(FORTRAN "Enable Fortran (needed for Arpack/Sparskit/Zitsol & Bessel)" ${DEFAULT})
 opt(GMSH "Enable Gmsh functions (for field interpolation)" ${DEFAULT})
 opt(GSL "Enable GSL functions (for some built-in functions)" ${DEFAULT})
@@ -63,6 +63,25 @@ endif()
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_C_STANDARD 99)
+
+if(ENABLE_COVERAGE)
+  if(NOT (CMAKE_C_COMPILER_ID MATCHES "GNU|Clang|AppleClang" AND
+          CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang|AppleClang"))
+    message(FATAL_ERROR "ENABLE_COVERAGE requires GCC or Clang")
+  endif()
+  if(NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
+    message(STATUS "Warning: CMAKE_BUILD_TYPE=Debug is recommended for "
+            "accurate counters when ENABLE_COVERAGE is on")
+  endif()
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} --coverage")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} --coverage")
+  if(ENABLE_FORTRAN)
+    set(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} --coverage")
+  endif()
+  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} --coverage")
+  set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} --coverage")
+  set(CMAKE_MODULE_LINKER_FLAGS "${CMAKE_MODULE_LINKER_FLAGS} --coverage")
+endif()
 
 set(GETDP_MAJOR_VERSION 4)
 set(GETDP_MINOR_VERSION 0)
@@ -868,13 +887,6 @@ elseif(APPLE)
   set_target_properties(getdp PROPERTIES LINK_FLAGS "-Wl,-no_compact_unwind")
 endif()
 
-if(ENABLE_COVERAGE)
-  message(STATUS "Enabling code coverage (compiling in Debug mode)")
-  set(CMAKE_BUILD_TYPE "Debug")
-  target_compile_options(getdp PRIVATE -coverage)
-  target_link_options(getdp PRIVATE -coverage)
-endif()
-
 # parser target
 find_program(BISON bison)
 find_program(FLEX flex)
@@ -1200,6 +1212,64 @@ if(${Python3_FOUND} AND GMSH)
   test_tuto(10b 10-Gauging "transfo" "-setnumber GaugeType 1")
 endif()
 
+if(ENABLE_COVERAGE)
+  # Workflow:
+  #   cmake -DENABLE_COVERAGE=ON -DCMAKE_BUILD_TYPE=Debug ..
+  #   make
+  #   make coverage_reset   # optional, to start fresh
+  #   ctest                 # accumulates counters in .gcda files
+  #   make coverage         # produces <build>/coverage/index.html
+  find_program(LCOV lcov)
+  find_program(GENHTML genhtml)
+  if(LCOV AND GENHTML)
+    set(LCOV_IGNORE "")
+    set(GENHTML_IGNORE "")
+    execute_process(COMMAND ${LCOV} --version
+                    OUTPUT_VARIABLE LCOV_VERSION_STRING
+                    OUTPUT_STRIP_TRAILING_WHITESPACE
+                    ERROR_QUIET)
+    if(LCOV_VERSION_STRING MATCHES "LCOV version ([0-9]+)")
+      if(CMAKE_MATCH_1 GREATER_EQUAL 2)
+        set(LCOV_IGNORE --ignore-errors unused,source,source,inconsistent,inconsistent
+            --ignore-errors unsupported,unsupported,format)
+        set(GENHTML_IGNORE --ignore-errors unused,category,inconsistent,source
+            --synthesize-missing)
+      endif()
+    endif()
+    set(COV_RAW ${CMAKE_BINARY_DIR}/coverage.raw.info)
+    set(COV_FILTERED ${CMAKE_BINARY_DIR}/coverage.info)
+    set(COV_HTML ${CMAKE_BINARY_DIR}/coverage)
+    add_custom_target(coverage_reset
+      COMMAND ${LCOV} --quiet --directory ${CMAKE_BINARY_DIR}
+                      --zerocounters
+      COMMENT "Resetting code coverage counters")
+    add_custom_target(coverage
+      COMMAND ${LCOV} --quiet --directory ${CMAKE_BINARY_DIR}
+                      --base-directory ${CMAKE_SOURCE_DIR}
+                      --capture --output-file ${COV_RAW}
+                      ${LCOV_IGNORE}
+      COMMAND ${LCOV} --quiet
+                      --remove ${COV_RAW}
+                        "${CMAKE_SOURCE_DIR}/contrib/*"
+                        "${CMAKE_BINARY_DIR}/*"
+                        "/usr/*" "/opt/*" "/Library/*" "/Applications/*"
+                      ${LCOV_IGNORE}
+                      --output-file ${COV_FILTERED}
+      COMMAND ${GENHTML} --quiet --legend
+                         --title "GetDP ${GETDP_VERSION} code coverage"
+                         --output-directory ${COV_HTML}
+                         ${GENHTML_IGNORE}
+                         ${COV_FILTERED}
+      COMMAND ${CMAKE_COMMAND} -E echo
+              "Coverage report: ${COV_HTML}/index.html"
+      WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+      COMMENT "Generating HTML coverage report")
+    add_dependencies(coverage getdp)
+  else()
+    message(FATAL_ERROR "ENABLE_COVERAGE requires lcov/genhtml")
+  endif()
+endif()
+
 message(STATUS "")
 message(STATUS "GetDP ${GETDP_VERSION} has been configured for ${GETDP_OS}:")
 message(STATUS "")
@@ -1214,5 +1284,5 @@ message(STATUS "")
 mark_as_advanced(GETDP_EXTRA_VERSION
                  ARPACK_LIB GMSH_INC GMSH_LIB GSLCBLAS_LIB GSL_INC GSL_LIB
                  PETSC_LIBS SLEPC_INC SLEPC_INC2 SLEPC_LIB
-                 BISON FLEX MAKEINFO TEXI2PDF
+                 BISON FLEX MAKEINFO TEXI2PDF LCOV GENHTML
                  GETDP_EXTERNAL_INCLUDE_DIRS GETDP_EXTERNAL_LIBRARIES)
