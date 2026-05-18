@@ -3,7 +3,7 @@
 We consider the same model as in tutorial 1, i.e. a 2D electrostatic model of a
 microstrip line with only one half of the geometry modelled by symmetry. We
 introduce global quantities (voltage and charge) in the function space, which
-allows to naturally handle floating potentials and to compute the capacitance.
+lets us naturally handle floating potentials and compute the capacitance.
 
 ## Features
 

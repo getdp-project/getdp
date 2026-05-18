@@ -1,3 +1,7 @@
+// This tutorial extends the electrostatic problem from tutorial 1 to introduce
+// global basis functions, which are used to handle floating potentials and to
+// compute global quantities such as electrode charges and capacitances.
+//
 // In a two-dimensional electrostatic model (see tutorial 1), the finite element
 // expansion of the electric scalar potential "v(x, y)" associates basis
 // functions with individual nodes in the mesh:
@@ -22,7 +26,7 @@
 //
 // is the sum of the Lagrange (nodal) basis functions associated with the nodes
 // of the electrode. This function
-//  - is a continuous fonction, scalar in this case;
+//  - is a continuous function, scalar in this case;
 //  - is equal to 1 at the nodes of the electrode, and to 0 at all other nodes;
 //  - decreases from 1 to 0 over the one-element-thick layer of elements sharing
 //    at least one node with the electrode region.
@@ -39,8 +43,7 @@
 // and the ground), and "Sum_k" runs over all nodes except those of the
 // electrode regions.
 //
-// In this tutorial we modify the electrostatic problem from tutorial 1 to show
-// how GetDP takes advantage of global basis functions
+// Below we show how GetDP takes advantage of global basis functions
 //  - to efficiently compute the electrode charges "Q_electrode", which are the
 //    energy duals of the global "vf_electrode" potentials;
 //  - to deal with floating potentials, which are the computed electrode
@@ -113,7 +116,7 @@ Constraint {
   { Name Charge_Ele;
     Case {
       // If the "Fixed charge" option is enabled (i.e. when "TypeBC == 1"),
-      // impose the global charge on the boudary of the microstrip line:
+      // impose the global charge on the boundary of the microstrip line:
       If(TypeBC == 1)
         { Region Microstrip; Value ValueBC; }
       EndIf
@@ -187,7 +190,7 @@ FunctionSpace {
   //
   // Constraints can be set on either component of the FunctionSpace. Besides
   // the usual Dirichlet boundary condition on the local field, one may fix
-  // either the "Voltage" or the "Charge" of each indidual electrode (never
+  // either the "Voltage" or the "Charge" of each individual electrode (never
   // both, of course). When the "Charge" is fixed, the computed "Voltage" for
   // that electrode is the so-called floating potential.
   { Name H1_v_Ele; Type Form0;
@@ -207,7 +210,7 @@ FunctionSpace {
       { NameOfCoef Voltage; EntityType GroupsOfNodesOf;
         NameOfConstraint Voltage_Ele; }
       { NameOfCoef Charge; EntityType GroupsOfNodesOf;
-	NameOfConstraint Charge_Ele; }
+        NameOfConstraint Charge_Ele; }
     }
     // Subspace definition only needed to display the global basis functions in
     // post-processing:
@@ -323,7 +326,7 @@ PostProcessing {
       { Name energy; Value {
           Integral { [ epsilon[] / 2. * SquNorm[{d v}] ]; In Vol_Ele;
             Jacobian Vol; Integration Int; }
-	}
+        }
       }
       // Finally we can use the "BF[]" operator to retrieve the global basis
       // functions on the two electrodes, in order to visualize them:

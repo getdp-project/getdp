@@ -1,10 +1,10 @@
-// This file reimplements the electromagnet models from tutorials 3 and 4 using
-// the "Lib_Magnetoquasistatics_av_2D_Cir.pro" template library. The library
-// acts as a black box that hides the complexity of the formulation, function
-// spaces, resolution and post-processing: the user only needs to define groups,
-// material properties and constraints. The resulting model file is compact, yet
-// supports static, time-domain and frequency-domain analyses, with or without
-// axisymmetry.
+// This tutorial reimplements the electromagnet models from tutorials 3 and 4
+// using the "Lib_Magnetoquasistatics_av_2D_Cir.pro" template library. The
+// library acts as a black box that hides the complexity of the formulation,
+// function spaces, resolution and post-processing: the user only needs to
+// define groups, material properties and constraints. The resulting model file
+// is compact, yet supports static, time-domain and frequency-domain analyses,
+// with or without axisymmetry.
 
 Include "electromagnet_common.pro";
 

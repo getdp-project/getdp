@@ -448,7 +448,7 @@ PostProcessing {
             Integral { [ CoefPower * 2 * Pi * Freq * Im[nu[]] * SquNorm[{d a}] ];
               In Vol_Mag; Jacobian JacVol_Mag; Integration Int_Mag; }
           EndIf
-	}
+        }
       }
       { Name LaplaceForce; Value {
           If(AnalysisType == 2)

@@ -1,7 +1,7 @@
 # GetDP Tutorial
 
 The following tutorials provide a progressive introduction to GetDP. Each
-tutorial builds on the previous ones, introducing new modeling concepts,
+tutorial builds on the previous ones, introducing new modelling concepts,
 formulation techniques and solver features. They are designed to be studied in
 order:
 

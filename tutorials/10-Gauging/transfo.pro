@@ -1,13 +1,33 @@
-// GetDP formulation for same transformer model as in tutorial 9, but in 3D. The
-// 3D vector potential "a" requires gauging for uniqueness in 3D; this tutorial
-// presents two strategies, selectable via the "GaugeType" parameter:
-// tree-cotree gauging and Coulomb gauging (through a Lagrange multiplier).
-
-// Resolution sequence: we first pre-compute a normalized source current density
-// in each coil, then link it to global variables for field-circuit coupling in
-// the 3D a-v formulation. The actual source current density is enforced in each
-// coil by multiplying the pre-computed distribution by the global current
-// quantity computed from the circuit equations.
+// This tutorial models the same single-phase transformer as in tutorial 9
+// (primary winding driven by a voltage source, secondary winding feeding a
+// selectable load), but in 3D. The frequency-domain magneto-quasistatic a-v
+// formulation coupled with two circuits is essentially the same as in tutorial
+// 9; what is genuinely new here is specific to the 3D setting:
+//
+//  - Gauging of the magnetic vector potential. In 3D the curl-curl operator
+//    has a nontrivial null space (gradient fields), so "a" is not uniquely
+//    determined by "b = curl a". A gauge condition is needed. Two strategies
+//    are presented and can be selected at runtime via the "GaugeType"
+//    parameter: tree-cotree gauging (the same scheme used in tutorial 8) and
+//    Coulomb gauging through a scalar Lagrange multiplier.
+//
+//  - Source current density in the windings. Tutorial 9 modelled stranded
+//    coils through a uniform current density "Ns / Sc * I * z_hat" pointing
+//    along "z", which is straightforward because the 2D geometry has
+//    translation invariance in that direction. In 3D the winding follows a
+//    curved path around the core, so the current density must turn with it.
+//    We obtain it by pre-computing, in each coil, a normalized scalar
+//    potential "vs" that solves a homogeneous Laplace problem with a unit
+//    jump across the electrode cut introduced in the .geo. The resulting
+//    "js = -grad vs" is divergence-free by construction and integrates to one
+//    across any cross-section. The actual source current density in each
+//    coil is then enforced by multiplying this pre-computed distribution by
+//    the global current quantity determined by the circuit equations.
+//
+//  - No more "CoefGeo[]". The 2D coefficient introduced in tutorial 7 to
+//    encode the out-of-plane extent of the model (planar thickness or
+//    "2 * Pi" for axisymmetry) is no longer needed: in 3D the geometry is
+//    meshed in full, so no out-of-plane rescaling is required.
 Include "transfo_common.pro";
 
 Group {
@@ -317,7 +337,7 @@ FunctionSpace {
   //    by the tree edges (modulo boundary), so this kills it without affecting
   //    the physical solution. This constraint is directly implemented in the
   //    "Hcurl_a_Mag" space.
-  //  - Coulomb gauging (GaugeType == 1): the gauge is imposed weakly in the
+  //  - Coulomb gauging ("GaugeType == 1"): the gauge is imposed weakly in the
   //    formulation (see explanations in the "Formulation" below), thanks to a
   //    Lagrange multiplier "xi" in the "H1_xi_Mag" space.
 
@@ -328,14 +348,14 @@ FunctionSpace {
     }
     Constraint {
       { NameOfCoef ae; EntityType EdgesOf; NameOfConstraint a_Mag; }
-      If (GaugeType == 0)
+      If(GaugeType == 0)
         { NameOfCoef ae; EntityType EdgesOfTreeIn; EntitySubType StartingOn;
           NameOfConstraint a_Gauge_Mag; }
       EndIf
     }
   }
 
-  If (GaugeType == 1)
+  If(GaugeType == 1)
     // We introduce a scalar Lagrange multiplier "xi" in H1_0 to enforce the
     // Coulomb gauge constraint; see explanations in the "Formulation" below.
     { Name H1_xi_Mag ; Type Form0 ;

@@ -1,3 +1,8 @@
+// Gmsh script describing the geometry of a rectangular waveguide, in 2D or 3D
+// (selected by the "dim" parameter defined in "full_wave_common.pro"),
+// optionally enclosed in a surrounding air region for the absorbing boundary
+// condition.
+
 SetFactory("OpenCASCADE");
 
 Include "full_wave_common.pro";

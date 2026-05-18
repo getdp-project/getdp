@@ -1,4 +1,4 @@
-// In this tutorial we introduce the full-wave Maxwell problem in the frequency
+// This tutorial introduces the full-wave Maxwell problem in the frequency
 // domain, with lowest order Whitney edge elements to discretize the vector
 // electric field in both 2D and 3D. The vector-valued basis functions are
 // associated with the edges of the mesh, i.e. the electric field "e(x, y, z)"
@@ -19,7 +19,7 @@
 //
 // Edge elements are one member of a larger family known as Whitney
 // elements. Nodal "BF_Node" functions (associated with nodes, one pointwise
-// scalar DoF per node) discretize scalar field and belong to "H1"; edge
+// scalar DoF per node) discretize scalar fields and belong to "H1"; edge
 // "BF_Edge" functions (associated with edges, one circulation DoF per edge)
 // discretize vector fields whose curl must remain square-integrable and belong
 // to "H(curl)"; facet "BF_Facet" functions (associated with faces, one flux DoF
@@ -30,7 +30,7 @@
 // operators: "grad" maps "H1" into "H(curl)", "curl" maps "H(curl)" into
 // "H(div)", and "div" maps "H(div)" into "L2", reflecting the identities "curl
 // grad = 0" and "div curl = 0" at the discrete level.  Each physical quantity
-// in encountered in the tutorials has a natural home in this hierarchy: "v" and
+// encountered in the tutorials has a natural home in this hierarchy: "v" and
 // "T" live in "H1", "e" and "h" live in "H(curl)", "b" and "d" live in
 // "H(div)", and charge or energy densities live in "L2".
 //

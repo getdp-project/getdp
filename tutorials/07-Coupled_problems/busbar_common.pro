@@ -1,3 +1,6 @@
+// Parameters shared by Gmsh and GetDP: conductor, insulator and shield
+// dimensions, and infinite-shell radii.
+
 mm = 1e-3;
 
 DefineConstant[

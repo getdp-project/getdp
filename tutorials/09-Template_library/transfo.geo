@@ -7,7 +7,7 @@ SetFactory("OpenCASCADE");
 
 Include "transfo_common.pro";
 
-// The core is is created by subtracting the inner rectangle (the window) from
+// The core is created by subtracting the inner rectangle (the window) from
 // the outer rectangle:
 Rectangle(1) = {-wCore / 2, -hCore / 2, 0,
   wCore, hCore};
@@ -24,7 +24,7 @@ Rectangle(4) = {-wCore / 2 + wCoreLeg + gapCoil, -hCoil1 / 2, 0,
 
 // Secondary winding: two coil sides on either side of the right core leg:
 Rectangle(5) = {wCore / 2 - wCoreLeg - gapCoil - wCoil2, -hCoil2 / 2, 0,
-  wCoil2, hCoil1};
+  wCoil2, hCoil2};
 Rectangle(6) = {wCore / 2 + gapCoil, -hCoil2 / 2, 0,
   wCoil2, hCoil2};
 

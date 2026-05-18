@@ -1,9 +1,9 @@
-// This model computes the static magnetic field produced by a DC current in an
-// electromagnet. This corresponds to a magnetostatic physical model, obtained
-// by combining the time-invariant Maxwell-Ampere equation ("curl h = js", with
-// "h" the magnetic field and "js" the source current density) with the magnetic
-// Gauss law ("div b = 0", with "b" the magnetic flux density) and the magnetic
-// constitutive law ("b = mu h", with "mu" the magnetic permeability).
+// This tutorial computes the static magnetic field produced by a DC current in
+// an electromagnet. This corresponds to a magnetostatic physical model,
+// obtained by combining the time-invariant Maxwell-Ampere equation ("curl h = js",
+// with "h" the magnetic field and "js" the source current density) with the
+// magnetic Gauss law ("div b = 0", with "b" the magnetic flux density) and the
+// magnetic constitutive law ("b = mu h", with "mu" the magnetic permeability).
 //
 // Since "div b = 0", "b" can be derived from a vector magnetic potential "a",
 // such that "b = curl a". Plugging this vector potential in Maxwell-Ampere's
@@ -30,7 +30,7 @@
 // As this is a mere geometric transformation, it is enough in the model
 // description to attribute the special Jacobian "VolSphShell" to the ring
 // region "AirInf". This Jacobian takes as arguments the inner ("rInt") and
-// outer ("rOut") radii of the transformed ring region: to ensure consistency
+// outer ("rExt") radii of the transformed ring region: to ensure consistency
 // they are defined in a separate file, which is included in both the .geo and
 // .pro file.  For a derivation and discussion of this transformation technique,
 // see e.g. F. Henrotte et al., "Finite element modelling with transformation
@@ -38,11 +38,9 @@
 
 Include "electromagnet_common.pro";
 
-// With this information, GetDP is able to correctly transform all quantities
-// involved in the model. The model exhibits two symmetries: with respect to the
-// X-axis and with respect to the Y-axis. The "SymmetryType" constant defined in
-// "electromagnet_common.pro" allows to solve the problem with or without taking
-// advantage of them.
+// The model exhibits two symmetries (with respect to the X-axis and the
+// Y-axis); the "SymmetryType" constant defined in "electromagnet_common.pro"
+// selects whether to take advantage of one, both or none of them.
 
 Group {
   // Physical regions:
@@ -229,7 +227,7 @@ Function {
     // simply evaluated as written (here, a constant).
 
     // The function "nu[]" is expected to take b (a vector value) as its first
-    // (and only) argment, "$1". As we will also see below in the Resolution,
+    // (and only) argument, "$1". As we will also see below in the Resolution,
     // the $ sign identifies runtime quantities (function arguments, global
     // variables, user runtime variables), whose values are not yet known when
     // GetDP parses the ".pro" file. Here "nu[]" computes the square of the norm
@@ -315,18 +313,12 @@ FunctionSpace {
   }
 }
 
-// The special Jacobian "VolSphShell" for the infinite elements takes 2
-// parameters in this case, "rInt" and "rExt", which represent the inner and
-// outer radii of the transformed ring region. The value of the parameters must
-// match those used in the geometrical description of the model, so to ensure
-// consistency there are defined in a separate file, which is included in both
-// the .geo and .pro file:
-Include "electromagnet_common.pro";
-
 Jacobian {
   { Name Vol;
     Case {
-      // Use the special infinite ring Jacobian in "Vol_Inf_Mag"...
+      // Use the special infinite ring Jacobian in "Vol_Inf_Mag" (the "rInt"
+      // and "rExt" radii come from "electromagnet_common.pro", included at
+      // the top of the file)...
       { Region Vol_Inf_Mag; Jacobian VolSphShell {rInt, rExt}; }
       // ... and the standard "Vol" Jacobian everywhere else:
       { Region All; Jacobian Vol; }

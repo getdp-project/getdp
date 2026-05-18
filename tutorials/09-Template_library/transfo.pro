@@ -12,12 +12,12 @@
 // physical and abstract groups, the material properties, the constraints, and a
 // few configuration variables -- the rest is taken care of by the library.
 //
-// The main new modeling concepts introduced in the tutorial are the modeling of
-// stranded coils and of the ferromagnetic laminations in the core.
+// The main new modelling concepts introduced in the tutorial are the modelling
+// of stranded coils and of the ferromagnetic laminations in the core.
 //
 // Unlike the massive (solid) conductors of tutorials 7 and 8, where eddy
 // currents are resolved inside the conductor cross-section, a stranded coil is
-// modeled as a homogenized region carrying a uniform current density
+// modelled as a homogenized region carrying a uniform current density
 //
 //   j = Ns / Sc * I * z_hat,
 //
@@ -25,12 +25,12 @@
 // winding, "I" the total current (the same in each turn), and "z_hat" the unit
 // vector along the conductor direction. This approximation is valid when the
 // coil consists of a large number of turns in series with each other (so that
-// the each turn carries the same current), where each individual turn is thin
+// each turn carries the same current), where each individual turn is thin
 // compared to the skin depth (so that the current distribution within each turn
 // is essentially uniform).
 
 // Each winding consists of two coil sides (the "go" and "return" halves of the
-// same winding), modeled as separate regions with opposite current
+// same winding), modelled as separate regions with opposite current
 // directions. The two windings are connected to two independent circuits:
 //
 //   Circuit 1 (primary):   voltage source E_in -> Coil_1_M -> Coil_1_P
@@ -52,8 +52,9 @@
 //
 //      p_H = kh * |B_peak|^2,
 //
-//    with an empirical coefficient kh. Matching with "(1/2) * omega * nu_H *
-//    |B_peak|^2p_H" gives
+//    with an empirical coefficient kh, so the time-averaged hysteresis power
+//    density is "p_H * f". Matching this with the complex-reluctivity
+//    dissipation "(1/2) * omega * nu_H * |B_peak|^2" gives
 //
 //      nu_H = kh / Pi.
 //
@@ -225,7 +226,7 @@ Constraint {
   // The circuit topology uses two independent circuits. "Circuit_1" and
   // "Circuit_2" define separate connected networks, each with its own set of
   // circuit nodes (the node numbers are local to each case). This allows
-  // modeling magnetically coupled but electrically isolated windings -- the
+  // modelling magnetically coupled but electrically isolated windings -- the
   // coupling between the two circuits happens through the shared magnetic flux
   // in the finite element model, not through any electrical connection.
   { Name ElectricalCircuit ; Type Network ;

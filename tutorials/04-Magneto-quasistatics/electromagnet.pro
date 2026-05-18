@@ -1,32 +1,29 @@
-// This model computes the magnetic field produced by an AC current in the same
-// electromagnet as the one considered in tutorial 3 with a DC current.
+// This tutorial computes the magnetic field produced by an AC current in the
+// same electromagnet as the one considered in tutorial 3 with a DC current.
 //
-// This corresponds to a magneto-quasistatic (or "magnetodynamic") physical
-// model, obtained by combining the Maxwell-Ampere equation where the
-// displacement current is neglected ("curl h = j", with "h" the magnetic field
-// and "j" the current density), the Faraday equation ("curl e = -\partial_t b",
-// with "e" the electric field and "b" the magnetic flux density), the magnetic
-// Gauss law ("div b = 0"), the magnetic constitutive law ("b = mu h", with "mu"
-// the magnetic permeability) and Ohm's law ("j = sigma e", with "sigma" the
-// electric conductivity). In the coil of the electromagnet we assume that eddy
-// currents can be neglected and we simply impose a source current density "j =
-// js". This is a standard modeling choice for "stranded" coils made of many
-// thin insulated wires: each wire is thin compared to the skin depth, which
-// prevents eddy loops from forming inside the coil. The assumption would no
-// longer be valid for a massive ("solid") conductor, or for a coil connected to
-// a voltage source (see tutorial 7), potentially through a circuit (see
-// tutorial 8).
+// Building on the magnetostatic setting of tutorial 3, we extend Maxwell-Ampere
+// to include a time-varying current density "curl h = j" (still without the
+// displacement current), add the Faraday equation "curl e = -\partial_t b"
+// relating the time derivative of "b" to the curl of the electric field "e",
+// and close the system with Ohm's law "j = sigma e", with "sigma" the electric
+// conductivity. The magnetic symbols ("h", "b", "mu", "nu = 1/mu") keep the
+// same meaning as in tutorial 3. This is the magneto-quasistatic (or
+// "magnetodynamic") regime. In the coil of the electromagnet we assume that
+// eddy currents can be neglected and we simply impose a source current density
+// "j = js". This is a standard modelling choice for "stranded" coils made of
+// many thin insulated wires: each wire is thin compared to the skin depth,
+// which prevents eddy loops from forming inside the coil. The assumption would
+// no longer be valid for a massive ("solid") conductor (see tutorial 7).
 //
-// We can introduce a vector magnetic potential "a" such that "b = curl a"
-// and "e = -\partial_t a", that satisfies both Gauss' law and Faraday's
+// We can introduce a vector magnetic potential "a" such that "b = curl a" and
+// "e = -\partial_t a", that satisfies both Gauss' law and Faraday's
 // equation. We call this the "modified" vector potential because the usual
 // definition "e = -\partial_t a - grad v" has been simplified by implicitly
 // fixing the electric scalar potential "v" to zero -- equivalently, we have
 // chosen a gauge that absorbs "grad v" into "a". This is a valid choice
 // whenever the current is imposed (as here) rather than driven by a voltage.
-// In tutorial 7 we will reintroduce "v" to allow prescribing a voltage drop
-// or computing it from an imposed current, using the so-called "a-v"
-// formulation.
+// In tutorial 7 we will reintroduce "v" to allow prescribing a voltage drop or
+// computing it from an imposed current, using the so-called "a-v" formulation.
 //
 // Plugging this vector potential into Ampere's equation and using the
 // constitutive laws leads to
@@ -34,12 +31,12 @@
 //   curl(nu curl a) + sigma \partial_t a = js
 //
 // where "nu = 1/mu" is the magnetic reluctivity. The right-hand side is the
-// imposed (source) current density; on the left-hand side, "sigma \partial_t
-// a" is the induced (eddy) current density, due to the time-varying magnetic
-// flux. The total current density in a conducting region is thus
-// "j = -sigma \partial_t a" (purely induced) and in a source region it is
-// "j = js" (purely imposed). See the PostProcessing section below, which
-// defines the full "j" piecewise on the two kinds of regions.
+// imposed (source) current density; on the left-hand side, "sigma \partial_t a"
+// is the induced (eddy) current density, due to the time-varying magnetic
+// flux. The total current density in a conducting region is thus "j = -sigma
+// \partial_t a" (purely induced) and in a source region it is "j = js" (purely
+// imposed). See the PostProcessing section below, which defines the full "j"
+// piecewise on the two kinds of regions.
 //
 // We consider both time-domain (transient) and frequency-domain (steady-state)
 // resolutions, with a sinusoidal source current density at fixed frequency f:
@@ -63,7 +60,7 @@
 // Note that with this definition of phasors in terms of peak values, a factor
 // 1/2 appears in time-averaged quadratic quantities such as electromagnetic
 // power (due to the time-averaged cosine squared over a period). This factor
-// dissapears for phasors defined in terms of RMS values, or for the calculation
+// disappears for phasors defined in terms of RMS values, or for the calculation
 // of instantaneous power in the time-domain.
 
 Include "electromagnet_common.pro";
@@ -195,8 +192,8 @@ Integration {
     Case {
       { Type Gauss;
         Case {
-          // With pieceweise linear basis functions we must be able to integrate
-          // quadratic polynomials in "Vol_C_Mag", hence we use 4 integration
+          // With piecewise linear basis functions we must be able to integrate
+          // quadratic polynomials in "Vol_C_Mag", hence we use 3 integration
           // points instead of 1 as in tutorial 3:
           { GeoElement Triangle; NumberOfPoints 3; }
         }

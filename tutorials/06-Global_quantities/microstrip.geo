@@ -1,4 +1,5 @@
-// Same geometry as in tutorial 1:
+// Gmsh script describing the geometry of the microstrip line (same geometry as
+// in tutorial 1).
 
 h = 1.e-3;
 w = 4.72e-3;

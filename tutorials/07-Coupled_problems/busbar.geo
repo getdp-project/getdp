@@ -1,3 +1,8 @@
+// Gmsh script describing the geometry of a three-phase busbar: three
+// rectangular conductors inside an insulating enclosure surrounded by a
+// grounded metallic shield, embedded in an air region with an infinite shell
+// for the unbounded domain (see tutorial 3).
+
 SetFactory("OpenCASCADE");
 
 // Include the file with shared parameters, so that the same values are used

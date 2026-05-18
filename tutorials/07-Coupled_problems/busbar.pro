@@ -1,4 +1,4 @@
-// This tutorial models the coupled magneto-thermal behavior of a three-phase
+// This tutorial models the coupled magneto-thermal behaviour of a three-phase
 // busbar system, consisting of three conductors carrying balanced AC currents
 // inside an insulating enclosure surrounded by a grounded metallic shield.
 //
@@ -555,9 +555,9 @@ PostOperation {
 }
 
 // Setting a variable with the reserved name "GetDP/2PostOperationChoices"
-// allows to control which PostOperations are performed by default by Gmsh
-// when the model is run interactively. Here we request both "MapMag" and
-// "MapThe", instead of just "MapMag" (the default):
+// controls which PostOperations are performed by default by Gmsh when the
+// model is run interactively. Here we request both "MapMag" and "MapThe",
+// instead of just "MapMag" (the default):
 DefineConstant[
   PostOp = {"MapMag, MapThe", Name "GetDP/2PostOperationChoices"}
 ];

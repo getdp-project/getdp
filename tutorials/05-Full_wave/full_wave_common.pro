@@ -1,3 +1,6 @@
+// Parameters shared by Gmsh and GetDP: model dimension and waveguide
+// cross-section dimensions.
+
 DefineConstant[
   dim = {2, Choices{2="2D", 3="3D"},
     Name "Parameters/0Model dimension"}

@@ -317,7 +317,7 @@ FunctionSpace {
       }
     }
   Else
-    // In 3D, the magnetic vector potential is a true 1-form (Form1), as in
+    // In 3D, the magnetic vector potential is a true 1-form ("Form1"), as in
     // tutorial 5, discretized with Whitney edge basis functions "BF_Edge"
     // associated with the edges of the mesh:
     { Name Hcurl_a_Mag_3D; Type Form1;
@@ -369,10 +369,10 @@ FunctionSpace {
     //
     // where the first sum runs over interior nodes and the second over
     // electrode surfaces. Note that we could alternatively have defined the
-    // scalar potential "v" directly (as a Form0 with "BF_Node" and
+    // scalar potential "v" directly (as a "Form0" with "BF_Node" and
     // "BF_GroupOfNodes"), but then the Formulation would need to be written
-    // differently in 2D and 3D. By defining "grad v" directly as a Form1, the
-    // same Formulation can be shared between 2D and 3D (see below).
+    // differently in 2D and 3D. By defining "grad v" directly as a "Form1",
+    // the same Formulation can be shared between 2D and 3D (see below).
     { Name Hcurl_u_Mag_3D; Type Form1;
       BasisFunction {
         { Name sn; NameOfCoef un; Function BF_GradNode;

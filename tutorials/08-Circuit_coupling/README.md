@@ -1,6 +1,6 @@
 # GetDP tutorial 8: Circuit coupling in 2D and 3D
 
-Two conductors modeled with finite elements are connected in parallel and driven
+Two conductors modelled with finite elements are connected in parallel and driven
 by a voltage source through a series resistance and inductance. The lumped
 circuit elements and the finite element conductors are coupled through a network
 constraint that enforces Kirchhoff's laws via a global equation. In 3D, the

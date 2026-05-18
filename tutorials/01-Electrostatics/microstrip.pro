@@ -1,10 +1,9 @@
-// We consider the calculation of the electric field given a static distribution
-// of electric potential. This corresponds to an electrostatic physical model,
-// obtained by combining the time-invariant Faraday equation ("curl e = 0", with
-// "e" the electric field) with Gauss' law ("div d = rho", with "d" the
-// displacement field and "rho" the charge density) and the dielectric
-// constitutive law ("d = epsilon e", with "epsilon" the dielectric
-// permittivity).
+// This tutorial computes the electric field around a microstrip line on top of
+// a grounded dielectric substrate. The problem is electrostatic, obtained by
+// combining the time-invariant Faraday equation ("curl e = 0", with "e" the
+// electric field) with Gauss' law ("div d = rho", with "d" the displacement
+// field and "rho" the charge density) and the dielectric constitutive law
+// ("d = epsilon e", with "epsilon" the dielectric permittivity).
 //
 // Since "curl e = 0", "e" can be derived from a scalar electric potential "v",
 // such that "e = -grad v". Plugging this potential in Gauss' law and using the
@@ -91,7 +90,10 @@ FunctionSpace {
   // The function space in which we pick the electric scalar potential "v"
   // solution is defined by
   //  - a domain of definition (the "Support": "Dom_H1_v_Ele")
-  //  - a type ("Form0", meaning "scalar field")
+  //  - a type ("Form0", meaning "scalar field"; this corresponds to the
+  //    function space "H1" of scalar fields with square-integrable gradient -
+  //    see tutorial 5 for the full de Rham complex "H1", "H(curl)", "H(div)"
+  //    and "L2")
   //  - a set of basis functions ("BF_Node" for scalar nodal basis functions,
   //    i.e. isoparametric Lagrange elements)
   //  - a set of entities to which the basis functions are associated ("Entity":

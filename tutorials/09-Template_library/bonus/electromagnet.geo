@@ -1,4 +1,5 @@
-// Same geometry as in tutorial 4:
+// Gmsh script describing the geometry of the electromagnet (same geometry as
+// in tutorial 4).
 
 Include "electromagnet_common.pro";
 

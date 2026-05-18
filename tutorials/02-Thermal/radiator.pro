@@ -1,4 +1,4 @@
-// This model computes the temperature profile in a radiator with fins.
+// This tutorial computes the temperature profile in a radiator with fins.
 // Starting at an initial temperature "T = T0", a heat flux "qn = qn0" is
 // imposed through the bottom surface of the radiator base plate. Convection on
 // the fins evacuates the heat based on Newton's law of cooling "qn = h (T -
