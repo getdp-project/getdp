@@ -226,7 +226,7 @@ in GetDP, please file an issue on
 @url{https://gitlab.onelab.info/getdp/getdp/issues}. Provide as precise a
 description of the problem as you can, including sample input files that
 produce the bug. Don't forget to mention both the version of GetDP and
-your operation system.
+your operating system.
 
 See @ref{Frequently asked questions}, and the
 @url{https://gitlab.onelab.info/getdp/getdp/issues,bug tracking system}
@@ -428,8 +428,8 @@ Multiplies the coordinates of all the nodes in the mesh by @var{value}.
 @item -gmshread
 @var{filename} @dots{}
 
-Read gmsh data files (same as GmshRead in @code{Resolution}
-operations). Allows to use such datasets outside resolutions (e.g. in
+Reads Gmsh data files (same as GmshRead in @code{Resolution}
+operations). Lets such datasets be used outside resolutions (e.g. in
 pre-processing).
 
 @item -split
@@ -522,17 +522,17 @@ counter indicating the progress of the current computation (in %).
 @item -onelab
 @var{name} <@var{address}>
 
-Communicates with OneLab (file or server address)
+Communicates with ONELAB (file or server address).
 
 @item -setnumber
 @var{name} @var{value}
 
-Sets constant number @var{name} to @var{value}
+Sets constant number @var{name} to @var{value}.
 
 @item -setstring
 @var{name} @var{value}
 
-Sets constant string  @var{name} to @var{value}
+Sets constant string @var{name} to @var{value}.
 
 @item -info
 
@@ -588,7 +588,7 @@ is replaced by @code{@var{rule} <,@dots{}>}.
 The @var{etc} symbol replaces nonlisted rules.
 @end enumerate
 
-An syntax index is provided at the end of this reference manual
+A syntax index is provided at the end of this reference manual
 (@pxref{Syntax index}).
 
 @menu
@@ -664,13 +664,13 @@ discretized field quantities (@var{quantity}), arguments
 (@var{operator-unary}, @var{operator-binary},
 @var{operator-ternary-left}, @var{operator-ternary-right}) and built-in
 or user-defined functions (@var{built-in-function-id},
-@var{function-id}). The last seven cases in this definition permit to
+@var{function-id}). The last six cases in this definition are used to
 cast an expression as real or complex, get the time derivative or
 evaluate an expression at an anterior time step, retrieve the
 interpolation order of a discretized quantity, evaluate the trace of an
 expression, and print the value of an expression for debugging purposes.
 
-List of expressions are defined as:
+A list of expressions is defined as:
 
 @example
 @var{expression-list}:
@@ -764,13 +764,13 @@ string. @code{StringToName} creates a name from the provided
 string. @code{Exists} checks for the existence of a constant or a
 function. @code{FileExists} checks for the existence of a
 file. @code{GroupExists} checks for the existence of a
-group. @code{GetForced} gets the value of a constant (zero if does not
-exist).  @code{NbrRegions} counts the numbers of elementary regions in a
-group. @code{GetNumber} allows to get the value of a ONELAB number
+group. @code{GetForced} gets the value of a constant (zero if it does not
+exist).  @code{NbrRegions} counts the number of elementary regions in a
+group. @code{GetNumber} retrieves the value of a ONELAB number
 variable (the optional second argument specifies the default value
 returned if the variable does not exist).
 
-List of constant expressions are defined as:
+A list of constant expressions is defined as:
 
 @example
 @var{expression-cst-list}:
@@ -808,26 +808,25 @@ List of constant expressions are defined as:
   ReadTable [ @var{expression-char}, @var{expression-char} ]
 @end example
 
-The second case in this last definition permits to create a list
-containing the range of numbers comprised between the two
-@var{expression-cst}, with a unit incrementation step. The third case
-also permits to create a list containing the range of numbers comprised
-between the two @var{expression-cst}, but with a positive or negative
-incrementation step equal to the third @var{expression-cst}. The fourth
-and fifth cases permit to reference constant identifiers
-(@var{constant-id}s) of lists of constants and constant identifiers of
-sublists of constants (see below for the definition of constant
-identifiers) . The sixth case is a synonym for the fourth. The seventh
-case permits to create alternate lists: the arguments of @code{ListAlt}
+The second case in this last definition creates a list containing the
+range of numbers comprised between the two @var{expression-cst}, with a
+unit incrementation step. The third case also creates a list containing
+the range of numbers comprised between the two @var{expression-cst}, but
+with a positive or negative incrementation step equal to the third
+@var{expression-cst}. The fourth and fifth cases reference constant
+identifiers (@var{constant-id}s) of lists of constants and constant
+identifiers of sublists of constants (see below for the definition of
+constant identifiers). The sixth case is a synonym for the fourth. The
+seventh case creates alternate lists: the arguments of @code{ListAlt}
 must be @var{constant-id}s of lists of constants of the same
 dimension. The result is an alternate list of these constants: first
 constant of argument 1, first constant of argument 2, second constant of
 argument 1, etc. These kinds of lists of constants are for example often
 used for function parameters (@pxref{Functions}). The next two cases
-permit to create linear and logarithmic lists of numbers,
-respectively. The remaining cases permit to apply arithmetic operators
-item-wise in lists.  @code{ListFromFile} reads a list of numbers from a
-file.  @code{ListFromServer} attemps to get a list of numbers from the
+create linear and logarithmic lists of numbers, respectively. The
+remaining cases apply arithmetic operators item-wise in lists.
+@code{ListFromFile} reads a list of numbers from a file.
+@code{ListFromServer} attempts to get a list of numbers from the
 ONELAB variable @var{expression-char}. @code{ReadTable} reads tabular
 data in the same format as @code{ListFromFile}, and in addition stores
 in the run-time table named after the second @var{expression-char}.
@@ -891,7 +890,7 @@ When @code{~@{@var{expression-cst}@}} is appended to a string
 @var{string}, the result is a new string formed by the concatenation of
 @var{string}, @code{_} (an underscore) and the value of the
 @var{expression-cst}. This is most useful in loops (@pxref{Macros loops
-and conditionals}), where it permits to define unique strings
+and conditionals}), as a convenient way to define unique strings
 automatically. For example,
 @example
 For i In @{1:3@}
@@ -911,8 +910,8 @@ defined. This kind of explicit default definition mechanism is most
 useful in general problem definition structures making use of a large
 number of generic constants, functions or groups. When exploiting only a
 part of a complex problem definition structure, the default definition
-mechanism allows to define the quantities of interest only, the others
-being assigned a default value (that will not be used during the
+mechanism makes it possible to define only the quantities of interest,
+the others being assigned a default value (that will not be used during the
 processing but that avoids the error messages produced when references
 to undefined quantities are made).
 
@@ -921,10 +920,10 @@ the ONELAB server. See
 @uref{https://gitlab.onelab.info/doc/models/wikis/ONELAB-syntax-for-Gmsh-and-GetDP}
 for more information.
 @item
-@code{DefineNumber} and @code{DefineString} allow to define a ONELAB
+@code{DefineNumber} and @code{DefineString} define a ONELAB
 parameter. In this case the affectation always takes place.
-@code{SetNumber} and @code{SetString} allow the direct setting of ONELAB
-parameters without defining local variables.
+@code{SetNumber} and @code{SetString} set ONELAB
+parameters directly without defining local variables.
 @end enumerate
 
 Character expressions are defined as follows:
@@ -949,7 +948,7 @@ Character expressions are defined as follows:
   OnelabAction
 @end example
 
-@noindent @code{StrCat} and @code{Str} permit to concatenate
+@noindent @code{StrCat} and @code{Str} concatenate
 character expressions (@code{Str} adds a newline character after each
 string except the last) when creating a string. @code{Str} is also used
 to create string lists (when @var{string-id} is followed by
@@ -964,16 +963,16 @@ end of the string (whichever comes first; or always if the second
 @code{sprintf} C function (where @var{expression-char} is a format
 string that can contain floating point formatting characters: @code{%e},
 @code{%g}, etc.).  @code{NameToString} converts a variable name into a
-string.  @code{GetString} allows to get the value of a ONELAB string
+string.  @code{GetString} retrieves the value of a ONELAB string
 variable (the optional second argument specifies the default value
-returned if the variable does not exist.)  @code{Date} permits to access
+returned if the variable does not exist).  @code{Date} returns
 the current date. @code{CurrentDirectory} and @code{CurrentDir} return
 the directory of the @code{.pro} file. @code{AbsolutePath} returns the
 absolute path of a file. @code{DirName} returns the directory of a
 file. @code{OnelabAction} returns the current ONELAB action
 (e.g. @code{check} or @code{compute}).
 
-List of character expressions are defined as:
+A list of character expressions is defined as:
 
 @example
 @var{expression-char-list}:
@@ -1036,7 +1035,7 @@ Logical not.
 @var{operator-binary}:
 @table @code
 @item ^
-Exponentiation. The evaluation of the both arguments must result in a scalar
+Exponentiation. The evaluation of both arguments must result in a scalar
 value.
 @item *
 Multiplication or scalar product, depending on the type of the arguments.
@@ -1057,12 +1056,12 @@ Inequality.
 @item >
 Greater. The evaluation of both arguments must result in scalar values.
 @item >=
-Greater or equality. The evaluation of both arguments must result in
+Greater than or equal to. The evaluation of both arguments must result in
 scalar values.
 @item <
 Less. The evaluation of both arguments must result in scalar values.
 @item <=
-Less or equality. The evaluation of both arguments must result in scalar values.
+Less than or equal to. The evaluation of both arguments must result in scalar values.
 @item &&
 Logical `and'. The evaluation of both arguments must result in scalar
 values.
@@ -1469,7 +1468,7 @@ $$ \left[{{\partial u_x} \over {\partial x}}, {{\partial u_y} \over
 @ifnottex
 [du_x/dx, du_y/dy, du_z/dz]
 @end ifnottex
-Note that in this case specifying explicitely @code{dFunction} is not
+Note that in this case specifying explicitly @code{dFunction} is not
 necessary, as @code{BF_NodeX_D1}, @code{BF_NodeY_D1} and
 @code{BF_NodeZ_D1} are assigned by default as the ``@code{D1}
 derivatives'' of @code{BF_NodeX}, @code{BF_NodeY} and @code{BF_NodeZ}.
@@ -1511,7 +1510,7 @@ u_z} \over {\partial x}}\right] $$
 @ifnottex
 [du_y/dx + du_x/dy, du_z/dy + du_y/dz, du_x/dz + du_z/dx]
 @end ifnottex
-Note that in this case specifying explicitely @code{dFunction} is not
+Note that in this case specifying explicitly @code{dFunction} is not
 necessary, as @code{BF_NodeX_D2}, @code{BF_NodeY_D2} and
 @code{BF_NodeZ_D2} are assigned by default as the ``@code{D2}
 derivatives'' of @code{BF_NodeX}, @code{BF_NodeY} and @code{BF_NodeZ}.
@@ -1543,7 +1542,7 @@ While the operators @code{Grad}, @code{Curl} and @code{Div} can be applied
 to 0, 1 and 2-forms respectively, the exterior derivative operator @code{d}
 is usually preferred with such fields.
 @item
-The second case permits to evaluate a discretized quantity at a certain
+The second case is used to evaluate a discretized quantity at a certain
 position X, Y, Z (when @var{expression-cst-list} contains three items) or at
 a specific time, N time steps ago (when @var{expression-cst-list} contains a
 single item).
@@ -2024,7 +2023,7 @@ Square root of the sum of the squares of its arguments.
 @item Norm
 @code{[@var{expression}]}
 
-Absolute value if @var{expression} is a scalar; euclidian norm if @var{expression}
+Absolute value if @var{expression} is a scalar; Euclidean norm if @var{expression}
 is a vector.
 
 @item SquNorm
@@ -2100,7 +2099,7 @@ Not documented yet.
 @item Complex
 @code{[@var{expression-list}]}
 
-Creates a (multi-harmonic) complex expression from an number of
+Creates a (multi-harmonic) complex expression from a number of
 real-valued expressions. The number of expressions in @var{expression-list}
 must be even.
 
@@ -2127,7 +2126,7 @@ Computes the conjugate of a complex-valued expression.
 @item Cart2Pol
 @code{[@var{expression}]}
 
-Converts the cartesian form (reale, imaginary) of a complex-valued expression
+Converts the cartesian form (real, imaginary) of a complex-valued expression
 into polar form (amplitude, phase [radians]).
 
 @item Vector
@@ -2239,13 +2238,15 @@ Gets the ZZ component of a tensor.
 @item Cart2Sph
 @code{[@var{expression}]}
 
-Gets the tensor for transformation of vector from cartesian to spherical coordinates.
+Gets the tensor for transformation of vector from cartesian to spherical
+coordinates.
 
 @item Cart2Cyl
 @code{[@var{expression}]}
 
-Gets the tensor for transformation of vector from cartesian to cylindric coordinates.
-E.g. to convert a vector with (x,y,z)-components to one with (radial, tangential, axial)-components:
+Gets the tensor for transformation of vector from cartesian to
+cylindrical coordinates.  E.g. to convert a vector with
+(x,y,z)-components to one with (radial, tangential, axial)-components:
 Cart2Cyl[XYZ[]] * vector
 
 @item UnitVectorX
@@ -2430,22 +2431,26 @@ Gradient of @code{Helmholtz} relative to the destination point (@code{$X},
 @item X
 @code{[]}
 
-Gets the X coordinate.
+Returns the X coordinate of the current (quadrature, pre- or
+post-processing evaluation) point.
 
 @item Y
 @code{[]}
 
-Gets the Y coordinate.
+Returns the Y coordinate of the current (quadrature, pre- or
+post-processing evaluation) point.
 
 @item Z
 @code{[]}
 
-Gets the Z coordinate.
+Returns the Z coordinate of the current (quadrature, pre- or
+post-processing evaluation) point.
 
 @item XYZ
 @code{[]}
 
-Gets X, Y and Z in a vector.
+Returns a vector containing the X, Y and Z coordinates of the current
+(quadrature, pre- or post-processing evaluation) point.
 
 @c todo:
 
@@ -2458,40 +2463,41 @@ Gets X, Y and Z in a vector.
 @item Normal
 @code{[]}
 
-Computes the normal to the element.
+Returns the normal to the current element.
 
 @item NormalSource
 @code{[]}
 
-Computes the normal to the source element (only valid in a quantity of
-Integral type).
+Returns the normal to the current source element (only valid in a
+quantity of @code{Integral} type).
 
 @item Tangent
 @code{[]}
 
-Computes the tangent to the element (only valid for line elements).
+Returns the tangent to the current element (only valid for line
+elements).
 
 @item TangentSource
 @code{[]}
 
-Computes the tangent to the source element (only valid in a quantity of
-Integral type and only for line elements).
+Returns the tangent to the current source element (only valid in a
+quantity of @code{Integral} type, for line elements).
 
 @item ElementVol
 @code{[]}
 
-Computes the element's volume.
+Returns the volume of the current element.
 
 @item SurfaceArea
 @code{[]@{@var{expression-cst-list}@}}
 
-Computes the area of the physical surfaces in @var{expression-cst-list}
-or of the actual surface if @var{expression-cst-list} is empty.
+Returns the area of the region group of tags @var{expression-cst-list}
+or of the current region group if @var{expression-cst-list} is empty.
 
 @item GetVolume
 @code{[]}
 
-Computes the volume of the actual physical group.
+Returns the volume of the current region group.
 
 @item CompElementNum
 @code{[]}
@@ -2502,8 +2508,9 @@ identical.
 @item GetNumElements
 @code{[]@{@var{expression-cst-list}@}}
 
-Counts the elements of physical numbers in @var{expression-cst-list}
-or of the actual region if @var{expression-cst-list} is empty.
+Returns the number of elements in the region groups of tags
+@var{expression-cst-list} or of the current region group if
+@var{expression-cst-list} is empty.
 
 @item ElementNum
 @code{[]}
@@ -2518,9 +2525,9 @@ Returns the index of the current quadrature point.
 @item Distance
 @code{[@var{expression}]@{@var{expression-cst}@}}
 
-Evaluate the distance between the point (whose x, y, z coordinates are
+Returns the distance between the point (whose x, y, z coordinates are
 given as a vector argument) and a vector valued view, interpreted as a
-displacement field (i.e. compute the minimal distance between the point
+displacement field (i.e. returns the minimal distance between the point
 and the deformed mesh in the view).
 
 @end ftable
@@ -2542,7 +2549,7 @@ and the deformed mesh in the view).
 @code{[@var{expression}]}
 
 Prints the value of @var{expression} when evaluated. (@code{MPI_Printf}
-can be use instead, to print the message for all MPI ranks.)
+can be used instead, to print the message for all MPI ranks.)
 
 @item AtIndex
 @code{[@var{expression}]@{@var{expression-cst-list}@}}
@@ -2706,7 +2713,7 @@ Functions for Energy-based hysteresis model.
 @item DthetaAcousticFieldHardCylinder
 @item RCSHardCylinder
 
-Exact solutions for acoustc scattering problems.
+Exact solutions for acoustic scattering problems.
 
 @item OSRC_C0
 @item OSRC_R0
@@ -2742,7 +2749,7 @@ Vector spherical harmonics.
 @item DyadGreenHom
 @item CurlDyadGreenHom
 
-Dyadic Green's Function for homogeneous lossless media)
+Dyadic Green's Function for homogeneous lossless media.
 
 @item BiotSavart
 @item Pocklington
@@ -2847,7 +2854,7 @@ Constraint @{
 @enumerate
 @item
 The optional @code{Append < @var{expression-cst} >} (when the optional level
-@var{expression-cst} is strictly positive) permits to append an existing
+@var{expression-cst} is strictly positive) is used to append an existing
 @code{Constraint} of the same @code{Name} with additional @code{Case}s.
 @item
 The constraint type @var{constraint-type} defined outside the @code{Case}
@@ -2897,10 +2904,10 @@ To describe the node connections of branches in a lumped element circuit.
 @item Link
 To define links between degrees of freedom in the constrained region with
 degrees of freedom in a ``reference'' region, with some coefficient. For
-example, to link the degrees of freedom in the contrained region @code{Left}
+example, to link the degrees of freedom in the constrained region @code{Left}
 with the degrees of freedom in the reference region @code{Right}, located Pi
 units to the right of the region @code{Left} along the X-axis, with the
-coeficient @code{-1}, one could write:
+coefficient @code{-1}, one could write:
 
 @example
 @{ Name periodic;
@@ -2918,12 +2925,12 @@ geometrical elements in the region @code{Left} by Pi units along the
 X-axis, so that they correspond with the elements in the reference
 region @code{Right}. For this mapping to work, the meshes of @code{Left}
 and @code{Right} must be identical. (The optional @code{FunctionRef}
-function allows to transform the reference region, useful e.g. to avoid
+function transforms the reference region, useful e.g. to avoid
 generating overlapping meshes for rotational links.)
 
 @item LinkCplx
 To define complex-valued links between degrees of freedom. The syntax is the
-same as for constraints of type @code{Link}, but @code{Coeficient} can be
+same as for constraints of type @code{Link}, but @code{Coefficient} can be
 complex.
 
 @end ftable
@@ -2988,8 +2995,8 @@ functions for evaluation, a support of definition and a set of associated
 supporting geometrical entities (e.g., nodes, edges, facets, volumes,
 groups of nodes, edges incident to a node, etc.). The freedom in defining
 various kinds of basis functions associated with different geometrical
-entities to interpolate a field permits to build made-to-measure function
-spaces adapted to a wide variety of field approximations.
+entities to interpolate a field makes it possible to build made-to-measure
+function spaces adapted to a wide variety of field approximations.
 
 The syntax for the definition of function spaces is:
 
@@ -3062,7 +3069,7 @@ FunctionSpace @{
 @item
 The optional @code{Append < @var{expression-cst} >} (when the optional level
 @var{expression-cst} is strictly positive; its omission fixes it to a top
-value) permits to append an existing
+value) is used to append an existing
 @code{FunctionSpace} of the same @code{Name} with additional
 @code{BasisFunction}s, @code{SubSpace}s, @code{GlobalQuantity}'s and
 @code{Constraint}s,
@@ -3076,7 +3083,7 @@ it is replaced by @code{All} for more efficient treatments during the
 computation process (this prevents the construction and the analysis of a list
 of geometrical entities).
 @item
-The same @code{Name} for several @code{BasisFunction} fields permits to
+The same @code{Name} for several @code{BasisFunction} fields is used to
 define piecewise basis functions; separate @code{NameOfCoef}s must be
 defined for those fields.
 @item
@@ -3319,7 +3326,7 @@ Jacobian @{
 @enumerate
 @item
 The optional @code{Append < @var{expression-cst} >} (when the optional level
-@var{expression-cst} is strictly positive) permits to append an existing
+@var{expression-cst} is strictly positive) is used to append an existing
 @code{Jacobian} of the same @code{Name} with additional @code{Case}s.
 @item
 The default case of a @code{Jacobian} object is defined by @code{Region All}
@@ -3496,7 +3503,7 @@ Integration @{
 @enumerate
 @item
 The optional @code{Append < @var{expression-cst} >} (when the optional level
-@var{expression-cst} is strictly positive) permits to append an existing
+@var{expression-cst} is strictly positive) is used to append an existing
 @code{Integration} of the same @code{Name} with additional @code{Case}s.
 @end enumerate
 
@@ -3678,7 +3685,7 @@ Formulation @{
 @enumerate
 @item
 The optional @code{Append < @var{expression-cst} >} (when the optional level
-@var{expression-cst} is strictly positive) permits to append an existing
+@var{expression-cst} is strictly positive) is used to append an existing
 @code{Formulation} of the same @code{Name} with additional
 @code{Quantity}'s and @code{Equation}s.
 @item
@@ -3887,7 +3894,7 @@ Resolution @{
 @enumerate
 @item
 The optional @code{Append < @var{expression-cst} >} (when the optional level
-@var{expression-cst} is strictly positive) permits to append an existing
+@var{expression-cst} is strictly positive) is used to append an existing
 @code{Resolution} of the same @code{Name} with additional
 @code{System}s and @code{Operation}s.
 @item
@@ -3895,13 +3902,13 @@ The default type for a system of equations is @code{Real}. A frequency
 domain analysis is defined through the definition of one or several
 frequencies (@code{Frequency @var{expression-cst-list-item} | Frequency @{
 @var{expression-cst-list} @}}). Complex systems of equations with no
-predefined list of frequencies (e.g., in modal analyses) can be explicitely
+predefined list of frequencies (e.g., in modal analyses) can be explicitly
 defined with @code{Type Complex}.
 @item
-@code{NameOfMesh} permits to explicitely specify the mesh to be used for the
+@code{NameOfMesh} permits to explicitly specify the mesh to be used for the
 construction of the system of equations.
 @item
-@code{Solver} permits to explicitely specify the name of the solver
+@code{Solver} permits to explicitly specify the name of the solver
 parameter file to use for the solving of the system of equations. This is
 ony valid if GetDP was compiled against the default solver library (it is
 the case if you downloaded a pre-compiled copy of GetDP from the internet).
@@ -3934,7 +3941,7 @@ Solve the system of equations @var{system-id}.
 @item SolveAgain
 @code{[@var{system-id}]}
 
-Save as @code{Solve}, but reuses the preconditionner when called
+Same as @code{Solve}, but reuses the preconditioner when called
 multiple times.
 
 @item SetGlobalSolverOptions
@@ -4010,7 +4017,7 @@ Update the system of equations @var{system-id} (built from sub-matrices
 generated separately with @code{GenerateSeparate}) with
 @var{expression}. This assumes that the problem is linear, that the
 matrix coefficients are independent of time, and that the
-right-hand-side of the linear system can simply be multiplied by
+right-hand side of the linear system can simply be multiplied by
 @var{expression} at each step.
 
 @item UpdateConstraint
@@ -4028,7 +4035,7 @@ run-time variable $@var{variable-id}.
 @item GetNormSolution | GetNormRightHandSide | GetNormResidual | GetNormIncrement
 @code{[@var{system-id}, $@var{variable-id} <, @var{norm-type} >]}
 
-Compute the norm of the solution (resp. right-hand-side, residual or
+Compute the norm of the solution (resp. right-hand side, residual or
 increment) and store its norm in the run-time variable
 $@var{variable-id}. Possible choices for @var{norm-type}: @code{L2Norm}
 (default) and @code{LinfNorm}.
@@ -4041,13 +4048,13 @@ Swap the solution @code{x} and residual @code{r} vectors.
 @item SwapSolutionAndRightHandSide
 @code{[@var{system-id}]}
 
-Swap the solution @code{x} and right-hand-side @code{b} vectors.
+Swap the solution @code{x} and right-hand side @code{b} vectors.
 
 @item InitSolution
 @code{[@var{system-id}]}
 
-Creates a new solution vector, adds it to the solution vector list for
-@var{system-id}, and initializes the solution. The values in the vector
+Create a new solution vector, add it to the solution vector list for
+@var{system-id}, and initialize the solution. The values in the vector
 are initialized to the values given in a @code{Constraint} of
 @code{Init} type (if two values are given in @code{Init}, the second
 value is used). If no constraint is provided, the values are initialized
@@ -4064,8 +4071,8 @@ Same as @code{InitSolution}, but uses the first value given in the
 @item CreateSolution
 @code{[@var{system-id}]}
 
-Creates a new solution vector, adds it to the solution vector list for
-@var{system-id}, and initializes the solution to zero.
+Create a new solution vector, add it to the solution vector list for
+@var{system-id}, and initialize the solution to zero.
 
 @item CreateSolution
 @code{[@var{system-id}, @var{expression-cst}]}
@@ -4119,7 +4126,7 @@ ONELAB server as well.
 @code{[@var{char-expression} | @var{constant-id}(), @var{system-id}]}
 
 Copy the vector named @var{char-expression} or the list named
-@var{constant-id} into the current right-hand-side @code{b}.
+@var{constant-id} into the current right-hand side @code{b}.
 
 @item CopyResidual
 @code{[@var{system-id}, @var{char-expression} | @var{constant-id}() <, SendToServer @var{char-expression} > ]}
@@ -4150,8 +4157,8 @@ one solution at once, e.g., @code{EigenSolve} or @code{FourierTransform}.
 @item RemoveLastSolution
 @code{[@var{system-id}]}
 
-Removes the last solution (i.e. associated with the last time step)
-associated with system @var{system-id}.
+Remove the last solution (i.e. associated with the last time step) of
+system @var{system-id}.
 
 @item TransferSolution
 @code{[@var{system-id}]}
@@ -4218,22 +4225,22 @@ While @var{expression} is true (nonzero), perform the operations in
 @item Break
 @code{[]}
 
-Aborts an iterative loop, a time loop or a While loop.
+Abort an iterative loop, a time loop or a While loop.
 
 @item Exit
 @code{[]}
 
-Exit, brutally.
+Exit immediately, without cleanup.
 
 @item Sleep
 @code{[@var{expression}]}
 
-Sleeps for @var{expression} seconds;
+Sleep for @var{expression} seconds.
 
 @item SetExtrapolationOrder
 @code{[@var{expression-cst}]}
 
-Chooses the extrapolation order to compute the initialization of the
+Choose the extrapolation order to compute the initialization of the
 solution vector in time loops. Default is 0.
 
 @item Print
@@ -4258,10 +4265,10 @@ Eigenvalue/eigenvector computation using Arpack or SLEPc. The parameters
 are: the system (which has to be generated with
 @code{GenerateSeparate[]}), the number of eigenvalues/eigenvectors to
 compute and the real and imaginary spectral shift (around which to look
-for eigenvalues). The last optional argument allows to filter which
+for eigenvalues). The last optional argument lets you filter which
 eigenvalue/eigenvector pairs will be saved. For example,
 @code{($EigenvalueReal > 0)} would only keep pairs corresponding to
-eigenvalues with a striclty positive real part.
+eigenvalues with a strictly positive real part.
 
 @item Lanczos
 @code{[@var{system-id}, @var{expression-cst}, @{ @var{expression-cst-list} @} , @var{expression-cst}]}
@@ -4277,7 +4284,7 @@ routine is deprecated: use @code{EigenSolve} instead.
 
 On-the-fly (incremental) computation of a Fourier transform. The
 parameters are: the (time domain) system, the destination system in
-which the result of the Fourier tranform is to be saved (it should be
+which the result of the Fourier transform is to be saved (it should be
 declared with @code{Type Complex}) and the list of frequencies to
 consider. The computation is an approximation that assumes that the time
 step is constant; it is not an actual Discrete Fourier Transform (the
@@ -4300,7 +4307,7 @@ in weak formulations (time-dependent functions written in a
 for implicit Euler, as the expression in the @code{Integral} term is
 evaluated at the current time step. For other schemes, the source term
 should be written explicitly, by splitting it in two (@code{theta f_n+1
-+ (1-theta) f_n}), making use of the @code{AtAnteriorTimeStep[]} for the
++ (1-theta) f_n}), making use of @code{AtAnteriorTimeStep[]} for the
 second part, and specifying @code{NeverDt} in the @code{Integral} term.
 
 @item TimeLoopNewmark
@@ -4322,7 +4329,7 @@ PostOperation @{ @{@var{post-operation-id},@var{expression-cst},@var{expression-
 @code{@{ @var{resolution-op} @}}@*
 @code{@{ @var{resolution-op} @}}
 
-Time loop with variable time steps. The step size is adjusted according the local
+Time loop with variable time steps. The step size is adjusted according to the local
 truncation error (LTE) of the specified Systems/PostOperations via a predictor-corrector
 method.@*
 The parameters are: start time, end time, initial time step, min. time step,
@@ -4360,8 +4367,8 @@ PostOperation @{ @{@var{post-operation-id},@var{expression-cst},@var{expression-
 @var{norm-type}@} ... @} ]}@*
 @{ @var{resolution-op} @}
 
-Similar to @code{IterativeLoop[]} but allows to specify in detail the
-tolerances and the type of norm to be calculated for convergence assessment.@*
+Similar to @code{IterativeLoop[]} but lets the tolerances and the type of
+norm used for convergence assessment be specified in detail.@*
 The parameters are: the maximum number of iterations (if no convergence),
 the relaxation factor (multiplies the iterative correction @var{dx}).
 The convergence assessment can be based on all DOFs of a system and/or on a
@@ -4425,17 +4432,17 @@ variable @code{$}@var{string}.
 @item GmshWrite
 @code{[@var{expression-char}, @var{expression-cst}]}
 
-Writes the a Gmsh field to disk. (The format is guessed from the file extension.)
+Write a Gmsh field to disk. (The format is guessed from the file extension.)
 
 @item GmshClearAll
 @code{[]}
 
-Clears all Gmsh data (loaded with @code{GmshRead} and friends).
+Clear all Gmsh data (loaded with @code{GmshRead} and friends).
 
 @item ReadTable
 @code{[@var{expression-char}, @var{expression-char} <, @var{expression} >]}
 
-Reads tabular data in the same format as @code{ListFromFile}, and stores
+Read tabular data in the same format as @code{ListFromFile}, and store
 in the run-time table named after the second @var{expression-char}. If
 @var{expression} is provided, the filename given in the first
 @var{expression-char} is used as a standard C-format string to create
@@ -4459,12 +4466,12 @@ Create a directory.
 @item MPI_SetCommSelf
 @code{[]}
 
-Changes MPI communicator to self.
+Change MPI communicator to self.
 
 @item MPI_SetCommWorld
 @code{[]}
 
-Changes MPI communicator to world.
+Change MPI communicator to world.
 
 @item MPI_Barrier
 @code{[]}
@@ -4668,7 +4675,7 @@ PostProcessing @{
 @item
 The optional @code{Append < @var{expression-cst} >} (when the optional level
 @var{expression-cst} is strictly positive; its omission fixes it to a top
-value) permits to append an existing
+value) is used to append an existing
 @code{PostProcessing} of the same @code{Name} with additional
 @code{Value}s,
 or an existing @code{Quantity} of the same @code{Name} with additional
@@ -4801,7 +4808,7 @@ PostOperation < (Append < @var{expression-cst} >) > @var{post-operation-id} Usin
 @enumerate
 @item
 The optional @code{Append < @var{expression-cst} >} (when the optional level
-@var{expression-cst} is strictly positive) permits to append an existing
+@var{expression-cst} is strictly positive) is used to append an existing
 @code{PostOperation} of the same @code{Name} with additional
 @code{Operation}s.
 @item
@@ -4927,7 +4934,7 @@ exactly three elements (the coordinates of the points).
 @item File
 @code{@var{expression-char}}
 
-Outputs the result in a file named @var{expression-char}.
+Output the result in a file named @var{expression-char}.
 
 @item File
 @code{> @var{expression-char}}
@@ -4939,20 +4946,20 @@ are concatenated in the file @var{expression-char}.
 @item File
 @code{>> @var{expression-char}}
 
-Appends the result to a file named @var{expression-char}.
+Append the result to a file named @var{expression-char}.
 
 @item AppendToExistingFile
 @var{expression-cst}
 
-Appends the result to the file specified with @code{File}. (Same
+Append the result to the file specified with @code{File}. (Same
 behavior as @code{>} if @var{expression-cst} = 1; same behavior as
 @code{>>} if @var{expression-cst} = 2.)
 
 @item Name | Label
 @code{@var{expression-char}}
 
-For formats that support it, sets the label of the output field to
-@var{expression-char} (also used with with @code{SendToServer} to force
+For formats that support it, set the label of the output field to
+@var{expression-char} (also used with @code{SendToServer} to force
 the label).
 
 @item Depth
@@ -4966,47 +4973,47 @@ elements.
 @item AtGaussPoints
 @var{expression-cst}
 
-Print result at the specified number of Gauss points.
+Print the result at the specified number of Gauss points.
 
 @item Skin
-Computes the result on the boundary of the region.
+Compute the result on the boundary of the region.
 
 @item Smoothing
 < @var{expression-cst} >
 
-Smoothes the solution at the nodes.
+Smooth the solution at the nodes.
 
 @item HarmonicToTime
 @var{expression-cst}
 
-Converts a harmonic solution into a time-dependent one (with @var{expression-cst}
+Convert a harmonic solution into a time-dependent one (with @var{expression-cst}
 steps).
 
 @item Dimension
 @var{expression-cst}
 
-Forces the dimension of the elements to consider in an element
-search. Specifies the problem dimension during an adaptation (h- or
+Force the dimension of the elements to consider in an element
+search. Specify the problem dimension during an adaptation (h- or
 p-refinement).
 
 @item TimeStep
 @code{@var{expression-cst-list-item} | @{ @var{expression-cst-list} @}}
 
-Outputs results for the specified time steps only.
+Output results for the specified time steps only.
 
 @item TimeValue
 @code{@var{expression-cst-list-item} | @{ @var{expression-cst-list} @}}
 
-Outputs results for the specified time value(s) only.
+Output results for the specified time value(s) only.
 
 @item TimeImagValue
 @code{@var{expression-cst-list-item} | @{ @var{expression-cst-list} @}}
 
-Outputs results for the specified imaginary time value(s) only.
+Output results for the specified imaginary time value(s) only.
 
 @item LastTimeStepOnly
 
-Outputs results for the last time step only (useful when calling a
+Output results for the last time step only (useful when calling a
 @code{PostOperation} directly in a @code{Resolution}, for example).
 
 @item AppendExpressionToFileName
@@ -5023,7 +5030,7 @@ C-style format string for printing the @var{expression} provided in
 @item AppendTimeStepToFileName
 < @var{expression-cst} >
 
-Appends the time step to the output file; only makes sense with @code{LastTimeStepOnly}.
+Append the time step to the output file name; only makes sense with @code{LastTimeStepOnly}.
 
 @item AppendStringToFileName
 @var{expression-char}
@@ -5033,12 +5040,12 @@ Append the given @var{expression-char} to the filename.
 @item OverrideTimeStepValue
 @var{expression-cst}
 
-Overrides the value of the current time step with the given value.
+Override the value of the current time step with the given value.
 
 @item NoMesh
 < @var{expression-cst} >
 
-Prevents the mesh from being written in the output file (useful with new
+Prevent the mesh from being written in the output file (useful with new
 mesh-based solution formats).
 
 @item SendToServer
@@ -5056,80 +5063,80 @@ Send the requested harmonics of the value to the Onelab server, using
 @item Color
 @var{expression-char}
 
-Used with @code{SendToServer}, sets the color of the parameter in the
+Used with @code{SendToServer} to set the color of the parameter in the
 Onelab server.
 
 @item Hidden
 < @var{expression-cst} >
 
-Used with @code{SendToServer}, selects the visibility of the exchanged value.
+Used with @code{SendToServer} to select the visibility of the exchanged value.
 
 @item Closed
 @var{expression-char}
 
-Used with @code{SendToServer}, closes (or opens) the subtree containing
+Used with @code{SendToServer} to close (or open) the subtree containing
 the parameter.
 
 @item Units
 @var{expression-char}
 
-Used with @code{SendToServer}, sets the units of the parameter in the
+Used with @code{SendToServer} to set the units of the parameter in the
 Onelab server.
 
 @item Frequency
 @code{@var{expression-cst-list-item} | @{ @var{expression-cst-list} @}}
 
-Outputs results for the specified frequencies only.
+Output results for the specified frequencies only.
 
 @item Format
 @var{post-operation-fmt}
 
-Outputs results in the specified format.
+Output results in the specified format.
 
 @item Adapt
 @code{P1 | H1 | H2}
 
-Performs p- or h-refinement on the post-processing result, considered as an
+Perform p- or h-refinement on the post-processing result, considered as an
 error map.
 
 @item Target
 @var{expression-cst}
 
-Specifies the target for the optimizer during adaptation (error for
+Specify the target for the optimizer during adaptation (error for
 @code{P1|H1}, number of elements for @code{H2}).
 
 @item Value
 @code{@var{expression-cst-list-item} | @{ @var{expression-cst-list} @}}
 
-Specifies acceptable output values for discrete optimization (e.g. the
+Specify acceptable output values for discrete optimization (e.g. the
 available interpolation orders with @code{Adapt P1}).
 
 @item Sort
 @code{Position | Connection}
 
-Sorts the output by position (x, y, z) or by connection (for @code{LINE}
+Sort the output by position (x, y, z) or by connection (for @code{LINE}
 elements only).
 
 @item Iso
 @var{expression-cst}
 
-Outputs directly contour prints (with @var{expression-cst} values) instead of
+Output contour prints directly (with @var{expression-cst} values) instead of
 elementary values.
 
 @item Iso
 @code{@{ @var{expression-cst-list} @}}
 
-Outputs directly contour prints for the values specified in the
+Output contour prints directly for the values specified in the
 @var{expression-cst-list} instead of elementary values.
 
 @item NoNewLine
-Suppresses the new lines in the output when printing global quantities
+Suppress the new lines in the output when printing global quantities
 (i.e., with @code{Print OnRegion} or @code{Print OnGlobal}).
 
 @item ChangeOfCoordinates
 @code{@{ @var{expression}, @var{expression}, @var{expression} @}}
 
-Changes the coordinates of the results according to the three expressions
+Change the coordinates of the results according to the three expressions
 given in argument. The three @var{expression}s represent the three new
 cartesian coordinates @var{x}, @var{y} and @var{z}, and can be functions of
 the current values of the cartesian coordinates @code{$X}, @code{$Y} and
@@ -5138,34 +5145,34 @@ the current values of the cartesian coordinates @code{$X}, @code{$Y} and
 @item ChangeOfValues
 @code{@{ @var{expression-list} @}}
 
-Changes the values of the results according to the expressions given in
-argument. The @var{expression}s represent the new values (@var{x}-compoment,
+Change the values of the results according to the expressions given in
+argument. The @var{expression}s represent the new values (@var{x}-component,
 @var{y}-component, etc.), and can be functions of the current values of the
 solution (@var{$Val0}, @var{$Val1}, etc.).
 
 @item DecomposeInSimplex
 
-Decomposes all output elements in simplices (points, lines, triangles or
+Decompose all output elements in simplices (points, lines, triangles or
 tetrahedra).
 
 @item StoreInVariable
 @code{$@var{expression-char}}
 
-Stores the result of a point-wise evaluation or an @code{OnRegion}
+Store the result of a point-wise evaluation or an @code{OnRegion}
 post-processing operation in the run-time variable
-$code[$]@var{expression-char}.
+@code{$@var{expression-char}}.
 
 @item StoreInRegister
 @code{@var{expression-cst}}
 
-Stores the result of point-wise evaluation or an @code{OnRegion}
+Store the result of point-wise evaluation or an @code{OnRegion}
 post-processing operation in the register @var{expression-cst}.
 
 @item StoreMinInRegister
 @item StoreMaxInRegister
 @code{@var{expression-cst}}
 
-Stores the minimum or maximum value of an @code{OnElementsOf} post-processing
+Store the minimum or maximum value of an @code{OnElementsOf} post-processing
 operation in the register @var{expression-cst}.
 
 @item StoreMinXinRegister
@@ -5176,40 +5183,40 @@ operation in the register @var{expression-cst}.
 @item StoreMaxZinRegister
 @code{@var{expression-cst}}
 
-Stores the X, Y or Z coordinate of the location, where the minimum or maximum
+Store the X, Y or Z coordinate of the location, where the minimum or maximum
 of an @code{OnElementsOf} post-processing operation occurs, in the register
 @var{expression-cst}.
 
 @item StoreInField
 @code{@var{expression-cst}}
 
-Stores the result of a post-processing operation in the field (Gmsh
+Store the result of a post-processing operation in the field (Gmsh
 list-based post-processing view) with tag @var{expression-cst}.
 
 @item StoreInMeshBasedField
 @code{@var{expression-cst}}
 
-Stores the result of a post-processing operation in the mesh-based field
+Store the result of a post-processing operation in the mesh-based field
 (Gmsh mesh-based post-processing view) with tag @var{expression-cst}.
 
 @item TimeLegend
 @code{< @{ @var{expression}, @var{expression}, @var{expression} @} >}
 
-Includes a time legend in Gmsh plots. If the three optional expressions
+Include a time legend in Gmsh plots. If the three optional expressions
 giving the position of the legend are not specified, the legend is centered
 on top of the plot.
 
 @item FrequencyLegend
 @code{< @{ @var{expression}, @var{expression}, @var{expression} @} >}
 
-Includes a frequency legend in Gmsh plots. If the three optional expressions
+Include a frequency legend in Gmsh plots. If the three optional expressions
 giving the position of the legend are not specified, the legend is centered
 on top of the plot.
 
 @item EigenvalueLegend
 @code{< @{ @var{expression}, @var{expression}, @var{expression} @} >}
 
-Includes an eigenvalue legend in Gmsh plots. If the three optional
+Include an eigenvalue legend in Gmsh plots. If the three optional
 expressions giving the position of the legend are not specified, the legend
 is centered on top of the plot.
 
@@ -5228,14 +5235,15 @@ Gmsh output. See the documentation of Gmsh (@url{http://gmsh.info}) for
 a description of the file formats.
 
 @item Table
-Space oriented column output, e.g., suitable for Gnuplot, Excel, Caleida
-Graph, etc. The columns are: @var{element-type} @var{element-index}
+Space oriented column output, e.g., suitable for Python, Matlab, Excel,
+Gnuplot, etc. The columns are: @var{element-type} @var{element-index}
 @var{x-coord} @var{y-coord} @var{z-coord} <@var{x-coord} @var{y-coord}
-@var{z-coord}> @dots{} @var{real} @var{real} @var{real} @var{values}. The
-three @var{real} numbers preceding the @var{values} contain
-context-dependent information, depending on the type of plot: curvilinear
-abscissa for @code{OnLine} plots, normal to the plane for @code{OnPlane}
-plots, parametric coordinates for parametric @code{OnGrid} plots, etc.
+@var{z-coord}> @dots{} @var{real} @var{real} @var{real}
+@var{values}. The three @var{real} numbers preceding the @var{values}
+contain context-dependent information, depending on the type of plot:
+curvilinear abscissa for @code{OnLine} plots, normal to the plane for
+@code{OnPlane} plots, parametric coordinates for parametric
+@code{OnGrid} plots, etc.
 
 @item SimpleTable
 Like @code{Table}, but with only the @var{x-coord} @var{y-coord}
@@ -5248,8 +5256,8 @@ Like @code{Table}, but with only @var{values} columns.
 Space oriented column output similar to the @code{Table} format, except that
 a new line is created for each node of each element, with a repetition of
 the first node if the number of nodes in the element is greater than 2. This
-permits to draw unstructured meshes and nice three-dimensional elevation
-plots in Gnuplot. The columns are: @var{element-type} @var{element-index}
+is convenient for drawing unstructured meshes and nice three-dimensional
+elevation plots in Gnuplot. The columns are: @var{element-type} @var{element-index}
 @var{x-coord} @var{y-coord} @var{z-coord} @var{real} @var{real} @var{real}
 @var{values}. The three @var{real} numbers preceding the @var{values}
 contain context-dependent information, depending on the type of plot:
@@ -5258,10 +5266,9 @@ curvilinear abscissa for @code{OnLine} plots, normal to the plane for
 plots, etc.
 
 @item TimeTable
-Time oriented column output, e.g., suitable for Gnuplot, Excel, Caleida
-Graph, etc. The columns are: @var{time-step} @var{time} @var{x-coord}
-@var{y-coord} @var{z-coord} <@var{x-coord} @var{y-coord} @var{z-coord}>
-@dots{} @var{value}.
+Time oriented column output. The columns are: @var{time-step} @var{time}
+@var{x-coord} @var{y-coord} @var{z-coord} <@var{x-coord} @var{y-coord}
+@var{z-coord}> @dots{} @var{value}.
 
 @item NodeTable
 Table of nodal values, in the form @var{node-number}
@@ -5269,8 +5276,8 @@ Table of nodal values, in the form @var{node-number}
 values is printed first. The data is automatically exported as a
 run-time accessible list as well as a ONELAB variable, with the name of
 the @code{PostOperation} quantity. The values are also directly usable
-by the @code{ValueFromTable} function, which allows to use them as
-values in a nodal @code{Constraint}.
+by the @code{ValueFromTable} function, which makes it possible to use
+them as values in a nodal @code{Constraint}.
 
 @item ElementTable
 Table of element values, in the form @var{element-number}
@@ -5278,8 +5285,8 @@ Table of element values, in the form @var{element-number}
 of element values is printed first. The data is automatically exported
 as a run-time accessible list as well as a ONELAB variable, with the
 name of the @code{PostOperation} quantity. The values are also directly
-usable by the @code{ValueFromTable} function, which allows to use them
-as values in an element-wise @code{Constraint}.
+usable by the @code{ValueFromTable} function, which makes it possible to
+use them as values in an element-wise @code{Constraint}.
 
 @item RegionTable
 Table of global quantity values, per region.
@@ -5364,7 +5371,7 @@ Begins the declaration of a user-defined file macro named
 
 @item Return
 Ends the body of the current user-defined file macro. Macro declarations
-cannot be imbricated, and must be made outside any GetDP object.
+cannot be nested, and must be made outside any GetDP object.
 
 @item Macro ( @var{expression-char} , @var{expression-char} ) ;
 Begins the declaration of a user-defined string macro. The body of the
@@ -5373,9 +5380,9 @@ macro is given explicitly as the second argument.
 @end ftable
 
 Macros, loops and conditionals can be used in any of the following
-objects: Group, Function, Constraint (as well as in a contraint-case),
+objects: Group, Function, Constraint (as well as in a constraint-case),
 FunctionSpace, Formulation (as well as in the quantity and equation
-defintions), Resolution (as well as resolution-term, system defintion
+definitions), Resolution (as well as resolution-term, system definition
 and operations), PostProcessing (in the definition of the
 PostQuantities) and PostOperation (as well as in the operation list).
 
@@ -5383,7 +5390,7 @@ PostQuantities) and PostOperation (as well as in the operation list).
 
 @ftable @code
 
-@item Call @var{string}  | @var{expression-char};
+@item Call @var{string} | @var{expression-char};
 Executes the body of a (previously defined) macro named @var{string}.
 
 @item For ( @var{expression-cst} : @var{expression-cst} )
@@ -5402,7 +5409,7 @@ comprised between `@code{For ( @var{expression-cst} : @var{expression-cst} :
 @item For @var{string} In @{ @var{expression-cst} : @var{expression-cst} @}
 Iterates from the value of the first @var{expression-cst} to the value of the
 second @var{expression-cst}, with a unit incrementation step. At each iteration,
-the value of the iterate is affected to an expression named @var{string},
+the value of the iterate is assigned to an expression named @var{string},
 and the commands comprised between `@code{For @var{string} In @{
 @var{expression-cst} : @var{expression-cst} @}}' and the matching @code{EndFor} are
 executed.
@@ -5411,7 +5418,7 @@ executed.
 Iterates from the value of the first @var{expression-cst} to the value of the
 second @var{expression-cst}, with a positive or negative incrementation step
 equal to the third @var{expression-cst}. At each iteration, the value of the
-iterate is affected to an expression named @var{string}, and the commands
+iterate is assigned to an expression named @var{string}, and the commands
 comprised between `@code{For @var{string} In @{ @var{expression-cst} :
 @var{expression-cst} : @var{expression-cst} @}}' and the matching @code{EndFor} are
 executed.
@@ -5439,7 +5446,7 @@ if none of the @var{expression-cst} of the previous matching codes
 Ends a matching @code{If} command.
 
 @item LevelTest
-Variable equal to the level of imbrication of a body in an
+Variable equal to the level of nesting of a body in an
 @code{If}-@code{EndIf} test.
 
 @item Parse [ @var{expression-char} ];
@@ -5652,7 +5659,7 @@ tracking database}.
 
 @item Which OSes does GetDP run on?
 
-Gmsh runs on Windows, macOS, Linux and most Unix variants.
+GetDP runs on Windows, macOS, Linux and most Unix variants.
 
 @item How do I compile GetDP from source?
 
@@ -5690,10 +5697,10 @@ With Sparskit-based linear solvers can either specify options directly
 on command line (e.g. with @code{-Nb_Fill 200}), specify an option file
 explicitly (with @code{-solver file}), or edit the @file{solver.par}
 file in the current working directory. If no @file{solver.par} file
-exists in the current directory, GetDP will give create it the next time
+exists in the current directory, GetDP will create it the next time
 you perform a linear system solution.
 
-@item Is there an easy to know which values are available for a given object type?
+@item Is there an easy way to know which values are available for a given object type?
 
 Yes: if you deliberately misspell an object type in the problem
 definition structure, GetDP will produce an error message listing every
