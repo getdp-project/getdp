@@ -82,7 +82,7 @@ University of Li@`ege @*
 Department of Electrical Engineering and Computer Science @*
 Institut Montefiore @*
 Sart Tilman Campus, Building B28 @*
-Allée de la Découverte 10 @*
+All@'ee de la Découverte 10 @*
 B-4000 Li@`ege @*
 BELGIUM
 @sp 1
@@ -205,7 +205,7 @@ information about this license is available from the GNU Project webpage
 @uref{http://www.gnu.org/copyleft/gpl-faq.html}.  Detailed copyright
 information can be found in @ref{Copyright and credits}.
 
-If you want to integrate parts of GetDP into a closed-source software, or
+If you want to integrate parts of GetDP into closed-source software, or
 want to sell a modified closed-source version of GetDP, you will need to
 obtain a different license. Please @uref{http://geuz.org, contact us
 directly} for more information.
