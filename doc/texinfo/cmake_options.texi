@@ -14,6 +14,8 @@ Enable dynamic GetDP executable (linked with shared lib) (default: OFF)
 Enable Android NDK library target (experimental) (default: OFF)
 @item ENABLE_BUILD_IOS
 Enable iOS (ARM) library target (experimental) (default: OFF)
+@item ENABLE_COVERAGE
+Enable code coverage instrumentation (GCC/Clang only) (default: OFF)
 @item ENABLE_FORTRAN
 Enable Fortran (needed for Arpack/Sparskit/Zitsol & Bessel) (default: ON)
 @item ENABLE_GMSH
