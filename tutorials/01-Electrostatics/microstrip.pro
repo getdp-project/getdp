@@ -25,7 +25,7 @@
 
 Group {
   // Create region groups associated with the physical groups defined in the
-  // "microstrip.msh" mesh file:
+  // "microstrip.msh" mesh file produced by Gmsh:
   Air = Region[ 1 ];
   Dielectric = Region[ 2 ];
   Ground = Region[ 10 ];

@@ -14,12 +14,6 @@ See the comments in `microstrip.pro` and `microstrip.geo` for details.
 
 ## Running the tutorial
 
-Each tutorial consists of (at least) two input files: a ".geo" file describing
-the geometry and the meshing constraints (the Gmsh part of the setup), and a
-".pro" file describing the differential equations to solve together with the
-associated function spaces, boundary conditions and solver parameters (the GetDP
-part of the setup).
-
 To run the tutorial on the command line:
 ```
 > gmsh microstrip.geo -2
