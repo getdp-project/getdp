@@ -758,8 +758,8 @@ purely constant expressions, denoted by the metasyntactic variable
 @code{StrFind} searches the first @var{expression-char} for any
 occurrence of the second @var{expression-char}.  @code{StrCmp} compares
 the two strings (returns an integer greater than, equal to, or less than
-0, according as the first string is greater than, equal to, or less than
-the second string).  @code{StrLen} returns the length of the
+0, depending on whether the first string is greater than, equal to, or
+less than the second).  @code{StrLen} returns the length of the
 string. @code{StringToName} creates a name from the provided
 string. @code{Exists} checks for the existence of a constant or a
 function. @code{FileExists} checks for the existence of a
@@ -828,7 +828,7 @@ remaining cases apply arithmetic operators item-wise in lists.
 @code{ListFromFile} reads a list of numbers from a file.
 @code{ListFromServer} attempts to get a list of numbers from the
 ONELAB variable @var{expression-char}. @code{ReadTable} reads tabular
-data in the same format as @code{ListFromFile}, and in addition stores
+data in the same format as @code{ListFromFile}, and in addition stores it
 in the run-time table named after the second @var{expression-char}.
 
 Contrary to a general @var{expression} which is evaluated at runtime
@@ -1091,7 +1091,7 @@ the left by the number of bits specified by the second argument.
 @table @code
 @item :
 The only ternary operator, formed by @var{operator-ternary-left} and
-@var{operator-ternary-right} is defined as in the C or C++ programming
+@var{operator-ternary-right}, is defined as in the C or C++ programming
 languages. The ternary operator first evaluates its first argument (the
 @var{expression-cst} located before the @code{?}), which must result in a
 scalar value. If it is true (non-zero) the second argument (located between
@@ -1217,9 +1217,9 @@ Current theta value in a theta time stepping algorithm.
 @item $TimeStep
 Number of the current time step in a time stepping algorithm.
 @item $Breakpoint
-In case of a breakpoint hit in TimeLoopAdaptive it is the number of the
-current breakpoint. In the other case when $Time corresponds not to a
-breakpoint the value is -1.
+When a breakpoint is hit in @code{TimeLoopAdaptive}, this is the number of
+the current breakpoint; otherwise (when @code{$Time} does not correspond to
+a breakpoint) the value is -1.
 @item $Iteration, $NLIteration
 Current iteration in a nonlinear loop.
 @item $Residual, $NLResidual
@@ -1313,7 +1313,7 @@ computed at run-time. Also, to speed-up the evaluation of
 internal stack mechanism), it can be useful to save some results in a
 temporary variable, at run-time, in order to reuse them later on.
 
-Two mechanisms exit to handle such cases: run-time variables (which
+Two mechanisms exist to handle such cases: run-time variables (which
 follow the same syntax as @ref{Current values}), and registers.
 
 Run-time variables have the following syntax:
@@ -1422,7 +1422,7 @@ Integral @{ [ f[] * (Dof@{T@} - 12) , @{T@} ]; @dots{} @}
 GetDP supports two linearization techniques. The first is functional
 iteration (or Picard method), where one simply plugs the value obtained
 at the previous iteration into the nonlinear equation (the previous
-value is known, and is accessed e.g. with @code{@{T@}} instead
+value is known, and is accessed e.g. with @code{@{T@}} instead of
 @code{Dof@{T@}}). The second is the Newton-Raphson iteration, where the
 Jacobian is specified with a @code{JacNL} equation term.
 @c FIXME See @url{https://onelab.info/trac/getdp} for an example.
@@ -1455,7 +1455,7 @@ Applies the operator specified in the first argument of @code{dFunction
 @{ @var{basis-function-type}, @var{basis-function-type} @}}
 (@pxref{FunctionSpace}).  This is currently only used for
 nodal-interpolated vector fields (interpolated with @code{BF_Node_X},
-@code{BF_Node_Y}, @code{BF_Node_Z})
+@code{BF_Node_Y}, @code{BF_Node_Z}).
 
 When the first @var{basis-function-type} in @code{dFunction} is set to
 @code{BF_NodeX_D1} for component X, @code{BF_NodeY_D1} for component Y
@@ -1495,9 +1495,9 @@ Applies the operator specified in the second argument of @code{dFunction
 @{ @var{basis-function-type}, @var{basis-function-type} @}}
 (@pxref{FunctionSpace}).  This is currently only used for
 nodal-interpolated vector fields (interpolated with @code{BF_Node_X},
-@code{BF_Node_Y}, @code{BF_Node_Z})
+@code{BF_Node_Y}, @code{BF_Node_Z}).
 
-More specifically, when the second @var{basis-function-type} is to
+More specifically, when the second @var{basis-function-type} is set to
 @code{BF_NodeX_D2} for component X, @code{BF_NodeY_D2} for component Y
 and @code{BF_NodeZ_D2} for component Z, then @code{D2} applied to a
 vector [u_x, u_y, u_z] gives:
@@ -1651,7 +1651,7 @@ Group @{
 @enumerate
 @item
 @var{integer} as a @var{group-list-item} is the only interface with the
-mesh; Ranges of integers can be specified in the same way as ranges of
+mesh; ranges of integers can be specified in the same way as ranges of
 constant expressions in an @var{expression-cst-list-item}
 (@pxref{Constants}). For example, @code{@var{i}:@var{j}} replaces the
 list of consecutive integers @var{i}, @var{i}+1, @dots{}, @var{j}-1,
@@ -1731,7 +1731,7 @@ i.e., containing elements >.
 Groups of edges incident to nodes of elements of @var{R1}
 (a group is associated with each node).
 
-< @code{Not}: but not those of @var{R2}) >.
+< @code{Not}: but not those of @var{R2} >.
 
 @item GroupOfRegionsOf
 Single group of elements of regions in @var{R1}
@@ -2989,8 +2989,8 @@ the use with hierarchical elements), as well as direct associations of
 global quantities (e.g., floating potential, electric charge, current,
 voltage, magnetomotive force, etc.).
 
-A key point is that basis functions are defined by any number of subsets of
-functions, being added. Each subset is characterized by associated built-in
+A key point is that a basis function is built up as the sum of any number
+of subsets of functions. Each subset is characterized by associated built-in
 functions for evaluation, a support of definition and a set of associated
 supporting geometrical entities (e.g., nodes, edges, facets, volumes,
 groups of nodes, edges incident to a node, etc.). The freedom in defining
@@ -3071,10 +3071,10 @@ The optional @code{Append < @var{expression-cst} >} (when the optional level
 @var{expression-cst} is strictly positive; its omission fixes it to a top
 value) is used to append an existing
 @code{FunctionSpace} of the same @code{Name} with additional
-@code{BasisFunction}s, @code{SubSpace}s, @code{GlobalQuantity}'s and
+@code{BasisFunction}s, @code{SubSpace}s, @code{GlobalQuantity}s and
 @code{Constraint}s,
 or an existing @code{SubSpace} of the same @code{Name} with additional
-@code{NameOfBasisFunction}'s. If the @code{Append} @code{FunctionSpace} level is 2,
+@code{NameOfBasisFunction}s. If the @code{Append} @code{FunctionSpace} level is 2,
 the @code{Append} @code{SubSpace} level is automatically 1 if omitted.
 @item
 When the definition region of a function type group used as an @code{Entity} of
@@ -3687,9 +3687,9 @@ Formulation @{
 The optional @code{Append < @var{expression-cst} >} (when the optional level
 @var{expression-cst} is strictly positive) is used to append an existing
 @code{Formulation} of the same @code{Name} with additional
-@code{Quantity}'s and @code{Equation}s.
+@code{Quantity}s and @code{Equation}s.
 @item
-@code{IndexOfSystem} permits to resolve ambiguous cases when several
+@code{IndexOfSystem} resolves ambiguous cases when several
 quantities belong to the same function space, but to different systems of
 equations. The @var{integer} parameter then specifies the index in the list
 of an @code{OriginSystem} command (@pxref{Resolution}).
@@ -3905,19 +3905,19 @@ frequencies (@code{Frequency @var{expression-cst-list-item} | Frequency @{
 predefined list of frequencies (e.g., in modal analyses) can be explicitly
 defined with @code{Type Complex}.
 @item
-@code{NameOfMesh} permits to explicitly specify the mesh to be used for the
+@code{NameOfMesh} is used to specify explicitly the mesh to be used for the
 construction of the system of equations.
 @item
-@code{Solver} permits to explicitly specify the name of the solver
+@code{Solver} is used to specify explicitly the name of the solver
 parameter file to use for the solving of the system of equations. This is
-ony valid if GetDP was compiled against the default solver library (it is
-the case if you downloaded a pre-compiled copy of GetDP from the internet).
+only valid if GetDP was compiled against the default solver library (which
+is the case if you downloaded a pre-compiled copy of GetDP online).
 @item
-@code{DestinationSystem} permits to specify the destination system of a
+@code{DestinationSystem} is used to specify the destination system of a
 @code{TransferSolution} operation.
 @item
-@code{OriginSystem} permits to specify the systems from which ambiguous
-quantity definitions can be solved (@pxref{Formulation}).
+@code{OriginSystem} is used to specify the systems from which ambiguous
+quantity definitions can be resolved (@pxref{Formulation}).
 @end enumerate
 
 @cindex Resolution, types
@@ -4673,24 +4673,24 @@ PostProcessing @{
 @noindent Notes:
 @enumerate
 @item
-The optional @code{Append < @var{expression-cst} >} (when the optional level
-@var{expression-cst} is strictly positive; its omission fixes it to a top
-value) is used to append an existing
-@code{PostProcessing} of the same @code{Name} with additional
-@code{Value}s,
-or an existing @code{Quantity} of the same @code{Name} with additional
-@code{Quantity}'s. If the @code{Append} @code{PostProcessing} level is 2,
+The optional @code{Append < @var{expression-cst} >} (when the optional
+level @var{expression-cst} is strictly positive; its omission fixes it
+to a top value) is used to append an existing @code{PostProcessing} of
+the same @code{Name} with additional @code{Value}s, or an existing
+@code{Quantity} of the same @code{Name} with additional
+@code{Quantity}s. If the @code{Append} @code{PostProcessing} level is 2,
 the @code{Append} @code{Quantity} level is automatically 1 if omitted.
-Fixing the @code{Append} @code{Quantity} level to @var{-n} suppresses the
-@var{n} lastly defined @code{Quantity}'s before appending.
+Fixing the @code{Append} @code{Quantity} level to @var{-n} suppresses
+the @var{n} most recently defined @code{Quantity}s before appending.
 @item
-The quantity defined with @var{integral-value} is piecewise defined over the
-elements of the mesh of @var{group-def}, and takes, in each element, the
-value of the integration of @var{expression} over this element. The global
-integral of @var{expression} over a whole region (being either
+The quantity defined with @var{integral-value} is piecewise defined over
+the elements of the mesh of @var{group-def}, and takes, in each element,
+the value of the integration of @var{expression} over this element. The
+global integral of @var{expression} over a whole region (being either
 @var{group-def} or a subset of @var{group-def}) has to be defined in the
-@code{PostOperation} with the @code{@var{post-quantity-id}[@var{group-def}]}
-command (@pxref{PostOperation}).
+@code{PostOperation} with the
+@code{@var{post-quantity-id}[@var{group-def}]} command
+(@pxref{PostOperation}).
 @item
 If @code{NameOfSystem @var{system-id}} is not given, the system is
 automatically selected as the one to which the first quantity listed in
@@ -4856,7 +4856,7 @@ To compute a global integral quantity, with no associated region.
 @{ @{ @var{expression-cst-list} @} @{ @var{expression-cst-list} @} @{ @var{expression-cst-list} @} @}
 
 To compute a quantity on a section of the mesh defined by three points
-(i.e., on the intersection of the mesh with a cutting a plane, specified by
+(i.e., on the intersection of the mesh with a cutting plane, specified by
 three points). Each @var{expression-cst-list} must contain exactly three
 elements (the coordinates of the points).
 
