@@ -373,7 +373,7 @@ followed by options:
 @noindent
 where @var{filename} is the ASCII @file{.pro} file containing the
 problem definition. This file can include other files (@pxref{Comments
-and includes}), so that only a single @file{.pro} file should always be
+and scripting features}), so that only a single @file{.pro} file should always be
 given on the command line. The base name of this file (without the
 @file{.pro} extension) is used as a basis for the creation of
 intermediate files during the pre-processing, resolution and processing
@@ -603,8 +603,7 @@ A syntax index is provided at the end of this reference manual
 * Resolution::
 * PostProcessing::
 * PostOperation::
-* Comments and includes::
-* Macros loops and conditionals::
+* Comments and scripting features::
 @end menu
 
 @c -------------------------------------------------------------------------
@@ -889,8 +888,8 @@ Five constants are predefined in GetDP: @code{Pi} (3.1415926535897932),
 When @code{~@{@var{expression-cst}@}} is appended to a string
 @var{string}, the result is a new string formed by the concatenation of
 @var{string}, @code{_} (an underscore) and the value of the
-@var{expression-cst}. This is most useful in loops (@pxref{Macros loops
-and conditionals}), as a convenient way to define unique strings
+@var{expression-cst}. This is most useful in loops (@pxref{Comments and
+scripting features}), as a convenient way to define unique strings
 automatically. For example,
 @example
 For i In @{1:3@}
@@ -1615,7 +1614,7 @@ Group @{
   < @var{group-id} += @var{group-def}; > @dots{}
   < @var{group-id} -= @var{group-def}; > @dots{}
   < @var{affectation} > @dots{}
-  < @var{loop} > @dots{}
+  < @var{scripting} > @dots{}
 @}
 @end example
 
@@ -1785,7 +1784,7 @@ Function @{
   < DefineFunction [ @var{function-id} <,@dots{}> ]; > @dots{}
   < @var{function-id} [ < @var{group-def} <, @var{group-def} > > ] = @var{expression}; > @dots{}
   < @var{affectation} > @dots{}
-  < @var{loop} > @dots{}
+  < @var{scripting} > @dots{}
 @}
 @end example
 
@@ -2819,16 +2818,16 @@ Constraint @{
         < Coefficient @var{expression}; > < Function @var{expression}; >
         < Filter @var{expression}; >
         @var{constraint-val}; @} @dots{}
-      < @var{loop} > @dots{}
+      < @var{scripting} > @dots{}
     @}
   | Case @var{constraint-case-id} @{
       @{ Region @var{group-def}; < Type @var{constraint-type}; >
         @var{constraint-case-val}; @} @dots{}
-      < @var{loop} > @dots{}
+      < @var{scripting} > @dots{}
     @} @dots{}
   @} @dots{}
   < @var{affectation} > @dots{}
-  < @var{loop} > @dots{}
+  < @var{scripting} > @dots{}
 @}
 @end example
 
@@ -3031,7 +3030,7 @@ FunctionSpace @{
     @} >
   @} @dots{}
   < @var{affectation} > @dots{}
-  < @var{loop} > @dots{}
+  < @var{scripting} > @dots{}
 @}
 @end example
 
@@ -3650,11 +3649,11 @@ Formulation @{
              In @var{group-def}; @} @dots{}
          @} > @dots{}
      < @var{affectation} > @dots{}
-     < @var{loop} > @dots{}
+     < @var{scripting} > @dots{}
     @}
   @} @dots{}
   < @var{affectation} > @dots{}
-  < @var{loop} > @dots{}
+  < @var{scripting} > @dots{}
 @}
 @end example
 
@@ -3859,16 +3858,16 @@ Resolution @{
         < DestinationSystem @var{system-id}; >
         < OriginSystem @var{system-id}; | OriginSystem @{ @var{system-id} <,@dots{}> @}; >
         < NameOfMesh @var{expression-char} > < Solver @var{expression-char} >
-        < @var{loop} > @} @dots{}
-      < @var{loop} > @dots{}
+        < @var{scripting} > @} @dots{}
+      < @var{scripting} > @dots{}
     @}
     Operation @{
       < @var{resolution-op}; > @dots{}
-      < @var{loop} > @dots{}
+      < @var{scripting} > @dots{}
     @}
   @} @dots{}
   < @var{affectation} > @dots{}
-  < @var{loop} > @dots{}
+  < @var{scripting} > @dots{}
 @}
 @end example
 
@@ -4643,11 +4642,11 @@ PostProcessing @{
     Quantity @{
       @{ < Append < @var{expression-cst} >; >
         Name @var{post-quantity-id}; Value @{ @var{post-value} @dots{} @} @} @dots{}
-      < @var{loop} > @dots{}
+      < @var{scripting} > @dots{}
     @}
   @} @dots{}
   < @var{affectation} > @dots{}
-  < @var{loop} > @dots{}
+  < @var{scripting} > @dots{}
 @}
 @end example
 
@@ -4721,7 +4720,7 @@ To integrate the expression over each element.
 @c PostOperation
 @c -------------------------------------------------------------------------
 
-@node PostOperation, Comments and includes, PostProcessing, GetDP problem definition language
+@node PostOperation, Comments and scripting features, PostProcessing, GetDP problem definition language
 @section @code{PostOperation}: exporting results
 
 @cindex Post-operation, definition
@@ -4769,7 +4768,7 @@ PostOperation @{
     @}
   @} @dots{}
   < @var{affectation} > @dots{}
-  < @var{loop} > @dots{}
+  < @var{scripting} > @dots{}
 @} |
 PostOperation < (Append < @var{expression-cst} >) > @var{post-operation-id} UsingPost @var{post-processing-id} @{
   < @var{post-operation-op}; > @dots{}
@@ -4791,7 +4790,7 @@ PostOperation < (Append < @var{expression-cst} >) > @var{post-operation-id} Usin
   CreateDir [ "@var{string}" ] |
   DeleteFile [ "@var{string}" ] |
   SendMergeFileRequest[ @var{expression-char} ] |
-  < @var{loop} > @dots{}
+  < @var{scripting} > @dots{}
   @var{etc}
 
 @var{print-support}:
@@ -5303,11 +5302,11 @@ Adaptation map, suitable for the GetDP @code{-adapt} command line option.
 @end ftable
 
 @c -------------------------------------------------------------------------
-@c Comments and includes
+@c Comments and scripting features
 @c -------------------------------------------------------------------------
 
-@node Comments and includes, Macros loops and conditionals, PostOperation, GetDP problem definition language
-@section Comments and includes
+@node Comments and scripting features,  , PostOperation, GetDP problem definition language
+@section Comments and scripting features
 
 @cindex Comments
 @cindex File, comment
@@ -5346,19 +5345,12 @@ after an include command on the same line is ignored.
 See @ref{Constants}, for the definition of the character expression
 @var{expression-char}.
 
-@c -------------------------------------------------------------------------
-@c Macros, loops and conditionals
-@c -------------------------------------------------------------------------
-
-@node Macros loops and conditionals,  , Comments and includes, GetDP problem definition language
-@section Macros, loops and conditionals
-
 @cindex Macros
 @cindex Loops
 @cindex Conditionals
 @cindex Parse
 
-@vindex @var{loop}
+@vindex @var{scripting}
 
 Macros are defined as follows:
 
@@ -5379,14 +5371,18 @@ macro is given explicitly as the second argument.
 
 @end ftable
 
-Macros, loops and conditionals can be used in any of the following
-objects: Group, Function, Constraint (as well as in a constraint-case),
-FunctionSpace, Formulation (as well as in the quantity and equation
-definitions), Resolution (as well as resolution-term, system definition
-and operations), PostProcessing (in the definition of the
-PostQuantities) and PostOperation (as well as in the operation list).
+In addition to macros, @file{.pro} files can be scripted with @code{For}
+loops, @code{If}/@code{ElseIf}/@code{Else} conditionals and explicit
+string parsing (@code{Parse}). These scripting commands can be used in
+any of the following objects: @code{Group}, @code{Function},
+@code{Constraint} (as well as in a constraint-case),
+@code{FunctionSpace}, @code{Formulation} (as well as in the quantity and
+equation definitions), @code{Resolution} (as well as resolution-term,
+system definition and operations), @code{PostProcessing} (in the
+definition of the @code{PostQuantities}) and @code{PostOperation} (as
+well as in the operation list).
 
-@var{loop}:
+@var{scripting}:
 
 @ftable @code
 
