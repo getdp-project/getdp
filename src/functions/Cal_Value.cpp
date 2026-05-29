@@ -2099,34 +2099,46 @@ void Cal_RotateValue(struct Value *V1, struct Value *V2, struct Value *R)
 
   switch(V2->Type) {
   case VECTOR:
-    if(Current.NbrHar == 1) {
+  if(Current.NbrHar == 1) {
 #define B0 V2->Val[0]
 #define B1 V2->Val[1]
 #define B2 V2->Val[2]
-      A.Val[0] = A0 * B0 + A1 * B1 + A2 * B2;
-      A.Val[1] = A3 * B0 + A4 * B1 + A5 * B2;
-      A.Val[2] = A6 * B0 + A7 * B1 + A8 * B2;
-      A.Type = VECTOR;
-      Cal_CopyValue(&A, R);
+    A.Val[0] = A0 * B0 + A1 * B1 + A2 * B2;
+    A.Val[1] = A3 * B0 + A4 * B1 + A5 * B2;
+    A.Val[2] = A6 * B0 + A7 * B1 + A8 * B2;
+    A.Type = VECTOR;
+    Cal_CopyValue(&A, R);
 #undef B0
 #undef B1
 #undef B2
+  }
+  else {
+#define B0r V2->Val[MAX_DIM * k + 0]
+#define B1r V2->Val[MAX_DIM * k + 1]
+#define B2r V2->Val[MAX_DIM * k + 2]
+#define B0i V2->Val[MAX_DIM * (k + 1) + 0]
+#define B1i V2->Val[MAX_DIM * (k + 1) + 1]
+#define B2i V2->Val[MAX_DIM * (k + 1) + 2]
+    for(k = 0; k < Current.NbrHar; k += 2) {
+      /* Real part */
+      A.Val[MAX_DIM * k + 0] = A0 * B0r + A1 * B1r + A2 * B2r;
+      A.Val[MAX_DIM * k + 1] = A3 * B0r + A4 * B1r + A5 * B2r;
+      A.Val[MAX_DIM * k + 2] = A6 * B0r + A7 * B1r + A8 * B2r;
+      /* Imaginary part */
+      A.Val[MAX_DIM * (k + 1) + 0] = A0 * B0i + A1 * B1i + A2 * B2i;
+      A.Val[MAX_DIM * (k + 1) + 1] = A3 * B0i + A4 * B1i + A5 * B2i;
+      A.Val[MAX_DIM * (k + 1) + 2] = A6 * B0i + A7 * B1i + A8 * B2i;
     }
-    else { /* Attention: a modifier */
-      Cal_ZeroValue(&A);
-#define B0 V2->Val[0]
-#define B1 V2->Val[1]
-#define B2 V2->Val[2]
-      A.Val[0] = A0 * B0 + A1 * B1 + A2 * B2;
-      A.Val[1] = A3 * B0 + A4 * B1 + A5 * B2;
-      A.Val[2] = A6 * B0 + A7 * B1 + A8 * B2;
-      A.Type = VECTOR;
-      Cal_CopyValue(&A, R);
-#undef B0
-#undef B1
-#undef B2
-    }
-    break;
+    A.Type = VECTOR;
+    Cal_CopyValue(&A, R);
+#undef B0r
+#undef B1r
+#undef B2r
+#undef B0i
+#undef B1i
+#undef B2i
+  }
+  break;
 
   case TENSOR_DIAG:
     if(Current.NbrHar == 1) {

@@ -24,7 +24,7 @@ Evans, Philippe Geuzaine, Eric Godard, Sebastien Guenneau, Daniel Kedzierski,
 Samuel Kvasnica, Georgia Psoni, Robert Struijs, Ahmed Rassili, Thierry
 Scordilis, Christophe Trophime, Herve Tortel, Peter Binde, Jose Geraldo A. Brito
 Neto, Matthias Fenner, Daryl Van Vorst, Xavier Antoine, Marc Boulé, Bert-Uwe
-Koehler.
+Koehler, Jeremy Itier.
 
 The AVL tree code (src/common/avl.*) is copyright (C) 1988-1993, 1995 The Regents
 of the University of California. Permission to use, copy, modify, and distribute
