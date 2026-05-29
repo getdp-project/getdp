@@ -175,6 +175,8 @@ void Get_DofOfElement(struct Element *Element,
         break;
 
       case GROUPSOFFACETSOF:
+        if(Element->GeoElement->NbrEdges == 0)
+          Geo_CreateEdgesOfElement(Element->GeoElement);
         if(Element->GeoElement->NbrFacets == 0)
           Geo_CreateFacetsOfElement(Element->GeoElement);
         Get_GroupsOfElementaryEntitiesOfElement(

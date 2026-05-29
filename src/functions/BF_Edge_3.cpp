@@ -12,8 +12,10 @@
 #include "GeoData.h"
 #endif
 
-/* The non-symmetric facet functions are selected according to the
-   NumIndex^th smallest global node number */
+extern struct CurrentData Current;
+
+/* The non-symmetric facet functions are selected according to the NumIndex^th
+   smallest global node number */
 
 int fcmp_Int2(const void *a, const void *b)
 {
@@ -35,8 +37,19 @@ int Get_FacetFunctionIndex(struct Element *Element, int NumEntity, int NumIndex)
       j = 0;
       while(NumNodes[j]) {
         Element->SortedNodesByFacet[i][j].Int1 = NumNodes[j];
-        Element->SortedNodesByFacet[i][j].Int2 =
-          Element->GeoElement->NumNodes[NumNodes[j] - 1];
+        int t = Element->GeoElement->NumNodes[NumNodes[j] - 1];
+        // check if the node is a periodic copy of a master (reference) node; if
+        // it is, use the global tag of the master node, so that the basis
+        // function will be the same in the master facet and its periodic
+        // counterpart
+        if(Current.GeoData->PeriodicNodes) {
+          auto it = Current.GeoData->PeriodicNodes->find(t);
+          if(it != Current.GeoData->PeriodicNodes->end()) {
+            t = it->second;
+            Message::Debug("Found master node %d in BF_Edge_3F", t);
+          }
+        }
+        Element->SortedNodesByFacet[i][j].Int2 = t;
         j++;
       }
       qsort(Element->SortedNodesByFacet[i], j, sizeof(struct TwoInt),
@@ -118,19 +131,20 @@ void BF_Edge_3F(struct Element *Element, int NumEntity, int Index, double u,
   case QUADRANGLE_4:
     switch(NumEntity) {
     case 1:
-      // WARNING: this should be generalized for 3D elements (hexahedrons), by using the Get_FacetFunctionIndex function
-      // the 2D basis functions should be the restriction of the 3D basis functions on each facet
-      // for now, the BF_Edge_3F_c function is not implemented
-      //switch(Get_FacetFunctionIndex(Element, NumEntity, Index)) {
+      // WARNING: this should be generalized for 3D elements (hexahedrons), by
+      // using the Get_FacetFunctionIndex function the 2D basis functions should
+      // be the restriction of the 3D basis functions on each facet for now, the
+      // BF_Edge_3F_c function is not implemented
+      // switch(Get_FacetFunctionIndex(Element, NumEntity, Index)) {
       switch(Index) {
       case 1: // BF_Edge_3F_a
-        s[0] = 45./16. * (1 - u) * (1 - v*v);
-        s[1] = 45./16. * (1 - v) * (1 - u*u);
+        s[0] = 45. / 16. * (1 - u) * (1 - v * v);
+        s[1] = 45. / 16. * (1 - v) * (1 - u * u);
         s[2] = 0.;
         break;
       case 2: // BF_Edge_3F_b
-        s[0] = 45./16. * (1 + u) * (v*v - 1);
-        s[1] = 45./16. * (1 - v) * (1 - u*u);
+        s[0] = 45. / 16. * (1 + u) * (v * v - 1);
+        s[1] = 45. / 16. * (1 - v) * (1 - u * u);
         s[2] = 0.;
         break;
       case 3: // BF_Edge_3F_c
@@ -358,20 +372,21 @@ void BF_CurlEdge_3F(struct Element *Element, int NumEntity, int Index, double u,
   case QUADRANGLE_4:
     switch(NumEntity) {
     case 1:
-      // WARNING: this should be generalized for 3D elements (hexahedrons), by using the Get_FacetFunctionIndex function
-      // the 2D basis functions should be the restriction of the 3D basis functions on each facet
-      // for now, the BF_CurlEdge_3F_c function is not implemented
-      //switch(Get_FacetFunctionIndex(Element, NumEntity, Index)) {
+      // WARNING: this should be generalized for 3D elements (hexahedrons), by
+      // using the Get_FacetFunctionIndex function the 2D basis functions should
+      // be the restriction of the 3D basis functions on each facet for now, the
+      // BF_CurlEdge_3F_c function is not implemented
+      // switch(Get_FacetFunctionIndex(Element, NumEntity, Index)) {
       switch(Index) {
       case 1: // BF_CurlEdge_3F_a
         s[0] = 0.;
         s[1] = 0.;
-        s[2] = 45/8 * (v - u);
+        s[2] = 45. / 8. * (v - u);
         break;
       case 2: // BF_CurlEdge_3F_b
         s[0] = 0.;
         s[1] = 0.;
-        s[2] = - 45/8 * (v + u);
+        s[2] = -45. / 8. * (v + u);
         break;
       case 3: // BF_CurlEdge_3F_c
         Message::Error("You should never end up here!");

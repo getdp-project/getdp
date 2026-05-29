@@ -448,80 +448,52 @@ struct NodeXYZ {
   double x, y, z;
 };
 
-struct EdgeNN {
+struct EdgeXYZ {
   int NumEdge;
   int Node1, Node2;
   double x, y, z;
-  // FIXME Coef and Coef2 can be removed once the old LinkEdge is removed
-  double Coef, Coef2;
 };
 
-struct FacetNNN {
+struct FacetXYZ {
   int NumFacet;
-  int Node1, Node2, Node3;
-  double Coef, Coef2;
+  int Node1, Node2, Node3, Node4;
+  double x, y, z;
 };
 
-int fcmp_NN(const void *a, const void *b)
-{
-  int Result;
-
-  if((Result = ((struct EdgeNN *)a)->Node1 - ((struct EdgeNN *)b)->Node1) != 0)
-    return Result;
-  return ((struct EdgeNN *)a)->Node2 - ((struct EdgeNN *)b)->Node2;
-}
-
-int fcmp_NNN(const void *a, const void *b)
-{
-  int Result;
-
-  if((Result = ((struct FacetNNN *)a)->Node1 - ((struct FacetNNN *)b)->Node1) !=
-     0)
-    return Result;
-  if((Result = ((struct FacetNNN *)a)->Node2 - ((struct FacetNNN *)b)->Node2) !=
-     0)
-    return Result;
-  return ((struct FacetNNN *)a)->Node3 - ((struct FacetNNN *)b)->Node3;
-}
-
-void Generate_ElementaryEntities_EdgeNN(List_T *InitialList,
-                                        List_T **ExtendedList, int Type_Entity)
+void Generate_ElementaryEntities_EdgeXYZ(List_T *InitialList,
+                                         List_T **ExtendedList)
 {
   Tree_T *Entity_Tr;
   struct Geo_Element *GeoElement;
   int Nbr_Element, i_Element;
   int Nbr_Entity = 0, i_Entity, *Num_Entities = NULL;
 
-  struct EdgeNN EdgeNN;
+  struct EdgeXYZ EdgeXYZ;
   int *Num_Nodes;
 
   if(InitialList != NULL) {
-    Entity_Tr = Tree_Create(sizeof(struct EdgeNN), fcmp_int);
+    Entity_Tr = Tree_Create(sizeof(struct EdgeXYZ), fcmp_int);
 
     Nbr_Element = Geo_GetNbrGeoElements();
     for(i_Element = 0; i_Element < Nbr_Element; i_Element++) {
       GeoElement = Geo_GetGeoElement(i_Element);
 
       if(List_Search(InitialList, &GeoElement->Region, fcmp_int)) {
-        switch(Type_Entity) {
-        case EDGESOF:
-          if(GeoElement->NbrEdges == 0) Geo_CreateEdgesOfElement(GeoElement);
-          Nbr_Entity = GeoElement->NbrEdges;
-          Num_Entities = GeoElement->NumEdges;
-          break;
-        }
+        if(GeoElement->NbrEdges == 0) Geo_CreateEdgesOfElement(GeoElement);
+        Nbr_Entity = GeoElement->NbrEdges;
+        Num_Entities = GeoElement->NumEdges;
         for(i_Entity = 0; i_Entity < Nbr_Entity; i_Entity++) {
-          EdgeNN.NumEdge = abs(Num_Entities[i_Entity]);
+          EdgeXYZ.NumEdge = abs(Num_Entities[i_Entity]);
           Num_Nodes = Geo_GetNodesOfEdgeInElement(GeoElement, i_Entity);
-          EdgeNN.Node1 = GeoElement->NumNodes[abs(Num_Nodes[0]) - 1];
-          EdgeNN.Node2 = GeoElement->NumNodes[abs(Num_Nodes[1]) - 1];
+          EdgeXYZ.Node1 = GeoElement->NumNodes[abs(Num_Nodes[0]) - 1];
+          EdgeXYZ.Node2 = GeoElement->NumNodes[abs(Num_Nodes[1]) - 1];
           double x1, y1, z1, x2, y2, z2;
-          Geo_GetNodesCoordinates(1, &EdgeNN.Node1, &x1, &y1, &z1);
-          Geo_GetNodesCoordinates(1, &EdgeNN.Node2, &x2, &y2, &z2);
-          EdgeNN.x = 0.5 * (x1 + x2);
-          EdgeNN.y = 0.5 * (y1 + y2);
-          EdgeNN.z = 0.5 * (z1 + z2);
-          if(!Tree_Search(Entity_Tr, &EdgeNN)) Tree_Add(Entity_Tr, &EdgeNN);
+          Geo_GetNodesCoordinates(1, &EdgeXYZ.Node1, &x1, &y1, &z1);
+          Geo_GetNodesCoordinates(1, &EdgeXYZ.Node2, &x2, &y2, &z2);
+          EdgeXYZ.x = 0.5 * (x1 + x2);
+          EdgeXYZ.y = 0.5 * (y1 + y2);
+          EdgeXYZ.z = 0.5 * (z1 + z2);
+          if(!Tree_Search(Entity_Tr, &EdgeXYZ)) Tree_Add(Entity_Tr, &EdgeXYZ);
         }
       }
     }
@@ -533,40 +505,54 @@ void Generate_ElementaryEntities_EdgeNN(List_T *InitialList,
     *ExtendedList = NULL;
 }
 
-void Generate_ElementaryEntities_FacetNNN(List_T *InitialList,
-                                          List_T **ExtendedList,
-                                          int Type_Entity)
+void Generate_ElementaryEntities_FacetXYZ(List_T *InitialList,
+                                          List_T **ExtendedList)
 {
   Tree_T *Entity_Tr;
   struct Geo_Element *GeoElement;
   int Nbr_Element, i_Element;
   int Nbr_Entity = 0, i_Entity, *Num_Entities = NULL;
 
-  struct FacetNNN FacetNNN;
+  struct FacetXYZ FacetXYZ;
   int *Num_Nodes;
 
   if(InitialList != NULL) {
-    Entity_Tr = Tree_Create(sizeof(struct FacetNNN), fcmp_int);
+    Entity_Tr = Tree_Create(sizeof(struct FacetXYZ), fcmp_int);
 
     Nbr_Element = Geo_GetNbrGeoElements();
     for(i_Element = 0; i_Element < Nbr_Element; i_Element++) {
       GeoElement = Geo_GetGeoElement(i_Element);
 
       if(List_Search(InitialList, &GeoElement->Region, fcmp_int)) {
-        switch(Type_Entity) {
-        case FACETSOF:
-          if(GeoElement->NbrFacets == 0) Geo_CreateFacetsOfElement(GeoElement);
-          Nbr_Entity = GeoElement->NbrFacets;
-          Num_Entities = GeoElement->NumFacets;
-          break;
-        }
+        if(GeoElement->NbrEdges == 0) Geo_CreateEdgesOfElement(GeoElement);
+        if(GeoElement->NbrFacets == 0) Geo_CreateFacetsOfElement(GeoElement);
+        Nbr_Entity = GeoElement->NbrFacets;
+        Num_Entities = GeoElement->NumFacets;
         for(i_Entity = 0; i_Entity < Nbr_Entity; i_Entity++) {
-          FacetNNN.NumFacet = abs(Num_Entities[i_Entity]);
+          FacetXYZ.NumFacet = abs(Num_Entities[i_Entity]);
           Num_Nodes = Geo_GetNodesOfFacetInElement(GeoElement, i_Entity);
-          FacetNNN.Node1 = GeoElement->NumNodes[abs(Num_Nodes[0]) - 1];
-          FacetNNN.Node2 = GeoElement->NumNodes[abs(Num_Nodes[1]) - 1];
-          FacetNNN.Node3 = GeoElement->NumNodes[abs(Num_Nodes[2]) - 1];
-          if(!Tree_Search(Entity_Tr, &FacetNNN)) Tree_Add(Entity_Tr, &FacetNNN);
+          FacetXYZ.Node1 = GeoElement->NumNodes[abs(Num_Nodes[0]) - 1];
+          FacetXYZ.Node2 = GeoElement->NumNodes[abs(Num_Nodes[1]) - 1];
+          FacetXYZ.Node3 = GeoElement->NumNodes[abs(Num_Nodes[2]) - 1];
+          FacetXYZ.Node4 =
+            Num_Nodes[3] ? GeoElement->NumNodes[abs(Num_Nodes[3]) - 1] : -1;
+          double x1, y1, z1, x2, y2, z2, x3, y3, z3;
+          Geo_GetNodesCoordinates(1, &FacetXYZ.Node1, &x1, &y1, &z1);
+          Geo_GetNodesCoordinates(1, &FacetXYZ.Node2, &x2, &y2, &z2);
+          Geo_GetNodesCoordinates(1, &FacetXYZ.Node3, &x3, &y3, &z3);
+          if(Num_Nodes[3]) {
+            double x4, y4, z4;
+            Geo_GetNodesCoordinates(1, &FacetXYZ.Node4, &x4, &y4, &z4);
+            FacetXYZ.x = 0.25 * (x1 + x2 + x3 + x4);
+            FacetXYZ.y = 0.25 * (y1 + y2 + y3 + y4);
+            FacetXYZ.z = 0.25 * (z1 + z2 + z3 + z4);
+          }
+          else {
+            FacetXYZ.x = (x1 + x2 + x3) / 3.;
+            FacetXYZ.y = (y1 + y2 + y3) / 3.;
+            FacetXYZ.z = (z1 + z2 + z3) / 3.;
+          }
+          if(!Tree_Search(Entity_Tr, &FacetXYZ)) Tree_Add(Entity_Tr, &FacetXYZ);
         }
       }
     }
@@ -578,8 +564,8 @@ void Generate_ElementaryEntities_FacetNNN(List_T *InitialList,
     *ExtendedList = NULL;
 }
 
-bool SameOrientation_EdgeNN(EdgeNN &e, EdgeNN &eref, double TOL,
-                            int Function_Index, int FunctionRef_Index)
+bool SameOrientation_EdgeXYZ(EdgeXYZ &e, EdgeXYZ &eref, double TOL,
+                             int Function_Index, int FunctionRef_Index)
 {
   // Instead of mapping both end vertices (which can be wrapped by the
   // periodicity for sliding surfaces), just map an intermediate point... which
@@ -669,31 +655,31 @@ public:
   }
 };
 
-class EdgeNNRTree {
+class EdgeXYZRTree {
 private:
-  RTree<struct EdgeNN *, double, 3, double> *_rtree;
+  RTree<struct EdgeXYZ *, double, 3, double> *_rtree;
   double _tol;
-  static bool rtree_callback(struct EdgeNN *v, void *ctx)
+  static bool rtree_callback(struct EdgeXYZ *v, void *ctx)
   {
-    struct EdgeNN **out = static_cast<EdgeNN **>(ctx);
+    struct EdgeXYZ **out = static_cast<EdgeXYZ **>(ctx);
     *out = v;
     return false; // we're done searching
   }
 
 public:
-  EdgeNNRTree(double tolerance = 1.e-8)
+  EdgeXYZRTree(double tolerance = 1.e-8)
   {
-    _rtree = new RTree<struct EdgeNN *, double, 3, double>();
+    _rtree = new RTree<struct EdgeXYZ *, double, 3, double>();
     _tol = tolerance;
   }
-  ~EdgeNNRTree()
+  ~EdgeXYZRTree()
   {
     _rtree->RemoveAll();
     delete _rtree;
   }
-  void insert(struct EdgeNN *v)
+  void insert(struct EdgeXYZ *v)
   {
-    struct EdgeNN *out;
+    struct EdgeXYZ *out;
     double _min[3] = {v->x - _tol, v->y - _tol, v->z - _tol};
     double _max[3] = {v->x + _tol, v->y + _tol, v->z + _tol};
     if(!_rtree->Search(_min, _max, rtree_callback, &out)) {
@@ -706,9 +692,9 @@ public:
                        out->NumEdge, out->Node1, out->Node2);
     }
   }
-  struct EdgeNN *find(struct EdgeNN *n)
+  struct EdgeXYZ *find(struct EdgeXYZ *n)
   {
-    struct EdgeNN *out;
+    struct EdgeXYZ *out;
     double _min[3] = {n->x - _tol, n->y - _tol, n->z - _tol};
     double _max[3] = {n->x + _tol, n->y + _tol, n->z + _tol};
     if(_rtree->Search(_min, _max, rtree_callback, &out)) { return out; }
@@ -721,10 +707,63 @@ public:
   }
 };
 
+class FacetXYZRTree {
+private:
+  RTree<struct FacetXYZ *, double, 3, double> *_rtree;
+  double _tol;
+  static bool rtree_callback(struct FacetXYZ *v, void *ctx)
+  {
+    struct FacetXYZ **out = static_cast<FacetXYZ **>(ctx);
+    *out = v;
+    return false; // we're done searching
+  }
+
+public:
+  FacetXYZRTree(double tolerance = 1.e-8)
+  {
+    _rtree = new RTree<struct FacetXYZ *, double, 3, double>();
+    _tol = tolerance;
+  }
+  ~FacetXYZRTree()
+  {
+    _rtree->RemoveAll();
+    delete _rtree;
+  }
+  void insert(struct FacetXYZ *v)
+  {
+    struct FacetXYZ *out;
+    double _min[3] = {v->x - _tol, v->y - _tol, v->z - _tol};
+    double _max[3] = {v->x + _tol, v->y + _tol, v->z + _tol};
+    if(!_rtree->Search(_min, _max, rtree_callback, &out)) {
+      _rtree->Insert(_min, _max, v);
+    }
+    else {
+      Message::Warning("Facet %d (nodes %d %d %d, barycenter %g %g %g) already "
+                       "exists with tolerance %g: facet %d (nodes %d %d %d)",
+                       v->NumFacet, v->Node1, v->Node2, v->Node3, v->x, v->y,
+                       v->z, _tol, out->NumFacet, out->Node1, out->Node2,
+                       out->Node3);
+    }
+  }
+  struct FacetXYZ *find(struct FacetXYZ *n)
+  {
+    struct FacetXYZ *out;
+    double _min[3] = {n->x - _tol, n->y - _tol, n->z - _tol};
+    double _max[3] = {n->x + _tol, n->y + _tol, n->z + _tol};
+    if(_rtree->Search(_min, _max, rtree_callback, &out)) { return out; }
+    else {
+      Message::Warning("Could not find facet corresponding to reference facet "
+                       "%d (nodes %d %d %d, barycenter %g %g %g)",
+                       n->NumFacet, n->Node1, n->Node2, n->Node3, n->x, n->y,
+                       n->z);
+      return 0;
+    }
+  }
+};
+
 /*  G e n e r a t e _ L i n k N o d e s  */
 
-void Generate_LinkNodes(struct ConstraintInFS *Constraint_P,
-                        List_T *ExtendedList_L, List_T *ExtendedSuppList_L,
+void Generate_LinkNodes(List_T *ExtendedList_L, List_T *ExtendedSuppList_L,
                         struct Group *RegionRef_P, struct Group *SubRegionRef_P,
                         int Index_Filter, int Index_Function,
                         int Index_FunctionRef, int Index_Coef,
@@ -744,11 +783,10 @@ void Generate_LinkNodes(struct ConstraintInFS *Constraint_P,
   // We could also use the periodic node information right from the $Periodic
   // section in Gmsh meshes, when available
 
-  // Establish the list of slave nodes, i.e., nodes in 'Region'=ExtendedList_L
-  // excluding those in 'SubRegion'=ExtendedSuppList_L
-  // and accounting for a possible user-defined Filter.
-  // 'Function' is applied to the coordinates of the node
-  // before storing it in the list.
+  // Establish the list of slave nodes, i.e., nodes in "Region" = ExtendedList_L
+  // excluding those in "SubRegion" = ExtendedSuppList_L and accounting for a
+  // possible user-defined Filter. "Function" is applied to the coordinates of
+  // the node before storing it in the list.
   Nbr_Entity = List_Nbr(ExtendedList_L);
   NodeXYZ_L = List_Create(Nbr_Entity, 1, sizeof(struct NodeXYZ));
   for(i = 0; i < Nbr_Entity; i++) {
@@ -778,12 +816,11 @@ void Generate_LinkNodes(struct ConstraintInFS *Constraint_P,
   }
   Nbr_Entity = List_Nbr(NodeXYZ_L);
 
-  // Establish the list of reference (master) nodes, i.e., nodes in
-  // 'RegionRef'=RegionRef_P->InitialList
-  // excluding those in 'SubRegionRef'=SubRegionRef_P->InitialList
-  // and accounting for a possible user-defined Filter.
-  // 'FunctionRef' is applied to the coordinates of the node
-  // before storing it in the list.
+  // Establish the list of reference (master) nodes, i.e., nodes in "RegionRef"
+  // = RegionRef_P->InitialList excluding those in "SubRegionRef" =
+  // SubRegionRef_P->InitialList and accounting for a possible user-defined
+  // Filter. "FunctionRef" is applied to the coordinates of the node before
+  // storing it in the list.
   Generate_ElementaryEntities(RegionRef_P->InitialList, &ExtendedListRef_L,
                               NODESOF);
   if(SubRegionRef_P)
@@ -825,12 +862,11 @@ void Generate_LinkNodes(struct ConstraintInFS *Constraint_P,
   Nbr_EntityRef = List_Nbr(NodeXYZRef_L);
 
   // Master (ref) and slave nodes to be paired are now in NodeXYZRef_L and
-  // NodeXYZ_L resp. Master nodes are listed with their actual position.
-  // Slave nodes are listed with their position after applying 'Function',
-  // which maps the coordinates of the slave nodes onto their periodic
-  // correspondant in the master surface.
-  // Due to the periodicity, 2 slave nodes can be mapped onto the same location
-  // (depending on whether or not the 'subRegions' were given)
+  // NodeXYZ_L resp. Master nodes are listed with their actual position.  Slave
+  // nodes are listed with their position after applying "Function", which maps
+  // the coordinates of the slave nodes onto their periodic correspondant in the
+  // master surface.  Due to the periodicity, 2 slave nodes can be mapped onto
+  // the same location (depending on whether or not the "SubRegions" were given)
   // Fill the rtree with the master (ref) nodes. Filling with the slaves could
   // mean losing some when two are at the same location (and the search for DoFs
   // is performed on slaves)
@@ -855,9 +891,9 @@ void Generate_LinkNodes(struct ConstraintInFS *Constraint_P,
       Nbr_Entity, Nbr_EntityRef);
     return;
   }
-  // The master node list  NodeXYZRef_L has been reordered so that the ith
-  // node in NodeXYZ_L is at the same location as the ith node in NodeXYZRef_L
-  // Two slave nodes can be paired with the same master node.
+  // The master node list NodeXYZRef_L has been reordered so that the ith node
+  // in NodeXYZ_L is at the same location as the ith node in NodeXYZRef_L.  Two
+  // slave nodes can be paired with the same master node.
 
   Message::Debug("==> List of link for nodes");
 
@@ -879,9 +915,9 @@ void Generate_LinkNodes(struct ConstraintInFS *Constraint_P,
     TwoIntOneDouble.Int1 = NodeXYZ.NumNode;
     TwoIntOneDouble.Int2 = NodeXYZRef.NumNode;
 
-    // Computes the coefficient of the link based on the user-defined 'Coef'
+    // Computes the coefficient of the link based on the user-defined "Coef"
     // function which determines whether the preimage of the coordinates of the
-    // matched stator-slave pair by 'Function' is in a positive or a negative
+    // matched stator-slave pair by "Function" is in a positive or a negative
     // periodic copy of the master surface.
     Geo_GetNodesCoordinates(1, &NodeXYZRef.NumNode, &Current.x, &Current.y,
                             &Current.z);
@@ -904,120 +940,109 @@ void Generate_LinkNodes(struct ConstraintInFS *Constraint_P,
 
 /*  G e n e r a t e _ L i n k E d g e s  */
 
-#if 1
-
-// New implementation, based on direct geometrical search of edges
-// based on their barycenter
-
 void Generate_LinkEdges(struct ConstraintInFS *Constraint_P,
                         struct Group *Group_P, struct Group *RegionRef_P,
                         struct Group *SubRegionRef_P, List_T *Couples_L)
 {
   Message::Info("====> Begin Link Edge");
 
-  // Fill ExtendedList_L with the barycenters of the edges
-  // of all elements in Group_P->InitialList
-  // Fill ExtendedSuppList_L with the barycenters of the edges
-  // of all elements in Group_P->InitialSuppList
+  // Fill ExtendedList_L with the barycenters of the edges of all elements in
+  // Group_P->InitialList. Fill ExtendedSuppList_L with the barycenters of the
+  // edges of all elements in Group_P->InitialSuppList.
 
   List_T *ExtendedList_L, *ExtendedSuppList_L;
-  Generate_ElementaryEntities_EdgeNN(Group_P->InitialList, &ExtendedList_L,
-                                     EDGESOF);
+  Generate_ElementaryEntities_EdgeXYZ(Group_P->InitialList, &ExtendedList_L);
   if(Group_P->InitialSuppList)
-    Generate_ElementaryEntities_EdgeNN(Group_P->InitialSuppList,
-                                       &ExtendedSuppList_L, EDGESOF);
+    Generate_ElementaryEntities_EdgeXYZ(Group_P->InitialSuppList,
+                                        &ExtendedSuppList_L);
   else
     ExtendedSuppList_L = NULL;
 
-  // Add slave edges in the list EdgeNN_L
-  // from ExtendedList_L
-  // excluding possibly those in ExtendedSuppList_L.
-  // No Filter for edges.
-  // The function 'Function' is applied to the edge barycenter coordinates
-  // before storing it in the list.
+  // Add slave edges in the list EdgeXYZ_L from ExtendedList_L excluding
+  // possibly those in ExtendedSuppList_L.  No Filter for edges. The function
+  // "Function" is applied to the edge barycenter coordinates before storing it
+  // in the list.
 
   int Nbr_Entity = List_Nbr(ExtendedList_L);
-  List_T *EdgeNN_L = List_Create(Nbr_Entity, 1, sizeof(struct EdgeNN));
+  List_T *EdgeXYZ_L = List_Create(Nbr_Entity, 1, sizeof(struct EdgeXYZ));
   for(int i = 0; i < Nbr_Entity; i++) {
-    struct EdgeNN EdgeNN;
-    List_Read(ExtendedList_L, i, &EdgeNN);
+    struct EdgeXYZ EdgeXYZ;
+    List_Read(ExtendedList_L, i, &EdgeXYZ);
     if(!(ExtendedSuppList_L &&
-         List_Search(ExtendedSuppList_L, &EdgeNN.NumEdge, fcmp_int))) {
-      Current.x = EdgeNN.x;
-      Current.y = EdgeNN.y;
-      Current.z = EdgeNN.z;
+         List_Search(ExtendedSuppList_L, &EdgeXYZ.NumEdge, fcmp_int))) {
+      Current.x = EdgeXYZ.x;
+      Current.y = EdgeXYZ.y;
+      Current.z = EdgeXYZ.z;
       struct Value Value;
       Get_ValueOfExpressionByIndex(
         Constraint_P->ConstraintPerRegion->Case.Link.FunctionIndex, NULL, 0.,
         0., 0., &Value);
-      EdgeNN.x = Value.Val[0];
-      EdgeNN.y = Value.Val[1];
-      EdgeNN.z = Value.Val[2];
-      List_Add(EdgeNN_L, &EdgeNN);
+      EdgeXYZ.x = Value.Val[0];
+      EdgeXYZ.y = Value.Val[1];
+      EdgeXYZ.z = Value.Val[2];
+      List_Add(EdgeXYZ_L, &EdgeXYZ);
     }
   }
-  Nbr_Entity = List_Nbr(EdgeNN_L);
+  Nbr_Entity = List_Nbr(EdgeXYZ_L);
 
-  // Fill ExtendedListRef_L with the barycenters of the edges
-  // of all elements in RegionRef_P->InitialList
-  // Fill ExtendedSuppListRef_L with the barycenters of the edges
-  // of all elements in SubRegionRef_P->InitialList
+  // Fill ExtendedListRef_L with the barycenters of the edges of all elements in
+  // RegionRef_P->InitialList.  Fill ExtendedSuppListRef_L with the barycenters
+  // of the edges of all elements in SubRegionRef_P->InitialList.
 
   List_T *ExtendedListRef_L, *ExtendedSuppListRef_L;
-  Generate_ElementaryEntities_EdgeNN(RegionRef_P->InitialList,
-                                     &ExtendedListRef_L, EDGESOF);
+  Generate_ElementaryEntities_EdgeXYZ(RegionRef_P->InitialList,
+                                      &ExtendedListRef_L);
   if(SubRegionRef_P)
-    Generate_ElementaryEntities_EdgeNN(SubRegionRef_P->InitialList,
-                                       &ExtendedSuppListRef_L, EDGESOF);
+    Generate_ElementaryEntities_EdgeXYZ(SubRegionRef_P->InitialList,
+                                        &ExtendedSuppListRef_L);
   else
     ExtendedSuppListRef_L = NULL;
 
-  // Add master (ref) edges in the list EdgeNNRef_L
-  // from ExtendedListRef_L
-  // excluding possibly those in ExtendedSuppListRef_L
-  // The function 'FunctionRef' is applied to the edge barycenter coordinates
-  // before storing it in the list.
+  // Add master (ref) edges in the list EdgeXYZRef_L from ExtendedListRef_L
+  // excluding possibly those in ExtendedSuppListRef_L. The function
+  // "FunctionRef" is applied to the edge barycenter coordinates before storing
+  // it in the list.
 
   int Nbr_EntityRef = List_Nbr(ExtendedListRef_L);
-  List_T *EdgeNNRef_L = List_Create(Nbr_EntityRef, 1, sizeof(struct EdgeNN));
+  List_T *EdgeXYZRef_L = List_Create(Nbr_EntityRef, 1, sizeof(struct EdgeXYZ));
   for(int i = 0; i < Nbr_EntityRef; i++) {
-    struct EdgeNN EdgeNNRef;
-    List_Read(ExtendedListRef_L, i, &EdgeNNRef);
+    struct EdgeXYZ EdgeXYZRef;
+    List_Read(ExtendedListRef_L, i, &EdgeXYZRef);
     if(!(ExtendedSuppListRef_L &&
-         List_Search(ExtendedSuppListRef_L, &EdgeNNRef.NumEdge, fcmp_int))) {
+         List_Search(ExtendedSuppListRef_L, &EdgeXYZRef.NumEdge, fcmp_int))) {
       if(Constraint_P->ConstraintPerRegion->Case.Link.FunctionRefIndex >= 0) {
-        Current.x = EdgeNNRef.x;
-        Current.y = EdgeNNRef.y;
-        Current.z = EdgeNNRef.z;
+        Current.x = EdgeXYZRef.x;
+        Current.y = EdgeXYZRef.y;
+        Current.z = EdgeXYZRef.z;
         struct Value Value;
         Get_ValueOfExpressionByIndex(
           Constraint_P->ConstraintPerRegion->Case.Link.FunctionRefIndex, NULL,
           0., 0., 0., &Value);
-        EdgeNNRef.x = Value.Val[0];
-        EdgeNNRef.y = Value.Val[1];
-        EdgeNNRef.z = Value.Val[2];
+        EdgeXYZRef.x = Value.Val[0];
+        EdgeXYZRef.y = Value.Val[1];
+        EdgeXYZRef.z = Value.Val[2];
       }
-      List_Add(EdgeNNRef_L, &EdgeNNRef);
+      List_Add(EdgeXYZRef_L, &EdgeXYZRef);
     }
   }
-  Nbr_EntityRef = List_Nbr(EdgeNNRef_L);
+  Nbr_EntityRef = List_Nbr(EdgeXYZRef_L);
 
-  // fill the rtree 'rt' with the master (ref) edges
+  // fill the rtree with the master (ref) edges
   double TOL = Current.GeoData->CharacteristicLength *
                Constraint_P->ConstraintPerRegion->Case.Link.ToleranceFactor;
-  EdgeNNRTree rt(TOL);
-  List_T *tmp = List_Create(List_Nbr(EdgeNNRef_L), 1, sizeof(struct EdgeNN));
-  List_Copy(EdgeNNRef_L, tmp);
-  List_Reset(EdgeNNRef_L);
+  EdgeXYZRTree rt(TOL);
+  List_T *tmp = List_Create(List_Nbr(EdgeXYZRef_L), 1, sizeof(struct EdgeXYZ));
+  List_Copy(EdgeXYZRef_L, tmp);
+  List_Reset(EdgeXYZRef_L);
   for(int i = 0; i < List_Nbr(tmp); i++) {
-    rt.insert((struct EdgeNN *)List_Pointer(tmp, i));
+    rt.insert((struct EdgeXYZ *)List_Pointer(tmp, i));
   }
-  for(int i = 0; i < List_Nbr(EdgeNN_L); i++) {
-    struct EdgeNN *n = (struct EdgeNN *)List_Pointer(EdgeNN_L, i);
-    struct EdgeNN *ref = rt.find(n);
-    if(ref) List_Add(EdgeNNRef_L, ref);
+  for(int i = 0; i < List_Nbr(EdgeXYZ_L); i++) {
+    struct EdgeXYZ *n = (struct EdgeXYZ *)List_Pointer(EdgeXYZ_L, i);
+    struct EdgeXYZ *ref = rt.find(n);
+    if(ref) List_Add(EdgeXYZRef_L, ref);
   }
-  Nbr_EntityRef = List_Nbr(EdgeNNRef_L);
+  Nbr_EntityRef = List_Nbr(EdgeXYZRef_L);
   List_Delete(tmp);
 
   if(Nbr_EntityRef != Nbr_Entity) {
@@ -1028,25 +1053,22 @@ void Generate_LinkEdges(struct ConstraintInFS *Constraint_P,
   }
 
   for(int i = 0; i < Nbr_Entity; i++) {
-    struct EdgeNN EdgeNN, EdgeNNRef;
-    List_Read(EdgeNN_L, i, &EdgeNN);
-    List_Read(EdgeNNRef_L, i, &EdgeNNRef);
+    struct EdgeXYZ EdgeXYZ, EdgeXYZRef;
+    List_Read(EdgeXYZ_L, i, &EdgeXYZ);
+    List_Read(EdgeXYZRef_L, i, &EdgeXYZRef);
 
     Message::Debug("Final : %d: edge %d (nodes %d %d) / edge %d (nodes %d %d)",
-                   i, EdgeNN.NumEdge, EdgeNN.Node1, EdgeNN.Node2,
-                   EdgeNNRef.NumEdge, EdgeNNRef.Node1, EdgeNNRef.Node2);
+                   i, EdgeXYZ.NumEdge, EdgeXYZ.Node1, EdgeXYZ.Node2,
+                   EdgeXYZRef.NumEdge, EdgeXYZRef.Node1, EdgeXYZRef.Node2);
 
     TwoIntOneDouble TwoIntOneDouble;
-    TwoIntOneDouble.Int1 = EdgeNN.NumEdge;
-    TwoIntOneDouble.Int2 = EdgeNNRef.NumEdge;
+    TwoIntOneDouble.Int1 = EdgeXYZ.NumEdge;
+    TwoIntOneDouble.Int2 = EdgeXYZRef.NumEdge;
 
     // Compute coefficient based on the barycenter of the master (ref) edge
-    double x1, y1, z1, x2, y2, z2;
-    Geo_GetNodesCoordinates(1, &EdgeNNRef.Node1, &x1, &y1, &z1);
-    Geo_GetNodesCoordinates(1, &EdgeNNRef.Node2, &x2, &y2, &z2);
-    Current.x = 0.5 * (x1 + x2);
-    Current.y = 0.5 * (y1 + y2);
-    Current.z = 0.5 * (z1 + z2);
+    Current.x = EdgeXYZRef.x;
+    Current.y = EdgeXYZRef.y;
+    Current.z = EdgeXYZRef.z;
     struct Value Value;
     Get_ValueOfExpressionByIndex(
       Constraint_P->ConstraintPerRegion->Case.Link.CoefIndex, NULL, 0., 0., 0.,
@@ -1058,18 +1080,18 @@ void Generate_LinkEdges(struct ConstraintInFS *Constraint_P,
       TwoIntOneDouble.Double2 = Value.Val[MAX_DIM]; // LinkCplx
 
     // Set positive orientation for both edges
-    if(EdgeNN.Node1 > EdgeNN.Node2) {
-      int tmp = EdgeNN.Node1;
-      EdgeNN.Node1 = EdgeNN.Node2;
-      EdgeNN.Node2 = tmp;
+    if(EdgeXYZ.Node1 > EdgeXYZ.Node2) {
+      int tmp = EdgeXYZ.Node1;
+      EdgeXYZ.Node1 = EdgeXYZ.Node2;
+      EdgeXYZ.Node2 = tmp;
     }
-    if(EdgeNNRef.Node1 > EdgeNNRef.Node2) {
-      int tmp = EdgeNNRef.Node1;
-      EdgeNNRef.Node1 = EdgeNNRef.Node2;
-      EdgeNNRef.Node2 = tmp;
+    if(EdgeXYZRef.Node1 > EdgeXYZRef.Node2) {
+      int tmp = EdgeXYZRef.Node1;
+      EdgeXYZRef.Node1 = EdgeXYZRef.Node2;
+      EdgeXYZRef.Node2 = tmp;
     }
-    if(!SameOrientation_EdgeNN(
-         EdgeNN, EdgeNNRef, TOL,
+    if(!SameOrientation_EdgeXYZ(
+         EdgeXYZ, EdgeXYZRef, TOL,
          Constraint_P->ConstraintPerRegion->Case.Link.FunctionIndex,
          Constraint_P->ConstraintPerRegion->Case.Link.FunctionRefIndex))
       TwoIntOneDouble.Int1 *= -1;
@@ -1077,526 +1099,164 @@ void Generate_LinkEdges(struct ConstraintInFS *Constraint_P,
     List_Add(Couples_L, &TwoIntOneDouble);
   }
 
-  List_Delete(EdgeNN_L);
-  List_Delete(EdgeNNRef_L);
+  List_Delete(EdgeXYZ_L);
+  List_Delete(EdgeXYZRef_L);
 
   Message::Info("====> End Link Edge");
 }
 
-#else
-
-// Old implementation based on node lookups. This is OK for simple cases, but
-// cannot easily be used for sliding surfaces with symmetries, where the edges
-// touching the periodicity condition can have one node mapped to the other
-// side.
-
-void Generate_LinkEdges(struct ConstraintInFS *Constraint_P,
-                        struct Group *Group_P, struct Group *RegionRef_P,
-                        struct Group *SubRegionRef_P, List_T *Couples_L)
-{
-  int Nbr_Entity, Nbr_EntityRef;
-
-  List_T *ExtendedListNodes_L;
-  List_T *CouplesOfNodes_L, *CouplesOfNodes2_L;
-
-  struct EdgeNN EdgeNN, EdgeNNRef;
-  List_T *EdgeNN_L, *EdgeNNRef_L;
-  List_T *ExtendedListRef_L, *ExtendedSuppListRef_L;
-
-  struct TwoIntOneDouble *TwoIntOneDouble_P, *TwoIntOneDouble2_P,
-    TwoIntOneDouble;
-
-  List_T *ExtendedList_L;
-  int Save_Num, Flag_Filter;
-
-  /* Couples of nodes */
-
-  Generate_ElementaryEntities(Group_P->InitialList, &ExtendedListNodes_L,
-                              NODESOF);
-
-  if((Nbr_Entity = List_Nbr(ExtendedListNodes_L)))
-    CouplesOfNodes_L =
-      List_Create(Nbr_Entity, 1, sizeof(struct TwoIntOneDouble));
-  else {
-    return; /* situation impossible... */
-  }
-
-  if(Constraint_P->ConstraintPerRegion->Case.Link.FilterIndex2 < 0) {
-    Flag_Filter = 0;
-    CouplesOfNodes2_L = NULL;
-    Generate_LinkNodes(
-      Constraint_P, ExtendedListNodes_L, NULL, RegionRef_P, NULL,
-      Constraint_P->ConstraintPerRegion->Case.Link.FilterIndex,
-      Constraint_P->ConstraintPerRegion->Case.Link.FunctionIndex,
-      Constraint_P->ConstraintPerRegion->Case.Link.FunctionRefIndex,
-      Constraint_P->ConstraintPerRegion->Case.Link.CoefIndex,
-      Constraint_P->ConstraintPerRegion->Case.Link.ToleranceFactor,
-      CouplesOfNodes_L);
-  }
-  else {
-    Flag_Filter = 1;
-    CouplesOfNodes2_L =
-      List_Create(Nbr_Entity, 1, sizeof(struct TwoIntOneDouble));
-
-    Generate_LinkNodes(
-      Constraint_P, ExtendedListNodes_L, NULL, RegionRef_P, NULL,
-      Constraint_P->ConstraintPerRegion->Case.Link.FilterIndex,
-      Constraint_P->ConstraintPerRegion->Case.Link.FunctionIndex,
-      Constraint_P->ConstraintPerRegion->Case.Link.FunctionRefIndex,
-      Constraint_P->ConstraintPerRegion->Case.Link.CoefIndex,
-      Constraint_P->ConstraintPerRegion->Case.Link.ToleranceFactor,
-      CouplesOfNodes_L);
-    Generate_LinkNodes(
-      Constraint_P, ExtendedListNodes_L, NULL, RegionRef_P, NULL,
-      Constraint_P->ConstraintPerRegion->Case.Link.FilterIndex2,
-      Constraint_P->ConstraintPerRegion->Case.Link.FunctionIndex2,
-      Constraint_P->ConstraintPerRegion->Case.Link.FunctionRefIndex,
-      Constraint_P->ConstraintPerRegion->Case.Link.CoefIndex2,
-      Constraint_P->ConstraintPerRegion->Case.Link.ToleranceFactor,
-      CouplesOfNodes2_L);
-  }
-
-  /* Couples of edges */
-
-  Message::Info("== Couples of edges ==");
-
-  /* Edges with Constraint */
-
-  Nbr_Entity = List_Nbr(Group_P->ExtendedList);
-
-  Generate_ElementaryEntities_EdgeNN(Group_P->InitialList, &ExtendedList_L,
-                                     EDGESOF);
-  if(Group_P->InitialSuppList)
-    Generate_ElementaryEntities_EdgeNN(Group_P->InitialSuppList,
-                                       &ExtendedSuppListRef_L, EDGESOF);
-  else
-    ExtendedSuppListRef_L = NULL;
-
-  EdgeNN_L = List_Create(Nbr_Entity, 1, sizeof(struct EdgeNN));
-
-  if(Nbr_Entity != List_Nbr(ExtendedList_L)) {
-    Message::Error("Constraint Link: strange...");
-    return;
-  }
-
-  for(int i = 0; i < Nbr_Entity; i++) {
-    List_Read(ExtendedList_L, i, &EdgeNN);
-    if(!(ExtendedSuppListRef_L &&
-         List_Search(ExtendedSuppListRef_L, &EdgeNN.NumEdge, fcmp_int))) {
-      if(EdgeNN.Node2 < EdgeNN.Node1) {
-        Save_Num = EdgeNN.Node2;
-        EdgeNN.Node2 = EdgeNN.Node1;
-        EdgeNN.Node1 = Save_Num;
-      }
-
-      Message::Debug("Slave %d: edge %d (nodes %d %d)", i, EdgeNN.NumEdge,
-                     EdgeNN.Node1, EdgeNN.Node2);
-
-      TwoIntOneDouble_P = (struct TwoIntOneDouble *)List_PQuery(
-        CouplesOfNodes_L, &EdgeNN.Node1, fcmp_int);
-      TwoIntOneDouble2_P = (struct TwoIntOneDouble *)List_PQuery(
-        CouplesOfNodes_L, &EdgeNN.Node2, fcmp_int);
-
-      if(!(TwoIntOneDouble_P && TwoIntOneDouble2_P)) {
-        if(Flag_Filter) {
-          TwoIntOneDouble_P = (struct TwoIntOneDouble *)List_PQuery(
-            CouplesOfNodes2_L, &EdgeNN.Node1, fcmp_int);
-          TwoIntOneDouble2_P = (struct TwoIntOneDouble *)List_PQuery(
-            CouplesOfNodes2_L, &EdgeNN.Node2, fcmp_int);
-          if(!TwoIntOneDouble_P)
-            Message::Error("Constraint Link: unknown node (%d)", EdgeNN.Node1);
-          if(!TwoIntOneDouble2_P)
-            Message::Error("Constraint Link: unknown node (%d)", EdgeNN.Node2);
-        }
-        else
-          Message::Error("Constraint Link: bad correspondance for edges");
-      }
-
-      EdgeNN.Node1 = TwoIntOneDouble_P->Int2;
-      EdgeNN.Node2 = TwoIntOneDouble2_P->Int2;
-      if(fabs(TwoIntOneDouble_P->Double - TwoIntOneDouble2_P->Double) <
-         1.e-18) {
-        EdgeNN.Coef = TwoIntOneDouble_P->Double;
-        EdgeNN.Coef2 = TwoIntOneDouble_P->Double2; /* LinkCplx */
-      }
-      else {
-        // we need to reevaluate the coeffient at the barycenter of the edge:
-        double x1, y1, z1, x2, y2, z2;
-        Geo_GetNodesCoordinates(1, &EdgeNN.Node1, &x1, &y1, &z1);
-        Geo_GetNodesCoordinates(1, &EdgeNN.Node2, &x2, &y2, &z2);
-        Current.x = 0.5 * (x1 + x2);
-        Current.y = 0.5 * (y1 + y2);
-        Current.z = 0.5 * (z1 + z2);
-        struct Value Value;
-        Get_ValueOfExpressionByIndex(
-          Constraint_P->ConstraintPerRegion->Case.Link.CoefIndex, NULL, 0., 0.,
-          0., &Value);
-        EdgeNN.Coef = Value.Val[0];
-        printf("haha new coef = %g\n", EdgeNN.Coef);
-        if(Current.NbrHar == 1)
-          EdgeNN.Coef2 = 0.;
-        else
-          EdgeNN.Coef2 = Value.Val[MAX_DIM]; /* LinkCplx */
-      }
-
-      if(EdgeNN.Node2 < EdgeNN.Node1) {
-        Save_Num = EdgeNN.Node2;
-        EdgeNN.Node2 = EdgeNN.Node1;
-        EdgeNN.Node1 = Save_Num;
-        EdgeNN.NumEdge *= -1;
-      }
-
-      List_Add(EdgeNN_L, &EdgeNN);
-
-      Message::Debug("  -> setting nodes to reference nodes %d %d",
-                     EdgeNN.Node1, EdgeNN.Node2);
-    }
-  }
-  Nbr_Entity = List_Nbr(EdgeNN_L);
-
-  /* Edges of reference (Link) */
-
-  Generate_ElementaryEntities_EdgeNN(RegionRef_P->InitialList,
-                                     &ExtendedListRef_L, EDGESOF);
-  if(SubRegionRef_P)
-    Generate_ElementaryEntities_EdgeNN(SubRegionRef_P->InitialList,
-                                       &ExtendedSuppListRef_L, EDGESOF);
-  else
-    ExtendedSuppListRef_L = NULL;
-
-  Nbr_EntityRef = List_Nbr(ExtendedListRef_L);
-
-  EdgeNNRef_L = List_Create(Nbr_EntityRef, 1, sizeof(struct EdgeNN));
-
-  for(int i = 0; i < Nbr_EntityRef; i++) {
-    List_Read(ExtendedListRef_L, i, &EdgeNNRef.NumEdge);
-    if(!(ExtendedSuppListRef_L &&
-         List_Search(ExtendedSuppListRef_L, &EdgeNNRef.NumEdge, fcmp_int))) {
-      if(EdgeNNRef.Node2 < EdgeNNRef.Node1) {
-        Save_Num = EdgeNNRef.Node2;
-        EdgeNNRef.Node2 = EdgeNNRef.Node1;
-        EdgeNNRef.Node1 = Save_Num;
-      }
-      List_Add(EdgeNNRef_L, &EdgeNNRef);
-
-      Message::Debug("Ref   %d: edge %d (nodes %d %d)", i, EdgeNNRef.NumEdge,
-                     EdgeNNRef.Node1, EdgeNNRef.Node2);
-    }
-  }
-  Nbr_EntityRef = List_Nbr(EdgeNNRef_L);
-
-  if(Nbr_EntityRef != Nbr_Entity) {
-    Message::Error(
-      "Constraint Link: bad correspondance of number of edges (%d, %d)",
-      Nbr_Entity, Nbr_EntityRef);
-    return;
-  }
-
-  List_Sort(EdgeNN_L, fcmp_NN);
-  List_Sort(EdgeNNRef_L, fcmp_NN);
-
-  for(int i = 0; i < Nbr_Entity; i++) {
-    List_Read(EdgeNN_L, i, &EdgeNN);
-    List_Read(EdgeNNRef_L, i, &EdgeNNRef);
-
-    Message::Debug("Final : %d: edge %d (nodes %d %d) (%.16g + %.16g i) / "
-                   "edge %d (nodes %d %d)",
-                   i, EdgeNN.NumEdge, EdgeNN.Node1, EdgeNN.Node2, EdgeNN.Coef,
-                   EdgeNN.Coef2, EdgeNNRef.NumEdge, EdgeNNRef.Node1,
-                   EdgeNNRef.Node2);
-
-    if(EdgeNN.Node1 != EdgeNNRef.Node1 || EdgeNN.Node2 != EdgeNNRef.Node2) {
-      Message::Error("Constraint Link: bad correspondance of edges (%d, %d)",
-                     EdgeNN.NumEdge, EdgeNNRef.NumEdge);
-      return;
-    }
-
-    TwoIntOneDouble.Int1 = EdgeNN.NumEdge;
-    TwoIntOneDouble.Int2 = EdgeNNRef.NumEdge;
-    TwoIntOneDouble.Double = EdgeNN.Coef;
-    TwoIntOneDouble.Double2 = EdgeNN.Coef2; /* LinkCplx */
-
-    List_Add(Couples_L, &TwoIntOneDouble);
-  }
-
-  List_Delete(EdgeNN_L);
-  List_Delete(EdgeNNRef_L);
-  List_Delete(CouplesOfNodes_L);
-  List_Delete(CouplesOfNodes2_L);
-
-  Message::Info("====> End Link Edge");
-}
-
-#endif
-
-/*-----------------------------------------*/
-/*| G e n e r a t e _ L i n k F a c e t s |*/
-/*-----------------------------------------*/
+/*  G e n e r a t e _ L i n k F a c e t s  */
 
 void Generate_LinkFacets(struct ConstraintInFS *Constraint_P,
                          struct Group *Group_P, struct Group *RegionRef_P,
                          struct Group *SubRegionRef_P, List_T *Couples_L)
 {
-  int Nbr_Entity, Nbr_EntityRef;
+  Message::Info("====> Begin Link Facet");
 
-  List_T *ExtendedListNodes_L;
-  List_T *CouplesOfNodes_L, *CouplesOfNodes2_L;
-  struct FacetNNN FacetNNN, FacetNNNRef;
-  List_T *FacetNNN_L, *FacetNNNRef_L;
-  List_T *ExtendedListRef_L, *ExtendedSuppListRef_L;
+  // Fill ExtendedList_L with the barycenters of the faces of all elements in
+  // Group_P->InitialList. Fill ExtendedSuppList_L with the barycenters of the
+  // facets of all elements in Group_P->InitialSuppList.
 
-  int i;
-  struct TwoIntOneDouble *TwoIntOneDouble_P, *TwoIntOneDouble2_P;
-  struct TwoIntOneDouble *TwoIntOneDouble3_P, TwoIntOneDouble;
-
-  List_T *ExtendedList_L;
-  // int  Save_Num1, Save_Num2, Save_Num3;
-  int Flag_Filter;
-
-  /* Couples of nodes */
-
-  Generate_ElementaryEntities(Group_P->InitialList, &ExtendedListNodes_L,
-                              NODESOF);
-
-  if((Nbr_Entity = List_Nbr(ExtendedListNodes_L)))
-    CouplesOfNodes_L =
-      List_Create(Nbr_Entity, 1, sizeof(struct TwoIntOneDouble));
-  else {
-    return; /* situation impossible... */
-  }
-
-  if(Constraint_P->ConstraintPerRegion->Case.Link.FilterIndex2 < 0) {
-    Flag_Filter = 0;
-    CouplesOfNodes2_L = NULL;
-    Generate_LinkNodes(
-      Constraint_P, ExtendedListNodes_L, NULL, RegionRef_P, NULL,
-      Constraint_P->ConstraintPerRegion->Case.Link.FilterIndex,
-      Constraint_P->ConstraintPerRegion->Case.Link.FunctionIndex,
-      Constraint_P->ConstraintPerRegion->Case.Link.FunctionRefIndex,
-      Constraint_P->ConstraintPerRegion->Case.Link.CoefIndex,
-      Constraint_P->ConstraintPerRegion->Case.Link.ToleranceFactor,
-      CouplesOfNodes_L);
-  }
-  else {
-    Flag_Filter = 1;
-    CouplesOfNodes2_L =
-      List_Create(Nbr_Entity, 1, sizeof(struct TwoIntOneDouble));
-
-    Generate_LinkNodes(
-      Constraint_P, ExtendedListNodes_L, NULL, RegionRef_P, NULL,
-      Constraint_P->ConstraintPerRegion->Case.Link.FilterIndex,
-      Constraint_P->ConstraintPerRegion->Case.Link.FunctionIndex,
-      Constraint_P->ConstraintPerRegion->Case.Link.FunctionRefIndex,
-      Constraint_P->ConstraintPerRegion->Case.Link.CoefIndex,
-      Constraint_P->ConstraintPerRegion->Case.Link.ToleranceFactor,
-      CouplesOfNodes_L);
-    Generate_LinkNodes(
-      Constraint_P, ExtendedListNodes_L, NULL, RegionRef_P, NULL,
-      Constraint_P->ConstraintPerRegion->Case.Link.FilterIndex2,
-      Constraint_P->ConstraintPerRegion->Case.Link.FunctionIndex2,
-      Constraint_P->ConstraintPerRegion->Case.Link.FunctionRefIndex,
-      Constraint_P->ConstraintPerRegion->Case.Link.CoefIndex2,
-      Constraint_P->ConstraintPerRegion->Case.Link.ToleranceFactor,
-      CouplesOfNodes2_L);
-  }
-
-  /* Couples of facets */
-
-  Message::Info("== Couples of facets ==");
-
-  /* Facets with Constraint */
-
-  Nbr_Entity = List_Nbr(Group_P->ExtendedList);
-
-  Generate_ElementaryEntities_FacetNNN(Group_P->InitialList, &ExtendedList_L,
-                                       FACETSOF);
+  List_T *ExtendedList_L, *ExtendedSuppList_L;
+  Generate_ElementaryEntities_FacetXYZ(Group_P->InitialList, &ExtendedList_L);
   if(Group_P->InitialSuppList)
-    Generate_ElementaryEntities_FacetNNN(Group_P->InitialSuppList,
-                                         &ExtendedSuppListRef_L, FACETSOF);
+    Generate_ElementaryEntities_FacetXYZ(Group_P->InitialSuppList,
+                                         &ExtendedSuppList_L);
   else
-    ExtendedSuppListRef_L = NULL;
+    ExtendedSuppList_L = NULL;
 
-  FacetNNN_L = List_Create(Nbr_Entity, 1, sizeof(struct FacetNNN));
+  // Add slave facets in the list FacetXYZ_L from ExtendedList_L excluding
+  // possibly those in ExtendedSuppList_L. No Filter for facets. The function
+  // "Function" is applied to the facet barycenter coordinates before storing it
+  // in the list.
 
-  if(Nbr_Entity != List_Nbr(ExtendedList_L)) {
-    Message::Error("Constraint Link: strange...");
-    return;
-  }
-
-  for(i = 0; i < Nbr_Entity; i++) {
-    List_Read(ExtendedList_L, i, &FacetNNN);
-    if(!(ExtendedSuppListRef_L &&
-         List_Search(ExtendedSuppListRef_L, &FacetNNN.NumFacet, fcmp_int))) {
-      // FIXME TODO
-      /*if (FacetNNN.Node3 < FacetNNN.Node2) {
-         Save_Num1 = FacetNNN.Node3 ;
-     FacetNNN.Node3 = FacetNNN.Node2 ;  FacetNNN.Node2 = Save_Num1 ;
-      }
-      if (FacetNNN.Node3 < FacetNNN.Node1) {
-         Save_Num3 = FacetNNN.Node3 ;
-     FacetNNN.Node3 = FacetNNN.Node1 ;  FacetNNN.Node1 = Save_Num2 ;
-      }
-      if (FacetNNN.Node2 < FacetNNN.Node1) {
-         Save_Num3 = FacetNNN.Node2 ;
-     FacetNNN.Node2 = FacetNNN.Node1 ;  FacetNNN.Node1 = Save_Num3 ;
-      }*/
-
-      Message::Debug("Image %d: f%d, n%d - n%d - n%d", i, FacetNNN.NumFacet,
-                     FacetNNN.Node1, FacetNNN.Node2, FacetNNN.Node3);
-
-      TwoIntOneDouble_P = (struct TwoIntOneDouble *)List_PQuery(
-        CouplesOfNodes_L, &FacetNNN.Node1, fcmp_int);
-      TwoIntOneDouble2_P = (struct TwoIntOneDouble *)List_PQuery(
-        CouplesOfNodes_L, &FacetNNN.Node2, fcmp_int);
-      TwoIntOneDouble3_P = (struct TwoIntOneDouble *)List_PQuery(
-        CouplesOfNodes_L, &FacetNNN.Node3, fcmp_int);
-
-      if(!(TwoIntOneDouble_P && TwoIntOneDouble2_P && TwoIntOneDouble3_P)) {
-        if(Flag_Filter) {
-          TwoIntOneDouble_P = (struct TwoIntOneDouble *)List_PQuery(
-            CouplesOfNodes2_L, &FacetNNN.Node1, fcmp_int);
-          TwoIntOneDouble2_P = (struct TwoIntOneDouble *)List_PQuery(
-            CouplesOfNodes2_L, &FacetNNN.Node2, fcmp_int);
-          TwoIntOneDouble3_P = (struct TwoIntOneDouble *)List_PQuery(
-            CouplesOfNodes2_L, &FacetNNN.Node3, fcmp_int);
-          if(!TwoIntOneDouble_P)
-            Message::Error("1-Constraint Link: unknown node (%d)",
-                           FacetNNN.Node1);
-          if(!TwoIntOneDouble2_P)
-            Message::Error("2-Constraint Link: unknown node (%d)",
-                           FacetNNN.Node2);
-          if(!TwoIntOneDouble3_P)
-            Message::Error("3-Constraint Link: unknown node (%d)",
-                           FacetNNN.Node3);
-        }
-        else
-          Message::Error("4-Constraint Link: bad correspondance for facets");
-      }
-
-      FacetNNN.Node1 = TwoIntOneDouble_P->Int2;
-      FacetNNN.Node2 = TwoIntOneDouble2_P->Int2;
-      FacetNNN.Node3 = TwoIntOneDouble3_P->Int2;
-
-      if((fabs(TwoIntOneDouble_P->Double - TwoIntOneDouble2_P->Double) >
-          1.e-18) ||
-         (fabs(TwoIntOneDouble2_P->Double - TwoIntOneDouble3_P->Double) >
-          1.e-18) ||
-         (fabs(TwoIntOneDouble3_P->Double - TwoIntOneDouble_P->Double) >
-          1.e-18))
-        Message::Error("5-Constraint Link: Bad Coefficient for Facets");
-
-      FacetNNN.Coef = TwoIntOneDouble_P->Double;
-      FacetNNN.Coef2 = TwoIntOneDouble_P->Double2; /* LinkCplx */
-
-      // FIXME TODO
-      /*if (FacetNNN.Node3 < FacetNNN.Node2) {
-         Save_Num1 = FacetNNN.Node3 ;
-     FacetNNN.Node3 = FacetNNN.Node2 ;  FacetNNN.Node2 = Save_Num1 ;
-     FacetNNN.NumFacet *= -1 ;
-      }
-      if (FacetNNN.Node3 < FacetNNN.Node1) {
-         Save_Num2 = FacetNNN.Node3 ;
-     FacetNNN.Node3 = FacetNNN.Node1 ;  FacetNNN.Node1 = Save_Num2 ;
-     FacetNNN.NumFacet *= -1 ;
-      }
-      if (FacetNNN.Node2 < FacetNNN.Node1) {
-         Save_Num3 = FacetNNN.Node2 ;
-     FacetNNN.Node2 = FacetNNN.Node1 ;  FacetNNN.Node1 = Save_Num3 ;
-     FacetNNN.NumFacet *= -1 ;
-      } */
-
-      List_Add(FacetNNN_L, &FacetNNN);
-
-      Message::Debug("                         --- (whose source is) --->  "
-                     "f%d, n%d - n%d - n%d",
-                     FacetNNN.NumFacet, FacetNNN.Node1, FacetNNN.Node2,
-                     FacetNNN.Node3);
+  int Nbr_Entity = List_Nbr(ExtendedList_L);
+  List_T *FacetXYZ_L = List_Create(Nbr_Entity, 1, sizeof(struct FacetXYZ));
+  for(int i = 0; i < Nbr_Entity; i++) {
+    struct FacetXYZ FacetXYZ;
+    List_Read(ExtendedList_L, i, &FacetXYZ);
+    if(!(ExtendedSuppList_L &&
+         List_Search(ExtendedSuppList_L, &FacetXYZ.NumFacet, fcmp_int))) {
+      Current.x = FacetXYZ.x;
+      Current.y = FacetXYZ.y;
+      Current.z = FacetXYZ.z;
+      struct Value Value;
+      Get_ValueOfExpressionByIndex(
+        Constraint_P->ConstraintPerRegion->Case.Link.FunctionIndex, NULL, 0.,
+        0., 0., &Value);
+      FacetXYZ.x = Value.Val[0];
+      FacetXYZ.y = Value.Val[1];
+      FacetXYZ.z = Value.Val[2];
+      List_Add(FacetXYZ_L, &FacetXYZ);
     }
   }
-  Nbr_Entity = List_Nbr(FacetNNN_L);
+  Nbr_Entity = List_Nbr(FacetXYZ_L);
 
-  /* Facets of reference (Link) */
+  // Fill ExtendedListRef_L with the barycenters of the facets of all elements
+  // in RegionRef_P->InitialList.  Fill ExtendedSuppListRef_L with the
+  // barycenters of the facets of all elements in SubRegionRef_P->InitialList.
 
-  Generate_ElementaryEntities_FacetNNN(RegionRef_P->InitialList,
-                                       &ExtendedListRef_L, FACETSOF);
+  List_T *ExtendedListRef_L, *ExtendedSuppListRef_L;
+  Generate_ElementaryEntities_FacetXYZ(RegionRef_P->InitialList,
+                                       &ExtendedListRef_L);
   if(SubRegionRef_P)
-    Generate_ElementaryEntities_FacetNNN(SubRegionRef_P->InitialList,
-                                         &ExtendedSuppListRef_L, FACETSOF);
+    Generate_ElementaryEntities_FacetXYZ(SubRegionRef_P->InitialList,
+                                         &ExtendedSuppListRef_L);
   else
     ExtendedSuppListRef_L = NULL;
 
-  Nbr_EntityRef = List_Nbr(ExtendedListRef_L);
+  // Add master (ref) facets in the list FacetXYZRef_L from ExtendedListRef_L
+  // excluding possibly those in ExtendedSuppListRef_L. The function
+  // "FunctionRef" is applied to the facet barycenter coordinates before storing
+  // it in the list.
 
-  FacetNNNRef_L = List_Create(Nbr_EntityRef, 1, sizeof(struct FacetNNN));
-
-  for(i = 0; i < Nbr_EntityRef; i++) {
-    List_Read(ExtendedListRef_L, i, &FacetNNNRef.NumFacet);
+  int Nbr_EntityRef = List_Nbr(ExtendedListRef_L);
+  List_T *FacetXYZRef_L =
+    List_Create(Nbr_EntityRef, 1, sizeof(struct FacetXYZ));
+  for(int i = 0; i < Nbr_EntityRef; i++) {
+    struct FacetXYZ FacetXYZRef;
+    List_Read(ExtendedListRef_L, i, &FacetXYZRef);
     if(!(ExtendedSuppListRef_L &&
-         List_Search(ExtendedSuppListRef_L, &FacetNNNRef.NumFacet, fcmp_int))) {
-      // FIXME TODO
-      /*if (FacetNNNRef.Node3 < FacetNNNRef.Node2) {
-         Save_Num1 = FacetNNNRef.Node3 ;
-     FacetNNNRef.Node3 = FacetNNNRef.Node2 ;  FacetNNNRef.Node2 = Save_Num1 ;
+         List_Search(ExtendedSuppListRef_L, &FacetXYZRef.NumFacet, fcmp_int))) {
+      if(Constraint_P->ConstraintPerRegion->Case.Link.FunctionRefIndex >= 0) {
+        Current.x = FacetXYZRef.x;
+        Current.y = FacetXYZRef.y;
+        Current.z = FacetXYZRef.z;
+        struct Value Value;
+        Get_ValueOfExpressionByIndex(
+          Constraint_P->ConstraintPerRegion->Case.Link.FunctionRefIndex, NULL,
+          0., 0., 0., &Value);
+        FacetXYZRef.x = Value.Val[0];
+        FacetXYZRef.y = Value.Val[1];
+        FacetXYZRef.z = Value.Val[2];
       }
-      if (FacetNNNRef.Node3 < FacetNNNRef.Node1) {
-         Save_Num2 = FacetNNNRef.Node3 ;
-     FacetNNNRef.Node3 = FacetNNNRef.Node1 ;  FacetNNNRef.Node1 = Save_Num2 ;
-      }
-      if (FacetNNNRef.Node2 < FacetNNNRef.Node1) {
-         Save_Num3 = FacetNNNRef.Node2 ;
-     FacetNNNRef.Node2 = FacetNNNRef.Node1 ;  FacetNNNRef.Node1 = Save_Num3 ;
-      } */
-      List_Add(FacetNNNRef_L, &FacetNNNRef);
-
-      /* -- */
-      Message::Debug("Ref   %d: f%d, n%d - n%d  - n%d ", i,
-                     FacetNNNRef.NumFacet, FacetNNNRef.Node1, FacetNNNRef.Node2,
-                     FacetNNNRef.Node3);
+      List_Add(FacetXYZRef_L, &FacetXYZRef);
     }
   }
-  Nbr_EntityRef = List_Nbr(FacetNNNRef_L);
+  Nbr_EntityRef = List_Nbr(FacetXYZRef_L);
+
+  // fill the rtree with the master (ref) facets
+  double TOL = Current.GeoData->CharacteristicLength *
+               Constraint_P->ConstraintPerRegion->Case.Link.ToleranceFactor;
+  FacetXYZRTree rt(TOL);
+  List_T *tmp =
+    List_Create(List_Nbr(FacetXYZRef_L), 1, sizeof(struct FacetXYZ));
+  List_Copy(FacetXYZRef_L, tmp);
+  List_Reset(FacetXYZRef_L);
+  for(int i = 0; i < List_Nbr(tmp); i++) {
+    rt.insert((struct FacetXYZ *)List_Pointer(tmp, i));
+  }
+  for(int i = 0; i < List_Nbr(FacetXYZ_L); i++) {
+    struct FacetXYZ *n = (struct FacetXYZ *)List_Pointer(FacetXYZ_L, i);
+    struct FacetXYZ *ref = rt.find(n);
+    if(ref) List_Add(FacetXYZRef_L, ref);
+  }
+  Nbr_EntityRef = List_Nbr(FacetXYZRef_L);
+  List_Delete(tmp);
 
   if(Nbr_EntityRef != Nbr_Entity) {
     Message::Error(
-      "6-Constraint Link: bad correspondance of number of facets (%d, %d)",
+      "Constraint Link: bad correspondance of number of facets (%d, %d)",
       Nbr_Entity, Nbr_EntityRef);
     return;
   }
 
-  List_Sort(FacetNNN_L, fcmp_NNN);
-  List_Sort(FacetNNNRef_L, fcmp_NNN);
+  for(int i = 0; i < Nbr_Entity; i++) {
+    struct FacetXYZ FacetXYZ, FacetXYZRef;
+    List_Read(FacetXYZ_L, i, &FacetXYZ);
+    List_Read(FacetXYZRef_L, i, &FacetXYZRef);
 
-  for(i = 0; i < Nbr_Entity; i++) {
-    List_Read(FacetNNN_L, i, &FacetNNN);
-    List_Read(FacetNNNRef_L, i, &FacetNNNRef);
+    Message::Debug(
+      "Final : %d: facet %d (nodes %d %d %d %d) / facet %d (nodes %d %d %d %d)",
+      i, FacetXYZ.NumFacet, FacetXYZ.Node1, FacetXYZ.Node2, FacetXYZ.Node3,
+      FacetXYZ.Node4, FacetXYZRef.NumFacet, FacetXYZRef.Node1,
+      FacetXYZRef.Node2, FacetXYZRef.Node3, FacetXYZRef.Node4);
 
-    Message::Debug("Final : %d: a%d, n%d - n%d - n%d (%.16g + %.16g i) / a%d, "
-                   "n%d - n%d - n%d",
-                   i, FacetNNN.NumFacet, FacetNNN.Node1, FacetNNN.Node2,
-                   FacetNNN.Node3, FacetNNN.Coef, FacetNNN.Coef2,
-                   FacetNNNRef.NumFacet, FacetNNNRef.Node1, FacetNNNRef.Node2,
-                   FacetNNNRef.Node3);
+    TwoIntOneDouble TwoIntOneDouble;
+    TwoIntOneDouble.Int1 = FacetXYZ.NumFacet;
+    TwoIntOneDouble.Int2 = FacetXYZRef.NumFacet;
 
-    if(FacetNNN.Node1 != FacetNNNRef.Node1 ||
-       FacetNNN.Node2 != FacetNNNRef.Node2 ||
-       FacetNNN.Node3 != FacetNNNRef.Node3) {
-      Message::Error("7-Constraint Link: bad correspondance of facets (%d, %d)",
-                     FacetNNN.NumFacet, FacetNNNRef.NumFacet);
-      return;
-    }
+    // Compute coefficient based on the barycenter of the master (ref) facet
+    Current.x = FacetXYZRef.x;
+    Current.y = FacetXYZRef.y;
+    Current.z = FacetXYZRef.z;
+    struct Value Value;
+    Get_ValueOfExpressionByIndex(
+      Constraint_P->ConstraintPerRegion->Case.Link.CoefIndex, NULL, 0., 0., 0.,
+      &Value);
+    TwoIntOneDouble.Double = Value.Val[0];
+    if(Current.NbrHar == 1)
+      TwoIntOneDouble.Double2 = 0.;
+    else
+      TwoIntOneDouble.Double2 = Value.Val[MAX_DIM]; // LinkCplx
 
-    TwoIntOneDouble.Int1 = FacetNNN.NumFacet;
-    TwoIntOneDouble.Int2 = FacetNNNRef.NumFacet;
-    TwoIntOneDouble.Double = FacetNNN.Coef;
-    TwoIntOneDouble.Double2 = FacetNNN.Coef2; /* LinkCplx */
+    // FIXME: deal with orientation
 
     List_Add(Couples_L, &TwoIntOneDouble);
   }
 
-  List_Delete(FacetNNN_L);
-  List_Delete(FacetNNNRef_L);
-  List_Delete(CouplesOfNodes_L);
-  List_Delete(CouplesOfNodes2_L);
+  List_Delete(FacetXYZ_L);
+  List_Delete(FacetXYZRef_L);
 
   Message::Info("====> End Link Facet");
 }
@@ -1680,9 +1340,8 @@ void Generate_Link(struct ConstraintInFS *Constraint_P, int Flag_New)
   switch(Group_P->FunctionType) {
   case NODESOF:
     Generate_LinkNodes(
-      Constraint_P, Group_P->ExtendedList, Group_P->ExtendedSuppList,
-      RegionRef_P, SubRegionRef_P,
-      Constraint_P->ConstraintPerRegion->Case.Link.FilterIndex,
+      Group_P->ExtendedList, Group_P->ExtendedSuppList, RegionRef_P,
+      SubRegionRef_P, Constraint_P->ConstraintPerRegion->Case.Link.FilterIndex,
       Constraint_P->ConstraintPerRegion->Case.Link.FunctionIndex,
       Constraint_P->ConstraintPerRegion->Case.Link.FunctionRefIndex,
       Constraint_P->ConstraintPerRegion->Case.Link.CoefIndex,
@@ -1696,7 +1355,36 @@ void Generate_Link(struct ConstraintInFS *Constraint_P, int Flag_New)
   case FACETSOF:
     Generate_LinkFacets(Constraint_P, Group_P, RegionRef_P, SubRegionRef_P,
                         Active->Case.Link.Couples);
-    /*Message::Error("Link not yet implemented for FACETSOF") ;*/
+    {
+      // keep track of slave->master nodes on the groups where we have facet
+      // links, so that we can retrieve the periodic node information when
+      // generating high-order facet functions (BF_Edge_3F), which depend on an
+      // ordering based on global node tags
+      List_T *ExtendedListNodes_L;
+      Generate_ElementaryEntities(Group_P->InitialList, &ExtendedListNodes_L,
+                                  NODESOF);
+      List_T *CouplesOfNodes_L = List_Create(List_Nbr(ExtendedListNodes_L), 1,
+                                             sizeof(struct TwoIntOneDouble));
+      Generate_LinkNodes(
+        ExtendedListNodes_L, NULL, RegionRef_P, NULL,
+        Constraint_P->ConstraintPerRegion->Case.Link.FilterIndex,
+        Constraint_P->ConstraintPerRegion->Case.Link.FunctionIndex,
+        Constraint_P->ConstraintPerRegion->Case.Link.FunctionRefIndex,
+        Constraint_P->ConstraintPerRegion->Case.Link.CoefIndex,
+        Constraint_P->ConstraintPerRegion->Case.Link.ToleranceFactor,
+        CouplesOfNodes_L);
+      if(!Current.GeoData->PeriodicNodes)
+        Current.GeoData->PeriodicNodes = new std::map<int, int>;
+      for(int i = 0; i < List_Nbr(CouplesOfNodes_L); i++) {
+        struct TwoIntOneDouble t;
+        List_Read(CouplesOfNodes_L, i, &t);
+        (*Current.GeoData->PeriodicNodes)[t.Int1] = t.Int2;
+        Message::Debug("Keeping track of periodic node slave %d -> master %d",
+                       t.Int1, t.Int2);
+      }
+      List_Delete(CouplesOfNodes_L);
+      List_Delete(ExtendedListNodes_L);
+    }
     break;
   case REGION:
     Generate_LinkRegions(Constraint_P, Group_P->InitialList,
