@@ -551,25 +551,6 @@ static void Geo_ReadFileWithGmsh(struct GeoData *GeoData_P)
 
   List_Sort(GeoData_P->Elements, fcmp_Elm);
 
-  // Keep track of periodic nodes correspondance, if any
-  for(unsigned int entity = 0; entity < dimTags.size(); entity++) {
-    int tagMaster;
-    std::vector<std::size_t> nodeTags, nodeTagsMaster;
-    std::vector<double> affineTransform;
-    gmsh::model::mesh::getPeriodicNodes(
-      dimTags[entity].first, dimTags[entity].second, tagMaster, nodeTags,
-      nodeTagsMaster, affineTransform);
-    if(!nodeTags.empty()) {
-      if(!GeoData_P->PeriodicNodes)
-        GeoData_P->PeriodicNodes =
-          List_Create(nodeTags.size(), 1000, sizeof(TwoInt));
-      for(std::size_t i = 0; i < nodeTags.size(); i++) {
-        TwoInt pair = {(int)nodeTags[i], (int)nodeTagsMaster[i]};
-        List_Add(GeoData_P->PeriodicNodes, &pair);
-      }
-    }
-  }
-
   Geo_SnapNodes(GeoData_P);
 
 #else

@@ -8,6 +8,7 @@
 
 #include "ListUtils.h"
 #include "TreeUtils.h"
+#include <map>
 
 struct Grid {
   int Init;
@@ -36,7 +37,7 @@ struct GeoData {
 
   double *H, *P;
 
-  List_T *PeriodicNodes;
+  std::map<int, int> *PeriodicNodes;
 
   int NbrPartitions;
 };
