@@ -40,6 +40,7 @@ struct GeoData {
   std::map<int, int> *PeriodicNodes;
 
   int NbrPartitions;
+  bool HasMovingBand;
 };
 
 int Geo_AddGeoData(List_T *GeoData_L, char *Name_MshFile,

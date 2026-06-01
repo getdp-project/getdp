@@ -110,6 +110,8 @@ void Geo_InitGeoData(struct GeoData *GeoData_P, int Num, char *Name)
   GeoData_P->H = GeoData_P->P = NULL;
 
   GeoData_P->PeriodicNodes = NULL;
+
+  GeoData_P->HasMovingBand = false;
 }
 
 /* ------------------------------------------------------------------------ */

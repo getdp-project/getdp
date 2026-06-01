@@ -25,8 +25,6 @@ extern struct CurrentData Current;
 
 extern int TreatmentStatus;
 
-extern List_T *GeoData_L;
-
 /* ------------------------------------------------------------------------ */
 /*  C a l _ F e m G l o b a l E q u a t i o n                               */
 /* ------------------------------------------------------------------------ */
@@ -575,8 +573,8 @@ void Treatment_FemFormulation(struct Formulation *Formulation_P)
     }
   }
 
-  if(Formulation_P->Has_MovingBand2D_Term) {
-    // moving mesh -> maps must be re-initialized at each system generation
+  if(Current.GeoData->HasMovingBand) {
+    // changing mesh element topology -> maps must be re-initialized at each system generation
     if(Formulation_P->RegionToEquationTermIDsIsInit) {
       for(int i_Element = 0; i_Element < Nbr_Element; i_Element++) {
         Element.Region = Geo_GetGeoElement(i_Element)->Region;
@@ -673,9 +671,6 @@ void Treatment_FemFormulation(struct Formulation *Formulation_P)
              GroupIn_P->Type == ELEMENTLIST) {
             // storing indices of ELEMENTLIST terms for later use
             Formulation_P->ElementListEquationTermIDs.push_back(i_EquTerm);
-          }
-          if(GroupIn_P->MovingBand2D) {
-            Formulation_P->Has_MovingBand2D_Term = 1;
           }
         }
       }

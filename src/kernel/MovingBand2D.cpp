@@ -310,7 +310,7 @@ void Mesh_MB2D(int nth1, int nth2, int ntr1, int ntr2, int closed1, int closed2,
         Message::Error("Meshing of 2D Moving Band failed");
       test = ( itry3 < nth1 ) ? 1 : 2;
     }
-    
+
     if ( test == 1 ){
       b1_p1[n1] = itry1;
       b1_p2[n1] = itry3;
@@ -374,6 +374,8 @@ void Mesh_MovingBand2D(struct Group *Group_P)
             b1_p2, b1_p3, b2_p1, b2_p2, b2_p3);
 
   GeoData = Current.GeoData;
+
+  GeoData->HasMovingBand = true;
 
   Geo_Element.NbrEdges = Geo_Element.NbrFacets = 0;
   Geo_Element.NumEdges = Geo_Element.NumFacets = NULL;

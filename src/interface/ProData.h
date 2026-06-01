@@ -520,8 +520,6 @@ struct Formulation {
 
   std::vector<int> ElementListEquationTermIDs;
   int ElementListEquationTermIDsIsInit = 0;
-
-  int Has_MovingBand2D_Term = 0;
 };
 
 /* Formulation.Type */
