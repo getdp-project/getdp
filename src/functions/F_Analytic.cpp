@@ -1741,7 +1741,7 @@ void F_ElectricFieldDielectricCylinderZPol(F_ARG)
   V->Val[0] = 0.;
   V->Val[MAX_DIM] = 0.;
 
-  num2 = 2.0 * I / (M_PI * kR * nz);
+  num2 = 2.0 * I / (M_PI * kR);
   for(m = -M; m <= M; m++) {
     denum = dhn(m, kR) * jn(m, kR*nz) - nz * hn(m, kR) * djn(m, kR*nz);
     
