@@ -1704,64 +1704,162 @@ void F_JFIE_TransZPolCyl(F_ARG)
    Returns electric field */
 
 void F_ElectricFieldDielectricCylinderZPol(F_ARG)
-{ 
-  double theta = atan2(A->Val[1], A->Val[0]);
-  double r = sqrt(A->Val[0] * A->Val[0] + A->Val[1] * A->Val[1]);
-  double E0 = Fct->Para[0];    // amplitude of the field
-  double k0 = Fct->Para[1];    // wavenumber
-  double R = Fct->Para[2];     // cylinder radius
-  double nz = Fct->Para[3];    // refractive index
-  int M = Fct->Para[4];        // number of modes
+{
+  // --- Read spatial coordinates ---
+  const double theta = atan2(A->Val[1], A->Val[0]);
+  const double r = sqrt(A->Val[0] * A->Val[0] + A->Val[1] * A->Val[1]);
 
-  double kR = k0 * R;
-  double kr = k0 * r;
-  int m;
-  std::complex<double> I = std::complex<double>(0., 1.);
-  std::complex<double> num1, num2, denum, v;
+  // --- Read parameters ---
+  const double E0 = Fct->Para[0]; // Incident field amplitude
+  const double k0 = Fct->Para[1]; // Vacuum wavenumber
+  const double R  = Fct->Para[2]; // Cylinder radius
+  const double nz = Fct->Para[3]; // Refractive index of the cylinder
+  const int M = static_cast<int>(Fct->Para[4]); // Truncation order
 
+  // -- Useful quantities ---
+  const double kR = k0 * R;       // k0 * cylinder radius
+  const double kr = k0 * r;       // k0 * radial position
+  const double alpha = theta + M_PI / 2.0;
+  const bool outside = (r > R);
+  const std::complex<double> I(0.0, 1.0);
+
+  // --- Derivative of the Bessel functions ---
   auto djn = [](int n, double x)
-    {
-        if (n == 0)
-            return -jn(1, x);
-
-        return 0.5 * (jn(n - 1, x) - jn(n + 1, x));
-    };
-  auto hn = [](int n, double x) -> std::complex<double>
-    {
-        return std::complex<double>(jn(n, x), yn(n, x));
-    };
-  auto dhn = [&hn](int n, double x) -> std::complex<double>
   {
-      if (n == 0)
-          return -hn(1, x);
+    if(n == 0)
+      return -jn(1, x);
 
-      return 0.5 * (hn(n - 1, x) - hn(n + 1, x));
+    return 0.5 * (jn(n - 1, x) - jn(n + 1, x));
   };
-  
-  V->Val[0] = 0.;
-  V->Val[MAX_DIM] = 0.;
 
-  num2 = 2.0 * I / (M_PI * kR);
-  for(m = -M; m <= M; m++) {
-    denum = dhn(m, kR) * jn(m, kR*nz) - nz * hn(m, kR) * djn(m, kR*nz);
-    
-    if (r > R) {
-      num1 = nz * jn(m, kR) * djn(m, kR*nz) - jn(m, kR*nz) * djn(m, kR);
-      v = (jn(m, kr) + (num1 / denum) * hn(m, kr)) * std::exp(I * (m * (theta + M_PI / 2)));
-    }
-    else {
-      v = ((num2 / denum) * jn(m, kr*nz)) * std::exp(I * (m * (theta + M_PI / 2)));
-    }
+  auto dyn = [](int n, double x)
+  {
+    if(n == 0)
+      return -yn(1, x);
 
-    V->Val[0] += std::real(v);
-    V->Val[MAX_DIM] += std::imag(v);
+    return 0.5 * (yn(n - 1, x) - yn(n + 1, x));
+  };
+
+  // -------------------------------------------------------------------------
+  // Cache structure
+  //
+  // The coefficients of the analytical expansion depend only on:
+  //   kR, nz, M
+  //
+  // They do NOT depend on the point (x, y).
+  // We store them in a cache and recompute them only when the parameters change.
+  // -------------------------------------------------------------------------
+  struct Cache {
+    double kR = -1.0;
+    double nz = -1.0;
+    int M = -1;
+
+    // Exterior coefficients, used for r > R
+    std::vector<std::complex<double>> a_ext;
+
+    // Interior coefficients, used for r <= R
+    std::vector<std::complex<double>> b_int;
+  };
+
+  // thread_local makes the cache safe if the code is called in parallel threads
+  static thread_local Cache cache;
+
+  // -------------------------------------------------------------------------
+  // Recompute the modal coefficients only if the parameters changed
+  // -------------------------------------------------------------------------
+  if(cache.kR != kR || cache.nz != nz || cache.M != M) {
+    cache.kR = kR;
+    cache.nz = nz;
+    cache.M = M;
+
+    // We store coefficients for m = -M, ..., M.
+    // The index corresponding to mode m is id = m + M.
+    cache.a_ext.resize(2 * M + 1);
+    cache.b_int.resize(2 * M + 1);
+
+    // Constant numerator used for the interior coefficient
+    const std::complex<double> num2 = 2.0 * I / (M_PI * kR);
+
+    for(int m = -M; m <= M; ++m) {
+      const int id = m + M;
+
+      // Bessel functions evaluated at the cylinder boundary
+      const double J_kR    = jn(m, kR);
+      const double J_kR_nz = jn(m, kR * nz);
+
+      // Derivatives of Bessel functions evaluated at the cylinder boundary
+      const double dJ_kR    = djn(m, kR);
+      const double dJ_kR_nz = djn(m, kR * nz);
+
+      // Hankel function
+      const std::complex<double> H_kR(jn(m, kR), yn(m, kR));
+
+      // Derivative of the Hankel function:
+      const std::complex<double> dH_kR(dJ_kR, dyn(m, kR));
+
+      // Common denominator for both interior and exterior coefficients
+      const std::complex<double> denum = dH_kR * J_kR_nz - nz * H_kR * dJ_kR_nz;
+
+      // Numerator of the exterior scattered-field coefficient
+      const std::complex<double> num1 =
+          nz * J_kR * dJ_kR_nz - J_kR_nz * dJ_kR;
+
+      // Compute the coefficients
+      cache.a_ext[id] = num1 / denum;
+      cache.b_int[id] = num2 / denum;
+    }
   }
 
-  V->Val[0] *= E0;
-  V->Val[MAX_DIM] *= E0;
+  // -------------------------------------------------------------------------
+  // Compute the field expansion at the current point
+  // -------------------------------------------------------------------------
+  std::complex<double> sum = 0.0;
+
+  // Instead of computing exp(i m alpha) at every iteration, we use: phase_m = exp(i m alpha)
+  // Start from m = -M:
+  //   phase = exp(-i M alpha)
+  // Then update with:
+  //   phase <- phase * exp(i alpha)
+  // This avoids calling std::exp inside the loop.
+  std::complex<double> phase = std::polar(1.0, -M * alpha);
+  const std::complex<double> phase_step = std::polar(1.0, alpha);
+
+  if(outside) {
+    // -----------------------------------------------------------------------
+    // Exterior field, r > R
+    // E_z = sum_m [ J_m(k0 r) + a_m H_m(k0 r) ] exp(i m alpha)
+    // -----------------------------------------------------------------------
+    for(int m = -M; m <= M; ++m) {
+      const int id = m + M;
+
+      const double J_kr = jn(m, kr);
+      const std::complex<double> H_kr(J_kr, yn(m, kr));
+
+      sum += (J_kr + cache.a_ext[id] * H_kr) * phase;   // Add modal contribution
+      phase *= phase_step;   // Update exp(i m alpha) -> exp(i (m + 1) alpha)
+    }
+  }
+  else {
+    // -----------------------------------------------------------------------
+    // Interior field, r <= R
+    // E_z = sum_m b_m J_m(k0 nz r) exp(i m alpha)
+    // -----------------------------------------------------------------------
+    const double kr_nz = kr * nz;
+
+    for(int m = -M; m <= M; ++m) {
+      const int id = m + M;
+
+      sum += cache.b_int[id] * jn(m, kr_nz) * phase;   // Add modal contribution inside the cylinder
+      phase *= phase_step;   // Update exp(i m alpha) -> exp(i (m + 1) alpha)
+    }
+  }
+
+  V->Val[0] = E0 * std::real(sum);
+  V->Val[MAX_DIM] = E0 * std::imag(sum);
 
   V->Type = SCALAR;
 }
+
 
 /* Scattering by acoustically soft circular cylinder of radius R,
    under plane wave incidence e^{ikx}. Returns scatterered field
