@@ -1362,6 +1362,8 @@ struct StringXFunction2Nbr F_Function[] =
     (CAST)F_ExactOsrcSolutionPerfectlyConductingSphereMwt, 3, 1},
    {"CurrentPerfectlyConductingSphereMwt",
     (CAST)F_CurrentPerfectlyConductingSphereMwt, 3, 1},
+   {"ElectricFieldDielectricCylinderZPol",
+    (CAST)F_ElectricFieldDielectricCylinderZPol, 4, 1},
 
    {"AcousticFieldSoftSphere", (CAST)F_AcousticFieldSoftSphere, -1, 1},
    {"AcousticFieldSoftSphereABC", (CAST)F_AcousticFieldSoftSphereABC, 5, 1},

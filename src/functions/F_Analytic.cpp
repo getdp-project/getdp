@@ -1700,6 +1700,69 @@ void F_JFIE_TransZPolCyl(F_ARG)
   V->Type = SCALAR;
 }
 
+/* Scattering by solid dielectric cylinder of index nz, inside air, incident wave z-polarized.
+   Returns electric field */
+
+void F_ElectricFieldDielectricCylinderZPol(F_ARG)
+{ 
+  double theta = atan2(A->Val[1], A->Val[0]);
+  double r = sqrt(A->Val[0] * A->Val[0] + A->Val[1] * A->Val[1]);
+  double E0 = Fct->Para[0];    // amplitude of the field
+  double k0 = Fct->Para[1];    // wavenumber
+  double R = Fct->Para[2];     // cylinder radius
+  double nz = Fct->Para[3];    // refractive index
+  int M = Fct->Para[4];        // number of modes
+
+  double kR = k0 * R;
+  double kr = k0 * r;
+  int m;
+  std::complex<double> I = std::complex<double>(0., 1.);
+  std::complex<double> num1, num2, denum, v;
+
+  auto djn = [](int n, double x)
+    {
+        if (n == 0)
+            return -jn(1, x);
+
+        return 0.5 * (jn(n - 1, x) - jn(n + 1, x));
+    };
+  auto hn = [](int n, double x) -> std::complex<double>
+    {
+        return std::complex<double>(jn(n, x), yn(n, x));
+    };
+  auto dhn = [&hn](int n, double x) -> std::complex<double>
+  {
+      if (n == 0)
+          return -hn(1, x);
+
+      return 0.5 * (hn(n - 1, x) - hn(n + 1, x));
+  };
+  
+  V->Val[0] = 0.;
+  V->Val[MAX_DIM] = 0.;
+
+  num2 = 2.0 * I / (M_PI * kR * nz);
+  for(m = -M; m <= M; m++) {
+    denum = dhn(m, kR) * jn(m, kR*nz) - nz * hn(m, kR) * djn(m, kR*nz);
+    
+    if (r > R) {
+      num1 = nz * jn(m, kR) * djn(m, kR*nz) - jn(m, kR*nz) * djn(m, kR);
+      v = (jn(m, kr) + (num1 / denum) * hn(m, kr)) * std::exp(I * (m * (theta + M_PI / 2)));
+    }
+    else {
+      v = ((num2 / denum) * jn(m, kr*nz)) * std::exp(I * (m * (theta + M_PI / 2)));
+    }
+
+    V->Val[0] += std::real(v);
+    V->Val[MAX_DIM] += std::imag(v);
+  }
+
+  V->Val[0] *= E0;
+  V->Val[MAX_DIM] *= E0;
+
+  V->Type = SCALAR;
+}
+
 /* Scattering by acoustically soft circular cylinder of radius R,
    under plane wave incidence e^{ikx}. Returns scatterered field
    outside */
