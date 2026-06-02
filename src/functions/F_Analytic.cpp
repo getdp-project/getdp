@@ -1710,11 +1710,10 @@ void F_ElectricFieldDielectricCylinderZPol(F_ARG)
   const double r = sqrt(A->Val[0] * A->Val[0] + A->Val[1] * A->Val[1]);
 
   // --- Read parameters ---
-  const double E0 = Fct->Para[0]; // Incident field amplitude
-  const double k0 = Fct->Para[1]; // Vacuum wavenumber
-  const double R  = Fct->Para[2]; // Cylinder radius
-  const double nz = Fct->Para[3]; // Refractive index of the cylinder
-  const int M = static_cast<int>(Fct->Para[4]); // Truncation order
+  const double k0 = Fct->Para[0]; // Vacuum wavenumber
+  const double R  = Fct->Para[1]; // Cylinder radius
+  const double nz = Fct->Para[2]; // Refractive index of the cylinder
+  const int M = static_cast<int>(Fct->Para[3]); // Truncation order
 
   // -- Useful quantities ---
   const double kR = k0 * R;       // k0 * cylinder radius
@@ -1792,7 +1791,7 @@ void F_ElectricFieldDielectricCylinderZPol(F_ARG)
       const double dJ_kR_nz = djn(m, kR * nz);
 
       // Hankel function
-      const std::complex<double> H_kR(jn(m, kR), yn(m, kR));
+      const std::complex<double> H_kR(J_kR, yn(m, kR));
 
       // Derivative of the Hankel function:
       const std::complex<double> dH_kR(dJ_kR, dyn(m, kR));
@@ -1854,10 +1853,199 @@ void F_ElectricFieldDielectricCylinderZPol(F_ARG)
     }
   }
 
-  V->Val[0] = E0 * std::real(sum);
-  V->Val[MAX_DIM] = E0 * std::imag(sum);
+  V->Val[0] = std::real(sum);
+  V->Val[MAX_DIM] = std::imag(sum);
 
   V->Type = SCALAR;
+}
+
+
+
+/* Scattering by solid dielectric cylinder of index no, inside air, incident wave xy-polarized.
+   Returns electric field */
+
+void F_ElectricFieldDielectricCylinderXYPol(F_ARG)
+{
+  // --- Read spatial coordinates ---
+  const double theta = atan2(A->Val[1], A->Val[0]);
+  const double r = sqrt(A->Val[0] * A->Val[0] + A->Val[1] * A->Val[1]);
+
+  // --- Read parameters ---
+  const double k0 = Fct->Para[0]; // Vacuum wavenumber
+  const double R  = Fct->Para[1]; // Cylinder radius
+  const double no = Fct->Para[2]; // Refractive index of the cylinder
+  const int M = static_cast<int>(Fct->Para[3]); // Truncation order
+
+  // -- Useful quantities ---
+  const double kR = k0 * R;       // k0 * cylinder radius
+  const double kr = k0 * r;       // k0 * radial position
+  const double alpha = theta + M_PI / 2.0;
+  const bool outside = (r > R);
+  const std::complex<double> I(0.0, 1.0);
+
+  // --- Derivative of the Bessel functions ---
+  auto djn = [](int n, double x)
+  {
+    if(n == 0)
+      return -jn(1, x);
+
+    return 0.5 * (jn(n - 1, x) - jn(n + 1, x));
+  };
+  auto dyn = [](int n, double x)
+  {
+    if(n == 0)
+      return -yn(1, x);
+
+    return 0.5 * (yn(n - 1, x) - yn(n + 1, x));
+  };
+
+  // -------------------------------------------------------------------------
+  // Cache structure
+  //
+  // The coefficients of the analytical expansion depend only on:
+  //   kR, no, M
+  //
+  // They do NOT depend on the point (x, y).
+  // We store them in a cache and recompute them only when the parameters change.
+  // -------------------------------------------------------------------------
+  struct Cache {
+    double kR = -1.0;
+    double no = -1.0;
+    int M = -1;
+
+    // Exterior coefficients, used for r > R
+    std::vector<std::complex<double>> a_ext;
+
+    // Interior coefficients, used for r <= R
+    std::vector<std::complex<double>> b_int;
+  };
+
+  // thread_local makes the cache safe if the code is called in parallel threads
+  static thread_local Cache cache;
+
+  // -------------------------------------------------------------------------
+  // Recompute the modal coefficients only if the parameters changed
+  // -------------------------------------------------------------------------
+  if(cache.kR != kR || cache.no != no || cache.M != M) {
+    cache.kR = kR;
+    cache.no = no;
+    cache.M = M;
+
+    // We store coefficients for m = -M, ..., M.
+    // The index corresponding to mode m is id = m + M.
+    cache.a_ext.resize(2 * M + 1);
+    cache.b_int.resize(2 * M + 1);
+
+    // Constant numerator used for the interior coefficient
+    const std::complex<double> num2 = 2.0 * I / (M_PI * kR);
+
+    for(int m = -M; m <= M; ++m) {
+      const int id = m + M;
+
+      // Bessel functions evaluated at the cylinder boundary
+      const double J_kR    = jn(m, kR);
+      const double J_kR_no = jn(m, kR * no);
+
+      // Derivatives of Bessel functions evaluated at the cylinder boundary
+      const double dJ_kR    = djn(m, kR);
+      const double dJ_kR_no = djn(m, kR * no);
+
+      // Hankel function
+      const std::complex<double> H_kR(J_kR, yn(m, kR));
+
+      // Derivative of the Hankel function:
+      const std::complex<double> dH_kR(dJ_kR, dyn(m, kR));
+
+      // Common denominator for both interior and exterior coefficients
+      const std::complex<double> denum = dH_kR * J_kR_no - (1/no) * H_kR * dJ_kR_no;
+
+      // Numerator of the exterior scattered-field coefficient
+      const std::complex<double> num1 =
+          (1/no) * J_kR * dJ_kR_no - J_kR_no * dJ_kR;
+
+      // Compute the coefficients
+      cache.a_ext[id] = num1 / denum;
+      cache.b_int[id] = num2 / denum;
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Compute the field expansion at the current point
+  // -------------------------------------------------------------------------
+  std::complex<double> sum_r = 0.0;
+  std::complex<double> sum_theta = 0.0;
+
+  // Instead of computing exp(i m alpha) at every iteration, we use: phase_m = exp(i m alpha)
+  // Start from m = -M:
+  //   phase = exp(-i M alpha)
+  // Then update with:
+  //   phase <- phase * exp(i alpha)
+  // This avoids calling std::exp inside the loop.
+  std::complex<double> phase = std::polar(1.0, -M * alpha);
+  const std::complex<double> phase_step = std::polar(1.0, alpha);
+
+  if(outside) {
+    // -----------------------------------------------------------------------
+    // Exterior field, r > R
+    // E_r = alpha * sum_m m * [ J_m(k0 r) + a_m H_m(k0 r) ] exp(i m alpha)
+    // E_theta = beta * sum_m [ J_m'(k0 r) + a_m H_m'(k0 r) ] exp(i m alpha)
+    // -----------------------------------------------------------------------
+    for(int m = -M; m <= M; ++m) {
+      const int id = m + M;
+
+      const double J_kr = jn(m, kr);
+      const std::complex<double> H_kr(J_kr, yn(m, kr));
+      const double dJ_kr = djn(m, kr);
+      const std::complex<double> dH_kr(dJ_kr, dyn(m, kr));
+
+      sum_r += static_cast<double>(m) * (J_kr + cache.a_ext[id] * H_kr) * phase;   // Add modal contribution
+      sum_theta += (dJ_kr + cache.a_ext[id] * dH_kr) * phase;   // Add modal contribution
+      phase *= phase_step;   // Update exp(i m alpha) -> exp(i (m + 1) alpha)
+    }
+    sum_r *= - 1.0 / (k0 * r);
+    sum_theta *= 1.0 / I;
+  }
+  else {
+    // -----------------------------------------------------------------------
+    // Interior field, r <= R
+    // E_r = alpha * sum_m  m * b_m J_m(k0 no r) exp(i m alpha)
+    // E_theta = beta * sum_m  b_m J_m'(k0 no r) exp(i m alpha)
+    // -----------------------------------------------------------------------
+    const double kr_no = kr * no;
+
+    for(int m = -M; m <= M; ++m) {
+      const int id = m + M;
+
+      if(r > 1e-14){
+        sum_r += static_cast<double>(m) * cache.b_int[id] * jn(m, kr_no) * phase;   // Add modal contribution inside the cylinder
+      }
+      sum_theta += cache.b_int[id] * djn(m, kr_no) * phase;   // Add modal contribution inside the cylinder
+      phase *= phase_step;   // Update exp(i m alpha) -> exp(i (m + 1) alpha)
+    }
+
+    if(r > 1e-14){
+      sum_r *= - 1.0 / (k0 * r * no * no);
+    }
+    else{
+      sum_r = - 1.0 / (2.0 * no) * ( cache.b_int[M+1] * std::exp(I * alpha) + cache.b_int[M-1] * std::exp(-I * alpha) );
+    }
+    sum_theta *= 1.0 / (I * no);
+  }
+  // const std::complex<double> Ex = sum_r * cos(theta) - sum_theta * sin(theta);
+  // const std::complex<double> Ey = sum_r * sin(theta) + sum_theta * cos(theta);
+
+  // V->Val[0] = std::real(Ex);
+  // V->Val[1] = std::real(Ey);
+  // V->Val[MAX_DIM] = std::imag(Ex);
+  // V->Val[MAX_DIM + 1] = std::imag(Ey);
+  V->Val[0] = std::real(sum_r);
+  V->Val[1] = std::real(sum_theta);
+  V->Val[2] = 0.0;
+  V->Val[MAX_DIM] = std::imag(sum_r);
+  V->Val[MAX_DIM + 1] = std::imag(sum_theta);
+  V->Val[MAX_DIM + 2] = 0.0;
+
+  V->Type = VECTOR;
 }
 
 
