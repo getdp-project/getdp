@@ -1462,6 +1462,7 @@ struct StringXFunction2Nbr F_Function[] =
    {"AnisotropicRhoPL", (CAST)F_AnisotropicResistivityTensorPowerLaw, 1, 5},
    {"AnisotropicDEDJTensorPL", (CAST)F_AnisotropicDEDJTensorPowerLaw, 1, 5},
    {"FoilWindingPolynomialBF", (CAST)F_FoilWindingPolynomialBF, 4, 0},
+   {"FoilWindingLegendrePolynomialBF", (CAST)F_FoilWindingLegendrePolynomialBF, 4, 0},
 
    // GF_XXX : Green Functions
    {"Laplace", (CAST)GF_Laplace, 1, 0},

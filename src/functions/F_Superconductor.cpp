@@ -20,6 +20,90 @@
 
 extern struct CurrentData Current;
 
+/* Legendre Polynomials Namespace */
+namespace Legendre {
+
+// Standard Legendre polynomial P_n(x)
+// Uses recurrence relation: (n+1)*P_{n+1}(x) = (2n+1)*x*P_n(x) - n*P_{n-1}(x)
+inline double poly(int n, double x) {
+  if(n < 0) n = 0; // Handle negative degree
+  if(x < -1.0) x = -1.0;
+  if(x > 1.0) x = 1.0;
+
+  if(n == 0) return 1.0;
+  if(n == 1) return x;
+
+  double p_prev = 1.0;      // P_0(x)
+  double p_curr = x;        // P_1(x)
+  double p_next;
+
+  for(int i = 1; i < n; ++i) {
+    p_next = ((2.0*i + 1.0)*x*p_curr - i*p_prev) / (i + 1.0);
+    p_prev = p_curr;
+    p_curr = p_next;
+  }
+
+  return p_curr;
+}
+
+// Associated Legendre polynomial P_m^n(x)
+// Handles both standard and associated cases
+inline double poly_assoc(int n, int m, double x) {
+  if(n < 0) n = 0;
+  if(m < 0) m = -m;
+  if(m > n) return 0.0;
+  if(x < -1.0) x = -1.0;
+  if(x > 1.0) x = 1.0;
+
+  double pmm = 1.0;
+  if(m > 0) {
+    double somx2 = std::sqrt((1.0 - x)*(1.0 + x));
+    double fact = 1.0;
+    for(int i = 1; i <= m; ++i) {
+      pmm *= -fact * somx2;
+      fact += 2.0;
+    }
+  }
+
+  if(n == m) return pmm;
+
+  double pmmp1 = x * (2.0*m + 1.0) * pmm;
+  if(n == m + 1) return pmmp1;
+
+  double p_prev = pmm;
+  double p_curr = pmmp1;
+  double p_next;
+
+  for(int i = m + 2; i <= n; ++i) {
+    p_next = (x * (2.0*i - 1.0) * p_curr - (i + m - 1.0) * p_prev) / (i - m);
+    p_prev = p_curr;
+    p_curr = p_next;
+  }
+
+  return p_curr;
+}
+
+// Derivative of standard Legendre polynomial dP_n/dx
+inline double poly_deriv(int n, double x) {
+  if(n == 0) return 0.0;
+  if(x < -1.0) x = -1.0;
+  if(x > 1.0) x = 1.0;
+
+  if(std::fabs(x) >= 1.0 - 1e-14) {
+    // Near endpoints
+    return (n * (n + 1.0)) / 2.0 * (x > 0 ? 1.0 : (n % 2 == 0 ? 1.0 : -1.0));
+  }
+
+  double pn = poly(n, x);
+  double pn1 = poly(n - 1, x);
+  double denom = x*x - 1.0;
+
+  if(std::fabs(denom) < 1e-14) return 0.0;
+  return (n * (x * pn - pn1)) / denom;
+}
+
+} // namespace Legendre
+
 /* ------------------------------------------------------------------------ */
 
 // power law
@@ -385,13 +469,105 @@ void F_FoilWindingPolynomialBF(F_ARG)
   case 2: u = Current.z; break;
   }
 
+  if(!(u1 - u0)) {
+    Message::Error("FoilWindingPolynomialBF: Wrong parameters! Para[1] "
+                   "is foil coordinate with regard to 0, Para[2] is the "
+                   "width of the foil plus the parameter with regard to zero");
+  }
+
   if(coord_type != 0 && coord_type != 1 && coord_type != 2) {
     Message::Error(
       "FoilWindingPolynomialBF: Wrong coordinate type! Should be 0, 1, 2.");
   }
 
-  double res = pow((u - u0) / (u1 - u0), m);
+  double u_shifted = (u - u0) / (u1 - u0);
+  double res = pow(u_shifted, m);
+
+  // Normalize coordinate from [u0, u1] to [-1, 1]
+  // double u_normalized = 2.0 * (u - u0) / (u1 - u0) - 1.0;
+  // double res = pow(u_normalized, m);
 
   V->Val[0] = res;
+  V->Type = SCALAR;
+}
+
+// returns scalar quantity: (u - u0)/(u1 - u0)^m, useful for foil winding
+// polynomial basis functions if coord_type = 0: the normal to stack of tapes is
+// along x -> x is the curvilinear variable u
+void F_FoilWindingLegendrePolynomialBF(F_ARG)
+{
+  int m = (int)Fct->Para[0];
+  double u0 = (double)Fct->Para[1];
+  double u1 = (double)Fct->Para[2];
+  int coord_type = (int)Fct->Para[3]; // 0:x, 1:y, 2:z
+
+  double u = 0;
+  switch(coord_type) {
+  case 0: u = Current.x; break;
+  case 1: u = Current.y; break;
+  case 2: u = Current.z; break;
+  }
+
+  if(!(u1 - u0)) {
+    Message::Error("FoilWindingLegendrePolynomialBF: Wrong parameters! Para[1] "
+                   "is foil coordinate with regard to 0, Para[2] is the "
+                   "width of the foil plus the parameter with regard to zero");
+  }
+
+  if(coord_type != 0 && coord_type != 1 && coord_type != 2) {
+    Message::Error(
+      "FoilWindingPolynomialBF: Wrong coordinate type! Should be 0, 1, 2.");
+  }
+
+  double u_shifted = (u - u0) / (u1 - u0);
+
+  // Use m-th order Legendre polynomial
+  double res = Legendre::poly(m, u_shifted);
+
+  V->Val[0] = res;
+  V->Type = SCALAR;
+}
+
+// Legendre Polynomial Wrappers
+// Standard Legendre polynomial P_n(x)
+// Parameters: Para[0] = n (order), Arg[0] = x (value in [-1, 1])
+void F_LegendrePoly(F_ARG)
+{
+  if(A->Type != SCALAR)
+    Message::Error("LegendrePoly: Argument must be scalar");
+
+  int n = (int)Fct->Para[0];
+  double x = (double)A->Val[0];
+
+  V->Val[0] = Legendre::poly(n, x);
+  V->Type = SCALAR;
+}
+
+// Associated Legendre polynomial P_m^n(x)
+// Parameters: Para[0] = n (degree), Para[1] = m (order), Arg[0] = x
+void F_LegendrePolyAssoc(F_ARG)
+{
+  if(A->Type != SCALAR)
+    Message::Error("LegendrePolyAssoc: Argument must be scalar");
+
+  int n = (int)Fct->Para[0];
+  int m = (int)Fct->Para[1];
+  double x = (double)A->Val[0];
+
+  V->Val[0] = Legendre::poly_assoc(n, m, x);
+  V->Type = SCALAR;
+}
+
+// Derivative of Legendre polynomial dP_n/dx
+// Parameters: Para[0] = n (order), Arg[0] = x (value in [-1, 1])
+void F_LegendrePolyDeriv(F_ARG)
+{
+  if(A->Type != SCALAR)
+    Message::Error("LegendrePolyDeriv: Argument must be scalar");
+
+  int n = (int)Fct->Para[0];
+  double x = (double)A->Val[0];
+
+  V->Val[0] = Legendre::poly_deriv(n, x);
   V->Type = SCALAR;
 }

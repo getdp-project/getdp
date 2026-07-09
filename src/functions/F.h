@@ -489,5 +489,6 @@ void F_LambdaCurrentSharingHom(F_ARG);
 void F_AnisotropicResistivityTensorPowerLaw(F_ARG);
 void F_AnisotropicDEDJTensorPowerLaw(F_ARG);
 void F_FoilWindingPolynomialBF(F_ARG);
+void F_FoilWindingLegendrePolynomialBF(F_ARG);
 
 #endif
