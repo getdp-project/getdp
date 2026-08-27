@@ -277,8 +277,14 @@ Resolution {
       InitSolution[Sys_Mag];
 
       IterativeLoop[NLIterMax, NLTolRel, NLRelax] {
-        GenerateJac[Sys_Mag]; SolveJac[Sys_Mag];
-        SolveJacLineSearch[Sys_Mag, 42.42]{ GenerateJac[Sys_Mag]; };
+        GenerateJac[Sys_Mag];
+        //SolveJac[Sys_Mag];
+
+        // Test:
+        SolveJacLineSearch[Sys_Mag, 42.42]{
+          // @Florent your Python call here
+          GenerateJac[Sys_Mag];
+        };
       }
 
       SaveSolution[Sys_Mag];
