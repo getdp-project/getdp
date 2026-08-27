@@ -756,10 +756,10 @@ void GF_NPxGradLaplacexForm(GF_ARGX)
             "Degenerate case not done in 'GF_NPxGradLaplacexForm'");
           break;
         case 3:
-          if(fabs(d) < EPSILON2) { I1 = 0.0; }
+          if(fabs(d) < EPSILON) { I1 = 0.0; }
           else {
             if(d < 0)
-              Message::Error("Unexpected value in 'GF_NPxGradLaplacexForm'");
+              Message::Error("Unexpected value %g in 'GF_NPxGradLaplacexForm'", d);
             i1 = sqrt(d);
             Is = 2. / i1 * (atan((2. * a + b) / i1) - atan(b / i1));
             Jp = sqrt(SQU(xp[0] - xp[1]) + SQU(yp[0] - yp[1]));
