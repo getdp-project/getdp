@@ -174,12 +174,12 @@ Integration {
 //
 //  - terms written normally contribute to the system matrix "A" and its
 //    right-hand side "b", so that the residual of the nonlinear problem is
-//    "r(x) = A(x) x - b";
+//    "r(x) = b - A(x) x";
 //  - terms marked "JacNL[]" contribute to the tangent (Jacobian) matrix only:
 //    "J = A + JacNL".
 //
 // "GenerateJac[]" assembles "J" and "r" at the current iterate, and
-// "SolveJac[]" solves "J dx = -r" and updates the solution as "x <- x + relax *
+// "SolveJac[]" solves "J dx = r" and updates the solution as "x <- x + relax *
 // dx". There is no need to write the increment anywhere: it is what the linear
 // solve returns.
 //
@@ -192,7 +192,7 @@ Integration {
 // term. In that case "J = A(x_k)", and the update (with a unit relaxation
 // factor)
 //
-//   x_k+1 = x_k + dx = x_k - A(x_k)^-1 (A(x_k) x_k - b) = A(x_k)^-1 b
+//   x_k+1 = x_k + dx = x_k + A(x_k)^-1 (b - A(x_k) x_k) = A(x_k)^-1 b
 //
 // is exactly the fixed-point iteration of tutorial 3. In other words,
 // "GenerateJac[]" and "SolveJac[]" cover both linearization schemes: which one
