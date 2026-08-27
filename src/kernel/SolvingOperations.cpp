@@ -2020,6 +2020,25 @@ void Treatment_Operation(struct Resolution *Resolution_P, List_T *Operation_L,
       }
       break;
 
+#if 0 // TODO
+      /*  -->  S a v e P r e                          */
+      /*  ------------------------------------------  */
+
+    case OPERATION_SAVEPRE:
+      // useful when changing the mesh/constraints during a resolution, and one
+      // wants to post-process solutions after the run
+      Init_OperationOnSystem("SavePre", Resolution_P, Operation_P,
+                             DofData_P0, GeoData_P0, &DefineSystem_P,
+                             &DofData_P, Resolution2_P);
+      if(!Flag_SPLIT) {
+        // save (overwrite) .pre
+      }
+      else {
+        // save .pre per time step
+      }
+      break;
+#endif
+
       /*  -->  M o v i n g   B a n d                  */
       /*  ------------------------------------------  */
 
