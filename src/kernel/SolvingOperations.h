@@ -75,6 +75,10 @@ void Operation_Update(struct DefineSystem *DefineSystem_P,
                       struct DofData *DofData_P, struct DofData *DofData_P0,
                       int TimeFunctionIndex);
 
+void Operation_SolveJacLineSearch(Resolution *Resolution_P,
+                                  Operation *Operation_P, DofData *DofData_P,
+                                  DofData *DofData_P0, GeoData *GeoData_P0);
+
 void Operation_ChangeOfCoordinates(struct Resolution *Resolution_P,
                                    struct Operation *Operation_P,
                                    struct DofData *DofData_P0,

@@ -353,7 +353,7 @@ struct doubleXstring{
 %token        tGmshRead tGmshMerge tGmshOpen tGmshWrite tGmshClearAll
 %token        tDelete tDeleteFile tRenameFile tCreateDir tReadTable
 %token      tGenerateOnly tGenerateOnlyJac
-%token      tSolveJac_AdaptRelax
+%token      tSolveJacAdaptRelax tSolveJacLineSearch
 %token      tSaveSolutionExtendedMH tSaveSolutionMHtoTime tSaveSolutionWithEntityNum
 %token      tInitMovingBand2D tMeshMovingBand2D
 %token      tGenerateMHMoving tGenerateMHMovingSeparate tAddMHMoving
@@ -5854,7 +5854,7 @@ OperationTerm :
       Free($3);
     }
 
-  | tSolveJac_AdaptRelax '[' String__Index ',' ListOfFExpr ',' FExpr ']' tEND
+  | tSolveJacAdaptRelax '[' String__Index ',' ListOfFExpr ',' FExpr ']' tEND
     { Operation_P = (struct Operation*)
 	List_Pointer(Operation_L, List_Nbr(Operation_L)-1);
       Operation_P->Type = OPERATION_SOLVEJACADAPTRELAX;
@@ -5864,8 +5864,22 @@ OperationTerm :
 	vyyerror(0, "Unknown System: %s", $3);
       Free($3);
       Operation_P->DefineSystemIndex = i;
-      Operation_P->Case.SolveJac_AdaptRelax.CheckAll = (int)$7;
-      Operation_P->Case.SolveJac_AdaptRelax.Factor_L = $5;
+      Operation_P->Case.SolveJacAdaptRelax.CheckAll = (int)$7;
+      Operation_P->Case.SolveJacAdaptRelax.Factor_L = $5;
+    }
+
+  | tSolveJacLineSearch '[' String__Index ',' FExpr ']' '{' Operation '}' tEND
+    { Operation_P = (struct Operation*)
+	List_Pointer(Operation_L, List_Nbr(Operation_L)-1);
+      Operation_P->Type = OPERATION_SOLVEJACLINESEARCH;
+      int i;
+      if((i = List_ISearchSeq(Resolution_S.DefineSystem, $3,
+			       fcmp_DefineSystem_Name)) < 0)
+	vyyerror(0, "Unknown System: %s", $3);
+      Free($3);
+      Operation_P->DefineSystemIndex = i;
+      Operation_P->Case.SolveJacLineSearch.SuperParameter = $5;
+      Operation_P->Case.SolveJacLineSearch.Operation = $8;
     }
 
   | tSaveSolutionWithEntityNum '[' String__Index ']' tEND

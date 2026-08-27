@@ -278,6 +278,7 @@ Resolution {
 
       IterativeLoop[NLIterMax, NLTolRel, NLRelax] {
         GenerateJac[Sys_Mag]; SolveJac[Sys_Mag];
+        SolveJacLineSearch[Sys_Mag, 42.42]{ GenerateJac[Sys_Mag]; };
       }
 
       SaveSolution[Sys_Mag];

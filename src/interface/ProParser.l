@@ -290,7 +290,7 @@ Iso                          return tIso;
 IterativeLinearSolver        return tIterativeLinearSolver;
 IterativeLoop                return tIterativeLoop;
 IterativeLoopAdvanced        return tIterativeLoopAdvanced;
-IterativeLoopN               return tIterativeLoopAdvanced;
+IterativeLoopN               return tIterativeLoopAdvanced; // deprecated
 IterativeTimeReduction       return tIterativeTimeReduction;
 
 JacNL                        return tJacNL;
@@ -428,7 +428,9 @@ Sleep                        return tSleep;
 Smoothing                    return tSmoothing;
 SolidAngle                   return tSolidAngle;
 SolveAgainWithOther          return tSolveAgainWithOther;
-SolveJac_AdaptRelax          return tSolveJac_AdaptRelax;
+SolveJacAdaptRelax           return tSolveJacAdaptRelax;
+SolveJac_AdaptRelax          return tSolveJacAdaptRelax; // deprecated
+SolveJacLineSearch           return tSolveJacLineSearch;
 Solver                       return tSolver;
 Sort                         return tSort;
 Sprintf                      return tSprintf;

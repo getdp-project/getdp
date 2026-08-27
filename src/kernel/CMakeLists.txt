@@ -22,7 +22,9 @@ set(SRC
       Operation_IterativeLoopAdvanced.cpp
       Operation_IterativeLinearSolver.cpp
       Operation_IterativeTimeReduction.cpp
-      Operation_Update.cpp Operation_Vector.cpp
+      Operation_SolveJacLineSearch.cpp
+      Operation_Update.cpp
+      Operation_Vector.cpp
       Operation_ChangeOfCoordinates.cpp
       Operation_PostOperation.cpp
       Operation_Debug.cpp

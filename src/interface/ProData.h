@@ -1171,7 +1171,11 @@ struct Operation {
     struct {
       int CheckAll;
       List_T *Factor_L;
-    } SolveJac_AdaptRelax;
+    } SolveJacAdaptRelax;
+    struct {
+      double SuperParameter; // TODO :-)
+      List_T *Operation;
+    } SolveJacLineSearch;
     struct {
       int GroupIndex;
       bool SaveFixed;
@@ -1436,6 +1440,7 @@ struct IterativeLoopSystem {
 #define OPERATION_EXIT 118
 #define OPERATION_GENERATELISTOFRHS 119
 #define OPERATION_READTABLE 120
+#define OPERATION_SOLVEJACLINESEARCH 121
 
 /* ChangeOfState.Type */
 #define CHANGEOFSTATE_NOCHANGE 0

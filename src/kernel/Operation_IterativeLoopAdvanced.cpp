@@ -146,7 +146,7 @@ double CalcMaxErrorRatio(Resolution *Resolution_P, DofData *DofData_P0,
 }
 
 /* ------------------------------------------------------------------------ */
-/*  O p e r a t i o n _ I t e r a t i v e L o o p N                         */
+/*  O p e r a t i o n _ I t e r a t i v e L o o p A d v a n c e d           */
 /* ------------------------------------------------------------------------ */
 
 void Operation_IterativeLoopAdvanced

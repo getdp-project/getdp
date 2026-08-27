@@ -1612,8 +1612,19 @@ void Treatment_Operation(struct Resolution *Resolution_P, List_T *Operation_L,
                              &DofData_P->CurrentSolution->x);
     } break;
 
-      /*  -->  S o l v e J a c _ A d a p t R e l a x  */
-      /*  ------------------------------------------  */
+      /*  -->  S o l v e J a c L i n e S e a r c h  */
+      /*  ----------------------------------------  */
+
+    case OPERATION_SOLVEJACLINESEARCH:
+      Init_OperationOnSystem("SolveJacLineSearch", Resolution_P, Operation_P,
+                             DofData_P0, GeoData_P0, &DefineSystem_P,
+                             &DofData_P, Resolution2_P);
+      Operation_SolveJacLineSearch(Resolution_P, Operation_P, DofData_P,
+                                   DofData_P0, GeoData_P0);
+      break;
+
+      /*  -->  S o l v e J a c A d a p t R e l a x  */
+      /*  ----------------------------------------  */
 
     case OPERATION_SOLVEJACADAPTRELAX:
       /*  get increment dx by solving : J(xn) dx = b(xn) - A(xn) xn */
@@ -1651,7 +1662,7 @@ void Treatment_Operation(struct Resolution *Resolution_P, List_T *Operation_L,
       Frelax_Opt = 1.;
 
       if(!(NbrSteps_relax =
-             List_Nbr(Operation_P->Case.SolveJac_AdaptRelax.Factor_L))) {
+             List_Nbr(Operation_P->Case.SolveJacAdaptRelax.Factor_L))) {
         Message::Error("No factors provided for Adaptive Relaxation");
         break;
       }
@@ -1668,7 +1679,7 @@ void Treatment_Operation(struct Resolution *Resolution_P, List_T *Operation_L,
               - the relaxation factor is decreased by a ratio until a decreasing
                 residual is found */
 
-      if(Operation_P->Case.SolveJac_AdaptRelax.CheckAll == 2) {
+      if(Operation_P->Case.SolveJacAdaptRelax.CheckAll == 2) {
         Frelax = 1;
         if(Current.Iteration > 1) { Error_Prev = Current.Residual; }
         Frelax_Opt = Frelax;
@@ -1680,8 +1691,8 @@ void Treatment_Operation(struct Resolution *Resolution_P, List_T *Operation_L,
           break;
 
         /* set Frelax : */
-        if(Operation_P->Case.SolveJac_AdaptRelax.CheckAll < 2)
-          List_Read(Operation_P->Case.SolveJac_AdaptRelax.Factor_L, istep,
+        if(Operation_P->Case.SolveJacAdaptRelax.CheckAll < 2)
+          List_Read(Operation_P->Case.SolveJacAdaptRelax.Factor_L, istep,
                     &Frelax);
 
         /* new trial solution = x + Frelax * dx */
@@ -1716,7 +1727,7 @@ void Treatment_Operation(struct Resolution *Resolution_P, List_T *Operation_L,
           // optimal
           Error_Prev = Norm;
           Frelax_Opt = Frelax;
-          if(Operation_P->Case.SolveJac_AdaptRelax.CheckAll == 2) {
+          if(Operation_P->Case.SolveJacAdaptRelax.CheckAll == 2) {
             if(Frelax < Frelax_Prev && istep > 0) {
               // if the factor has been decreased ...  and a decreasing residual
               // has been found => break
@@ -1728,7 +1739,7 @@ void Treatment_Operation(struct Resolution *Resolution_P, List_T *Operation_L,
             Frelax = Frelax * Fratio;
           }
         }
-        else if(Operation_P->Case.SolveJac_AdaptRelax.CheckAll == 2) {
+        else if(Operation_P->Case.SolveJacAdaptRelax.CheckAll == 2) {
           if(Frelax > Frelax_Prev && istep > 0) {
             // if the factor has been increased ...  but the residual has
             // increased => break
@@ -1739,13 +1750,13 @@ void Treatment_Operation(struct Resolution *Resolution_P, List_T *Operation_L,
           Frelax_Prev = Frelax;
           Frelax = Frelax / Fratio;
         }
-        else if(Operation_P->Case.SolveJac_AdaptRelax.CheckAll == 0 &&
+        else if(Operation_P->Case.SolveJacAdaptRelax.CheckAll == 0 &&
                 istep > 0) {
           // if the residual has increased ...  => break
           break;
         }
         if(istep == NbrSteps_relax - 1 &&
-           Operation_P->Case.SolveJac_AdaptRelax.CheckAll != 1) {
+           Operation_P->Case.SolveJacAdaptRelax.CheckAll != 1) {
           Message::Warning(
             "SolveJacAdapt: LineSearch failed at TimeStep %g iter %g",
             Current.TimeStep, Current.Iteration);

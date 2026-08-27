@@ -245,7 +245,6 @@ struct StringXDefine Operation_Type[] = {
   {"SolveAgain", OPERATION_SOLVEAGAIN},
   {"SolveJac", OPERATION_SOLVEJAC},
   {"SolveJacAgain", OPERATION_SOLVEJACAGAIN},
-  {"SolveJac_AdaptRelax", OPERATION_SOLVEJACADAPTRELAX},
   {"SolveNL", OPERATION_SOLVENL},
   {"TransferSolution", OPERATION_TRANSFERSOLUTION},
   {"Update", OPERATION_UPDATE},
