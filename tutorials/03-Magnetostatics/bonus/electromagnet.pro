@@ -326,7 +326,8 @@ PostOperation {
       Print[ a, OnElementsOf Vol_Mag, File "a.pos" ];
       Print[ js, OnElementsOf Vol_S_Mag, File "js.pos" ];
       Print[ az, OnElementsOf Vol_Mag, File "az.pos" ];
-      Print[ b, OnElementsOf Vol_Mag, File "b.pos" ];
+      // Don't save "b" in the ring region "AirInf"
+      Print[ b, OnElementsOf Region[ {Vol_Mag, -AirInf} ], File "b.pos" ];
       Print[ h, OnElementsOf Vol_Mag, File "h.pos" ];
       Print[ b, OnLine{{mm, mm, 0}{rInt, mm, 0}}{50}, File "cutb.pos" ];
     }
