@@ -194,7 +194,7 @@ Interactively with Gmsh: open @code{electromagnet.pro} with "File->Open", then p
 
 @subheading Bonus
 
-The @uref{bonus/README.md, bonus tutorial} solves the same nonlinear model with GetDP's built-in nonlinear machinery: a @code{JacNL[]} term for the Newton-Raphson tangent, and the @code{IterativeLoop[]} resolution operation in place of the hand-written iteration.
+The bonus tutorial (@pxref{Tutorial Magnetostatics bonus}) solves the same nonlinear model with GetDP's built-in nonlinear machinery: a @code{JacNL[]} term for the Newton-Raphson tangent, and the @code{IterativeLoop[]} resolution operation in place of the hand-written iteration.
 
 @center@image{images/03-Magnetostatics,14cm,,Screenshot of tutorial 03-Magnetostatics}
 @center See @url{https://gitlab.onelab.info/getdp/getdp/-/tree/master/tutorials/03-Magnetostatics,tutorials/03-Magnetostatics}.
@@ -538,7 +538,7 @@ Interactively with Gmsh: open @code{transfo.pro} with "File->Open", then press "
 
 @subheading Bonus
 
-The @uref{bonus/README.md, bonus tutorial} reimplements the electromagnet models of tutorials 3 and 4 with the same template library, which makes static, time-domain and frequency-domain analyses -- with or without axisymmetry -- available from a single compact model file.
+The bonus tutorial (@pxref{Tutorial Template library bonus}) reimplements the electromagnet models of tutorials 3 and 4 with the same template library, which makes static, time-domain and frequency-domain analyses -- with or without axisymmetry -- available from a single compact model file.
 
 @center@image{images/09-Template_library,14cm,,Screenshot of tutorial 09-Template_library}
 @center See @url{https://gitlab.onelab.info/getdp/getdp/-/tree/master/tutorials/09-Template_library,tutorials/09-Template_library}.

@@ -24,10 +24,18 @@ Its image name is derived from the path by replacing slashes with
 underscores (so ``09-Template_library/bonus'' uses image
 ``09-Template_library_bonus'').
 
+Relative Markdown links between READMEs (e.g. a parent tutorial linking to
+``bonus/README.md'') are resolved against the tutorial tree: if they point
+at a directory that is itself emitted as a (sub)tutorial, they become
+Texinfo cross-references to the corresponding node; otherwise they are
+rewritten as absolute URLs into the source repository, since a relative
+path is meaningless in the generated manual. Absolute links are left
+alone.
+
 The script is generic: drop in new ``NN-Name'' tutorial directories (or
 sub-tutorial subdirectories with a README.md and .geo/.pro files) and
-rerun -- node pointers, menus and image/URL blocks are recomputed
-automatically.
+rerun -- node pointers, menus, cross-references and image/URL blocks are
+recomputed automatically.
 
 Default behavior assumes the script is run from the directory that
 contains getdp.texi, with tutorials at ``../../tutorials'' and tutorial
@@ -37,6 +45,7 @@ layout, or use the options below.
 
 import argparse
 import os
+import posixpath
 import re
 import sys
 
@@ -63,6 +72,10 @@ BOLD_RE = re.compile(r'\*\*([^*]+)\*\*')
 ITALIC_RE = re.compile(r'(?<!\*)\*([^*\n]+)\*(?!\*)')
 LINK_RE = re.compile(r'\[([^\]]+)\]\(([^)]+)\)')
 
+# Anything with a scheme ("https:", "mailto:", ...) or a protocol-relative
+# "//host/..." prefix is an external link and is emitted as-is.
+ABSOLUTE_URL_RE = re.compile(r'^(?:[A-Za-z][A-Za-z0-9+.-]*:|//)')
+
 BULLET_RE = re.compile(r'^\s*[-*+]\s+')
 NUMBERED_RE = re.compile(r'^\s*\d+\.\s+')
 HEADING_RE = re.compile(r'^(#+)\s+(.*?)\s*#*\s*$')
@@ -70,12 +83,16 @@ FENCE_RE = re.compile(r'^```')
 CONT_RE = re.compile(r'^\s{2,}\S')
 
 
-def convert_inline(text):
+def convert_inline(text, link_handler=None):
     """Convert inline Markdown to Texinfo.
 
     Replace links, inline code, bold and italic with Texinfo placeholders
     BEFORE escaping the surrounding raw text, so the Texinfo specials we
     introduce are not double-escaped.
+
+    ``link_handler'', if given, is called as ``link_handler(url, text)'' for
+    every Markdown link and may return a ready-made (already escaped)
+    Texinfo string; returning None falls back to a plain @uref.
     """
     placeholders = []
 
@@ -83,10 +100,16 @@ def convert_inline(text):
         placeholders.append(s)
         return '\x00{}\x00'.format(len(placeholders) - 1)
 
-    text = LINK_RE.sub(
-        lambda m: stash('@uref{' + tex_escape(m.group(2)) +
-                        ', ' + tex_escape(m.group(1)) + '}'),
-        text)
+    def convert_link(m):
+        label, url = m.group(1), m.group(2)
+        if link_handler is not None:
+            replacement = link_handler(url, label)
+            if replacement is not None:
+                return stash(replacement)
+        return stash('@uref{' + tex_escape(url) + ', ' +
+                     tex_escape(label) + '}')
+
+    text = LINK_RE.sub(convert_link, text)
     text = INLINE_CODE_RE.sub(
         lambda m: stash('@code{' + tex_escape(m.group(1)) + '}'),
         text)
@@ -119,12 +142,14 @@ def heading_command(md_level, level_offset):
     return HEADING_COMMANDS[idx]
 
 
-def convert_markdown(md_text, level_offset=0):
+def convert_markdown(md_text, level_offset=0, link_handler=None):
     """Convert a block of Markdown to Texinfo.
 
     ``level_offset'' shifts heading levels down: with offset 0, ``# X''
     maps to @heading, ``## X'' to @subheading; with offset 1, ``# X'' maps
     to @subheading, ``## X'' to @subsubheading.
+
+    ``link_handler'' is passed through to convert_inline (see there).
     """
     lines = md_text.split('\n')
     out = []
@@ -189,7 +214,7 @@ def convert_markdown(md_text, level_offset=0):
             out.append('@itemize @bullet')
             for it in items:
                 out.append('@item')
-                out.append(convert_inline(it))
+                out.append(convert_inline(it, link_handler))
             out.append('@end itemize')
             continue
 
@@ -199,7 +224,7 @@ def convert_markdown(md_text, level_offset=0):
             out.append('@enumerate')
             for it in items:
                 out.append('@item')
-                out.append(convert_inline(it))
+                out.append(convert_inline(it, link_handler))
             out.append('@end enumerate')
             continue
 
@@ -221,7 +246,8 @@ def convert_markdown(md_text, level_offset=0):
                 break
             para.append(nxt)
             i_ref[0] += 1
-        out.append(convert_inline(' '.join(l.strip() for l in para)))
+        out.append(convert_inline(
+            ' '.join(l.strip() for l in para), link_handler))
 
     cleaned = []
     prev_blank = True
@@ -390,6 +416,80 @@ def image_name_from_relpath(rel_path):
 
 
 # ---------------------------------------------------------------------------
+# Cross-references between READMEs
+#
+# READMEs may link to each other with relative paths that make sense when
+# browsing the repository (e.g. ``[bonus tutorial](bonus/README.md)'' in a
+# parent tutorial). Such a path is meaningless in the generated manual, so
+# it is turned into a Texinfo cross-reference when it designates a tutorial
+# that has a node of its own, and into an absolute repository URL
+# otherwise.
+# ---------------------------------------------------------------------------
+
+def resolve_local_link(url, base_rel):
+    """Return the path a relative link points to, relative to tutorials/.
+
+    ``base_rel'' is the path (relative to tutorials/) of the directory
+    holding the README that contains the link; it is empty for the
+    top-level README. Returns None if the link is absolute, is a bare
+    fragment, or escapes the tutorials tree.
+    """
+    if ABSOLUTE_URL_RE.match(url) or url.startswith('#'):
+        return None
+    path = url.split('#', 1)[0].split('?', 1)[0]
+    if not path:
+        return None
+    joined = posixpath.normpath(posixpath.join(base_rel, path))
+    if joined == '.' or joined == '..' or joined.startswith('../'):
+        return None
+    return joined
+
+
+def make_link_handler(base_rel, node_map, gitlab_base_url, tutorials_dir):
+    """Build the ``link_handler'' used to convert one README's links.
+
+    ``node_map'' maps a tutorial path (relative to tutorials/) to its
+    Texinfo node name. ``tutorials_dir'' is only used to warn about links
+    that point nowhere.
+    """
+    source = posixpath.join(base_rel, 'README.md') if base_rel else 'README.md'
+
+    def handler(url, label):
+        if ABSOLUTE_URL_RE.match(url) or url.startswith('#'):
+            return None  # external link or bare anchor: leave it alone
+        target = resolve_local_link(url, base_rel)
+        if target is None:
+            sys.stderr.write(
+                'Warning: {}: relative link {!r} points outside the '
+                'tutorials tree; left as is\n'.format(source, url))
+            return None
+
+        # A link to a tutorial directory, or to the README.md inside it,
+        # becomes a cross-reference to that tutorial's node. @pxref is used
+        # inside parentheses, which is its intended form and avoids the
+        # trailing-punctuation requirement of @ref in a running sentence.
+        candidates = [target]
+        if posixpath.basename(target).lower() == 'readme.md':
+            candidates.insert(0, posixpath.dirname(target))
+        for candidate in candidates:
+            candidate = candidate.strip('/')
+            if candidate in node_map:
+                return '{} (@pxref{{{}}})'.format(tex_escape(label),
+                                                  node_map[candidate])
+
+        # Anything else in the tree (a .pro file, a directory without a
+        # node of its own) is linked to in the repository instead.
+        if not os.path.exists(os.path.join(tutorials_dir, *target.split('/'))):
+            sys.stderr.write(
+                'Warning: {}: link target {!r} does not exist\n'
+                .format(source, url))
+        return '@uref{' + tex_escape(gitlab_base_url.rstrip('/') + '/'
+                                     + target) + ', ' + tex_escape(label) + '}'
+
+    return handler
+
+
+# ---------------------------------------------------------------------------
 # Output assembly
 # ---------------------------------------------------------------------------
 
@@ -400,10 +500,11 @@ HEADER_COMMENT = (
 )
 
 
-def _build_section_records(tutorials_dir, include_prefix):
+def _build_section_records(paths, tutorials_dir, include_prefix, node_map,
+                           gitlab_base_url):
     """Parse every tutorial directory and return a list of section records."""
     sections = []
-    for rel, full, level in collect_tutorial_paths(tutorials_dir):
+    for rel, full, level in paths:
         readme_path = os.path.join(full, 'README.md')
         with open(readme_path, encoding='utf-8') as fh:
             title, intro_md = parse_tutorial_readme(fh.read())
@@ -423,7 +524,10 @@ def _build_section_records(tutorials_dir, include_prefix):
         # so an in-body ``## Features'' becomes @subsubheading rather than
         # @subheading -- matching the per-file @subsubheading used below.
         offset = 1 if level == 'subsection' else 0
-        intro_texi = convert_markdown(intro_md, level_offset=offset)
+        intro_texi = convert_markdown(
+            intro_md, level_offset=offset,
+            link_handler=make_link_handler(rel, node_map, gitlab_base_url,
+                                           tutorials_dir))
         filenames = collect_files(full)
         include_paths = [
             '/'.join([include_prefix.rstrip('/'), rel, fname])
@@ -532,15 +636,26 @@ def build_texi(tutorials_dir, include_prefix, parent_node,
     if not os.path.isfile(top_readme_path):
         raise SystemExit(
             'Error: missing top-level README at {}'.format(top_readme_path))
-    with open(top_readme_path, encoding='utf-8') as fh:
-        top_intro_md = parse_top_readme(fh.read())
-    top_intro_texi = convert_markdown(top_intro_md)
 
-    sections = _build_section_records(tutorials_dir, include_prefix)
-    if not any(s['level'] == 'section' for s in sections):
+    # Discover the tutorials first: the node names they will get are needed
+    # to resolve cross-references, including those made from the top-level
+    # README.
+    paths = list(collect_tutorial_paths(tutorials_dir))
+    if not any(level == 'section' for _, _, level in paths):
         raise SystemExit(
             'Error: no numbered tutorial subdirectories under {}'
             .format(tutorials_dir))
+    node_map = {rel: node_name_from_relpath(rel) for rel, _, _ in paths}
+
+    with open(top_readme_path, encoding='utf-8') as fh:
+        top_intro_md = parse_top_readme(fh.read())
+    top_intro_texi = convert_markdown(
+        top_intro_md,
+        link_handler=make_link_handler('', node_map, gitlab_base_url,
+                                       tutorials_dir))
+
+    sections = _build_section_records(paths, tutorials_dir, include_prefix,
+                                      node_map, gitlab_base_url)
     _wire_pointers(sections, parent_node)
 
     pieces = []
