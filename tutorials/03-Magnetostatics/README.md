@@ -27,7 +27,7 @@ Interactively with Gmsh: open `electromagnet.pro` with "File->Open", then press
 
 ## Bonus
 
-The [bonus tutorial](bonus/README.md) solves the same nonlinear model with
-GetDP's built-in nonlinear machinery: a `JacNL[]` term for the Newton-Raphson
-tangent, and the `IterativeLoop[]` resolution operation in place of the
-hand-written iteration.
+The [bonus tutorial](bonus/) solves the same nonlinear model with GetDP's
+built-in nonlinear machinery: a `JacNL[]` term for the Newton-Raphson tangent,
+and the `IterativeLoop[]` resolution operation in place of the hand-written
+iteration.

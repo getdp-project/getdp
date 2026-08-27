@@ -28,7 +28,7 @@ Interactively with Gmsh: open `transfo.pro` with "File->Open", then press "Run".
 
 ## Bonus
 
-The [bonus tutorial](bonus/README.md) reimplements the electromagnet models of
-tutorials 3 and 4 with the same template library, which makes static,
-time-domain and frequency-domain analyses -- with or without axisymmetry --
-available from a single compact model file.
+The [bonus tutorial](bonus/) reimplements the electromagnet models of tutorials
+3 and 4 with the same template library, which makes static, time-domain and
+frequency-domain analyses -- with or without axisymmetry -- available from a
+single compact model file.

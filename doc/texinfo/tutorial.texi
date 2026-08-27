@@ -267,7 +267,7 @@ Interactively with Gmsh: open @code{electromagnet.pro} with "File->Open", then p
 @node Tutorial Magneto-quasistatics, Tutorial Full wave, Tutorial Magnetostatics, GetDP tutorial
 @section Tutorial 4: Magneto-quasistatic model of an electromagnet
 
-We consider the same electromagnet model as in tutorial 3, but in magneto-quasistatic regime, i.e. allowing for time-dependent currents in the inductor and eddy currents in the core. We still consider an imposed current density in the inductor, neglecting skin and proximity effects in the coil turns. In addition to the 2D model (invariant along the z-axis) we also consider an axisymmetric model (invariant by rotation around the y-axis).
+We consider the same electromagnet model as in tutorial 3 (@pxref{Tutorial Magnetostatics}), but in magneto-quasistatic regime, i.e. allowing for time-dependent currents in the inductor and eddy currents in the core. We still consider an imposed current density in the inductor, neglecting skin and proximity effects in the coil turns. In addition to the 2D model (invariant along the z-axis) we also consider an axisymmetric model (invariant by rotation around the y-axis).
 
 @subheading Features
 
@@ -367,7 +367,7 @@ Interactively with Gmsh: open @code{full_wave.pro} with "File->Open", then press
 @node Tutorial Global quantities, Tutorial Coupled problems, Tutorial Full wave, GetDP tutorial
 @section Tutorial 6: Global quantities in electrostatics
 
-We consider the same model as in tutorial 1, i.e. a 2D electrostatic model of a microstrip line with only one half of the geometry modelled by symmetry. We introduce global quantities (voltage and charge) in the function space, which lets us naturally handle floating potentials and compute the capacitance.
+We consider the same model as in tutorial 1 (@pxref{Tutorial Electrostatics}), i.e. a 2D electrostatic model of a microstrip line with only one half of the geometry modelled by symmetry. We introduce global quantities (voltage and charge) in the function space, which lets us naturally handle floating potentials and compute the capacitance.
 
 @subheading Features
 
@@ -612,7 +612,7 @@ Interactively with Gmsh: open @code{electromagnet.pro} with "File->Open", then p
 @node Tutorial Gauging, , Tutorial Template library, GetDP tutorial
 @section Tutorial 10: Tree-cotree and Coulomb gauging
 
-We consider a 3D version of the single-phase transformer of tutorial 9. The primary winding is driven by a voltage source and the secondary winding feeds a selectable load (resistance, inductance or capacitance). In 3D, the curl-curl equation does not uniquely determine the magnetic vector potential "a": gradient fields must be removed by imposing a gauge condition. Two strategies are presented and can be selected at runtime: tree-cotree gauging as in tutorial 8 (which constrains the degrees of freedom on a spanning tree of the mesh) and Coulomb gauging (which enforces "div a = 0" weakly via a scalar Lagrange multiplier). Both produce the same magnetic flux density "b = curl a".
+We consider a 3D version of the single-phase transformer of tutorial 9 (@pxref{Tutorial Template library}). The primary winding is driven by a voltage source and the secondary winding feeds a selectable load (resistance, inductance or capacitance). In 3D, the curl-curl equation does not uniquely determine the magnetic vector potential "a": gradient fields must be removed by imposing a gauge condition. Two strategies are presented and can be selected at runtime: tree-cotree gauging (which constrains the degrees of freedom on a spanning tree of the mesh), as in tutorial 8 (@pxref{Tutorial Circuit coupling}), and Coulomb gauging (which enforces "div a = 0" weakly via a scalar Lagrange multiplier). Both produce the same magnetic flux density "b = curl a".
 
 @subheading Features
 

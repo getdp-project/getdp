@@ -1,12 +1,13 @@
 # GetDP tutorial 10: Tree-cotree and Coulomb gauging
 
-We consider a 3D version of the single-phase transformer of tutorial 9. The
-primary winding is driven by a voltage source and the secondary winding feeds a
-selectable load (resistance, inductance or capacitance). In 3D, the curl-curl
-equation does not uniquely determine the magnetic vector potential "a": gradient
-fields must be removed by imposing a gauge condition. Two strategies are
-presented and can be selected at runtime: tree-cotree gauging as in tutorial 8
-(which constrains the degrees of freedom on a spanning tree of the mesh) and
+We consider a 3D version of the single-phase transformer of
+[tutorial 9](../09-Template_library/). The primary winding is driven by a
+voltage source and the secondary winding feeds a selectable load (resistance,
+inductance or capacitance). In 3D, the curl-curl equation does not uniquely
+determine the magnetic vector potential "a": gradient fields must be removed by
+imposing a gauge condition. Two strategies are presented and can be selected at
+runtime: tree-cotree gauging (which constrains the degrees of freedom on a
+spanning tree of the mesh), as in [tutorial 8](../08-Circuit_coupling/), and
 Coulomb gauging (which enforces "div a = 0" weakly via a scalar Lagrange
 multiplier). Both produce the same magnetic flux density "b = curl a".
 
