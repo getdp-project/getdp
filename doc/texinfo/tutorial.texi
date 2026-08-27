@@ -192,8 +192,16 @@ On the command line:
 
 Interactively with Gmsh: open @code{electromagnet.pro} with "File->Open", then press "Run".
 
+@subheading Bonus
+
+The @uref{bonus/README.md, bonus tutorial} solves the same nonlinear model with GetDP's built-in nonlinear machinery: a @code{JacNL[]} term for the Newton-Raphson tangent, and the @code{IterativeLoop[]} resolution operation in place of the hand-written iteration.
+
 @center@image{images/03-Magnetostatics,14cm,,Screenshot of tutorial 03-Magnetostatics}
 @center See @url{https://gitlab.onelab.info/getdp/getdp/-/tree/master/tutorials/03-Magnetostatics,tutorials/03-Magnetostatics}.
+
+@menu
+* Tutorial Magnetostatics bonus::
+@end menu
 
 @subheading File @file{electromagnet.geo}
 @verbatiminclude ../../tutorials/03-Magnetostatics/electromagnet.geo
@@ -203,6 +211,53 @@ Interactively with Gmsh: open @code{electromagnet.pro} with "File->Open", then p
 
 @subheading File @file{electromagnet_common.pro}
 @verbatiminclude ../../tutorials/03-Magnetostatics/electromagnet_common.pro
+
+@c -------------------------------------------------------------------------
+@c Tutorial 3 bonus: Nonlinear magnetostatics with built-in iterative loops
+@c -------------------------------------------------------------------------
+
+@page
+@node Tutorial Magnetostatics bonus, , , Tutorial Magnetostatics
+@subsection Tutorial 3 bonus: Nonlinear magnetostatics with built-in iterative loops
+
+The nonlinear magnetostatic model of tutorial 3 is solved again, letting GetDP drive the nonlinear iteration. The Newton-Raphson tangent contribution is declared with a single @code{JacNL[]} term instead of being written out as separate linearized terms, and the hand-written @code{While[]} loop is replaced by the built-in @code{IterativeLoop[]} resolution operation, which assembles and solves the tangent system with @code{GenerateJac[]} and @code{SolveJac[]}, applies the relaxed increment and monitors convergence on its own. Picard iterations then come for free, as the same loop without the @code{JacNL[]} term.
+
+@subsubheading Features
+
+@itemize @bullet
+@item
+Newton-Raphson linearization through a single @code{JacNL[]} term
+@item
+Incremental resolution with @code{GenerateJac[]} and @code{SolveJac[]}
+@item
+Built-in @code{IterativeLoop[]} nonlinear loop, with relaxation
+@item
+Finer convergence control with @code{IterativeLoopN[]}
+@end itemize
+
+See the comments in @code{electromagnet.pro} and @code{electromagnet.geo} for details.
+
+@subsubheading Running the tutorial
+
+On the command line:
+@example
+> gmsh electromagnet.geo -2
+> getdp electromagnet.pro -solve Mag -pos Map
+@end example
+
+Interactively with Gmsh: open @code{electromagnet.pro} with "File->Open", then press "Run".
+
+@center@image{images/03-Magnetostatics_bonus,14cm,,Screenshot of tutorial 03-Magnetostatics/bonus}
+@center See @url{https://gitlab.onelab.info/getdp/getdp/-/tree/master/tutorials/03-Magnetostatics/bonus,tutorials/03-Magnetostatics/bonus}.
+
+@subsubheading File @file{electromagnet.geo}
+@verbatiminclude ../../tutorials/03-Magnetostatics/bonus/electromagnet.geo
+
+@subsubheading File @file{electromagnet.pro}
+@verbatiminclude ../../tutorials/03-Magnetostatics/bonus/electromagnet.pro
+
+@subsubheading File @file{electromagnet_common.pro}
+@verbatiminclude ../../tutorials/03-Magnetostatics/bonus/electromagnet_common.pro
 
 @c -------------------------------------------------------------------------
 @c Tutorial 4: Magneto-quasistatic model of an electromagnet
@@ -480,6 +535,10 @@ On the command line:
 @end example
 
 Interactively with Gmsh: open @code{transfo.pro} with "File->Open", then press "Run".
+
+@subheading Bonus
+
+The @uref{bonus/README.md, bonus tutorial} reimplements the electromagnet models of tutorials 3 and 4 with the same template library, which makes static, time-domain and frequency-domain analyses -- with or without axisymmetry -- available from a single compact model file.
 
 @center@image{images/09-Template_library,14cm,,Screenshot of tutorial 09-Template_library}
 @center See @url{https://gitlab.onelab.info/getdp/getdp/-/tree/master/tutorials/09-Template_library,tutorials/09-Template_library}.

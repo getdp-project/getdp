@@ -357,32 +357,11 @@ Formulation {
         Integral { [ - dhdb[{d a}] * {d a} , {d a} ];
           In Vol_NL_Mag; Jacobian Vol; Integration Int; }
 
-        // [The following block can be skipped on a first reading.]
-        //
         // Note that this implementation of the Newton-Raphson method can be
-        // simplified (and accelerated) by directly defining the incremental
-        // contribution to the system matrix through a "JacNL[]" term.
-        //
-        // With "nu = nu(|b|^2)", we have
-        //
-        //   h(b_k) \approx h(b_k-1) + (dh/db)_k-1 (b_k - b_k-1)
-        //      = nu_k-1 b_k-1 + (I nu + 2 nu'(|b|^2) b b^T)_k-1 (b_k - b_k-1)
-        //      = nu_k-1 b_k + 2 (nu'(|b|^2) b b^T)_k-1 (b_k - b_k-1)
-        //
-        // Defining the function
-        //
-        //   dhdb_NL[] = 2 * dnudb2[$1#1] * SquDyadicProduct[#1]
-        //
-        // we can then rewrite the Newton-Raphson linearization as follows:
-        //
-        //   Integral { [ nu[{d a}] * Dof{d a} , {d a} ]; // note the Dof{}!
-        //     In Vol_NL_Mag; Jacobian Vol; Integration Int; }
-        //   Integral { JacNL [ dhdb_NL[{d a}] * Dof{d a} , {d a} ];
-        //     In Vol_NL_Mag; Jacobian Vol; Integration Int; }
-        //
-        // The system should then be assembled and solved with "GenerateJac[]"
-        // and "SolveJac[]" (instead of "Generate[]" and "Solve[]"), which will
-        // automatically handle the increment "b_k - b_k-1".
+        // simplified (and accelerated) by declaring the incremental
+        // contribution to the system matrix with a "JacNL[]" term, and letting
+        // GetDP handle the increment itself. See the bonus tutorial in the
+        // "bonus" subdirectory.
 
       ElseIf(NonlinearCore)
         // Picard linearization:
@@ -446,13 +425,9 @@ Resolution {
         }
         // Note that this explicit implementation of the iterative loop can be
         // replaced by the built-in "IterativeLoop[]" or "IterativeLoopN[]"
-        // resolution operations, which offer several refinements. The simplest
-        // implementation would be (this requires using "JacNL[]" for
-        // Newton-Raphson, as explained above):
-        //
-        //   IterativeLoop[NLIterMax, NLTolRel, 1] {
-        //     GenerateJac[Sys_Mag]; SolveJac[Sys_Mag];
-        //   }
+        // resolution operations, which offer several refinements. The bonus
+        // tutorial in the "bonus" subdirectory solves the same nonlinear model
+        // that way.
       EndIf
 
       SaveSolution[Sys_Mag];
