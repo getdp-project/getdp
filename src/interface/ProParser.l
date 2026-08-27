@@ -289,7 +289,8 @@ Integration                  return tIntegration;
 Iso                          return tIso;
 IterativeLinearSolver        return tIterativeLinearSolver;
 IterativeLoop                return tIterativeLoop;
-IterativeLoopN               return tIterativeLoopN;
+IterativeLoopAdvanced        return tIterativeLoopAdvanced;
+IterativeLoopN               return tIterativeLoopAdvanced;
 IterativeTimeReduction       return tIterativeTimeReduction;
 
 JacNL                        return tJacNL;

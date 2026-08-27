@@ -14,7 +14,7 @@ free, as the same loop without the `JacNL[]` term.
  - Newton-Raphson linearization through a single `JacNL[]` term
  - Incremental resolution with `GenerateJac[]` and `SolveJac[]`
  - Built-in `IterativeLoop[]` nonlinear loop, with relaxation
- - Finer convergence control with `IterativeLoopN[]`
+ - Finer convergence control with `IterativeLoopAdvanced[]`
 
 See the comments in `electromagnet.pro` and `electromagnet.geo` for details.
 

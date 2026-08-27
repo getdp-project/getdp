@@ -232,7 +232,7 @@ Incremental resolution with @code{GenerateJac[]} and @code{SolveJac[]}
 @item
 Built-in @code{IterativeLoop[]} nonlinear loop, with relaxation
 @item
-Finer convergence control with @code{IterativeLoopN[]}
+Finer convergence control with @code{IterativeLoopAdvanced[]}
 @end itemize
 
 See the comments in @code{electromagnet.pro} and @code{electromagnet.geo} for details.

@@ -340,7 +340,7 @@ struct doubleXstring{
 %token      tTimeLoopTheta tTimeLoopNewmark tTimeLoopRungeKutta tTimeLoopAdaptive
 %token        tTime0 tTimeMax tTheta
 %token        tBeta tGamma
-%token      tIterativeLoop tIterativeLoopN tIterativeLinearSolver
+%token      tIterativeLoop tIterativeLoopAdvanced tIterativeLinearSolver
 %token      tNbrMaxIteration tRelaxationFactor
 %token      tIterativeTimeReduction
 %token        tSetCommSelf tSetCommWorld tBarrier
@@ -5598,12 +5598,12 @@ OperationTerm :
       Operation_P->Case.TimeLoopAdaptive.OperationEnd = $24;
     }
 
-  | tIterativeLoopN '[' FExpr ',' Expression ',' IterativeLoopDefinitions ']'
+  | tIterativeLoopAdvanced '[' FExpr ',' Expression ',' IterativeLoopDefinitions ']'
                     '{' Operation '}'
     { List_Pop(Operation_L);
       Operation_P = (struct Operation*)
         List_Pointer(Operation_L, List_Nbr(Operation_L)-1);
-      Operation_P->Type = OPERATION_ITERATIVELOOPN;
+      Operation_P->Type = OPERATION_ITERATIVELOOPADVANCED;
       Operation_P->Case.IterativeLoop.NbrMaxIteration = (int)$3;
       Operation_P->Case.IterativeLoop.RelaxationFactorIndex = $5;
       Operation_P->Case.IterativeLoop.Operation = $10;
@@ -6612,7 +6612,7 @@ IterativeLoopDefinitions :
       IterativeLoopPO_S.NormType = Get_DefineForString(ErrorNorm_Type, $9, &FlagError);
       if(FlagError){
         Get_Valid_SXD($9, ErrorNorm_Type);
-        vyyerror(0, "Unknown error norm type of IterativeLoopN PostOperation %s", $3);
+        vyyerror(0, "Unknown error norm type of IterativeLoopAdvanced PostOperation %s", $3);
       }
       IterativeLoopPO_S.NormTypeString = $9;
       List_Add($$ = $1, &IterativeLoopPO_S);
@@ -7346,7 +7346,7 @@ PostOperationTerm :
       PostOperation_S.ResampleTimeStop = $5;
       PostOperation_S.ResampleTimeStep = $7;
     }
-  
+
   | tDistributed tEND
     {
       PostOperation_S.Distributed = true;

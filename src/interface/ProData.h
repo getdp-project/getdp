@@ -1357,7 +1357,7 @@ struct IterativeLoopSystem {
 #define OPERATION_INIT_MOVINGBAND2D 38
 #define OPERATION_ITERATIVELINEARSOLVER 39
 #define OPERATION_ITERATIVELOOP 40
-#define OPERATION_ITERATIVELOOPN 41
+#define OPERATION_ITERATIVELOOPADVANCED 41
 #define OPERATION_ITERATIVETIMEREDUCTION 42
 #define OPERATION_LANCZOS 43
 #define OPERATION_MESH_MOVINGBAND2D 44
@@ -1692,7 +1692,7 @@ struct CurrentData {
   struct DofData *DofData;
   struct GeoData *GeoData;
 
-  // PostOperation based solutions for TimeLoopAdaptive, IterativeLoopN
+  // PostOperation based solutions for TimeLoopAdaptive, IterativeLoopAdvanced
   List_T *PostOpData_L;
   int PostOpDataIndex;
 

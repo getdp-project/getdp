@@ -59,7 +59,7 @@ static int Flag_Break = 0;
 
 // For adaptive time stepper
 int Flag_IterativeLoopConverged = 1;
-int Flag_IterativeLoopN = 0;
+int Flag_IterativeLoopAdvanced = 0;
 
 // For IterativeTimeReduction (ugly also...)
 int Flag_NextThetaFixed = 0;
@@ -1560,7 +1560,7 @@ void Treatment_Operation(struct Resolution *Resolution_P, List_T *Operation_L,
         LinAlg_SolveAgain(&DofData_P->Jac, &DofData_P->res, &DofData_P->Solver,
                           &DofData_P->dx);
 
-      if(!Flag_IterativeLoopN) {
+      if(!Flag_IterativeLoopAdvanced) {
         Cal_SolutionError(&DofData_P->dx, &DofData_P->CurrentSolution->x, 0,
                           &MeanError);
         Current.Residual = MeanError;
@@ -3618,12 +3618,12 @@ void Treatment_Operation(struct Resolution *Resolution_P, List_T *Operation_L,
       /*  -->  I t e r a t i v e L o o p N            */
       /*  ------------------------------------------  */
 
-    case OPERATION_ITERATIVELOOPN:
-      Message::Info("IterativeLoopN ...");
+    case OPERATION_ITERATIVELOOPADVANCED:
+      Message::Info("IterativeLoopAdvanced ...");
       Save_Iteration = Current.Iteration;
-      Operation_IterativeLoopN(Resolution_P, Operation_P, DofData_P0,
-                               GeoData_P0, Resolution2_P, DofData2_P0,
-                               &Flag_Break);
+      Operation_IterativeLoopAdvanced(Resolution_P, Operation_P, DofData_P0,
+                                      GeoData_P0, Resolution2_P, DofData2_P0,
+                                      &Flag_Break);
       Current.Iteration = Save_Iteration;
       break;
 

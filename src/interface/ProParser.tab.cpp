@@ -333,7 +333,7 @@
      tBeta = 514,
      tGamma = 515,
      tIterativeLoop = 516,
-     tIterativeLoopN = 517,
+     tIterativeLoopAdvanced = 517,
      tIterativeLinearSolver = 518,
      tNbrMaxIteration = 519,
      tRelaxationFactor = 520,
@@ -740,7 +740,7 @@
 #define tBeta 514
 #define tGamma 515
 #define tIterativeLoop 516
-#define tIterativeLoopN 517
+#define tIterativeLoopAdvanced 517
 #define tIterativeLinearSolver 518
 #define tNbrMaxIteration 519
 #define tRelaxationFactor 520
@@ -2296,7 +2296,7 @@ static const char *const yytname[] =
   "tSolveAgainWithOther", "tSetGlobalSolverOptions", "tAddVector",
   "tTimeLoopTheta", "tTimeLoopNewmark", "tTimeLoopRungeKutta",
   "tTimeLoopAdaptive", "tTime0", "tTimeMax", "tTheta", "tBeta", "tGamma",
-  "tIterativeLoop", "tIterativeLoopN", "tIterativeLinearSolver",
+  "tIterativeLoop", "tIterativeLoopAdvanced", "tIterativeLinearSolver",
   "tNbrMaxIteration", "tRelaxationFactor", "tIterativeTimeReduction",
   "tSetCommSelf", "tSetCommWorld", "tBarrier", "tBroadcastFields",
   "tBroadcastVariables", "tClearVariables", "tCheckVariables",
@@ -15008,7 +15008,7 @@ yyreduce:
     { List_Pop(Operation_L);
       Operation_P = (struct Operation*)
         List_Pointer(Operation_L, List_Nbr(Operation_L)-1);
-      Operation_P->Type = OPERATION_ITERATIVELOOPN;
+      Operation_P->Type = OPERATION_ITERATIVELOOPADVANCED;
       Operation_P->Case.IterativeLoop.NbrMaxIteration = (int)(yyvsp[(3) - (11)].d);
       Operation_P->Case.IterativeLoop.RelaxationFactorIndex = (yyvsp[(5) - (11)].i);
       Operation_P->Case.IterativeLoop.Operation = (yyvsp[(10) - (11)].l);
@@ -16136,7 +16136,7 @@ yyreduce:
       IterativeLoopPO_S.NormType = Get_DefineForString(ErrorNorm_Type, (yyvsp[(9) - (10)].c), &FlagError);
       if(FlagError){
         Get_Valid_SXD((yyvsp[(9) - (10)].c), ErrorNorm_Type);
-        vyyerror(0, "Unknown error norm type of IterativeLoopN PostOperation %s", (yyvsp[(3) - (10)].c));
+        vyyerror(0, "Unknown error norm type of IterativeLoopAdvanced PostOperation %s", (yyvsp[(3) - (10)].c));
       }
       IterativeLoopPO_S.NormTypeString = (yyvsp[(9) - (10)].c);
       List_Add((yyval.l) = (yyvsp[(1) - (10)].l), &IterativeLoopPO_S);

@@ -298,7 +298,7 @@
      tBeta = 514,
      tGamma = 515,
      tIterativeLoop = 516,
-     tIterativeLoopN = 517,
+     tIterativeLoopAdvanced = 517,
      tIterativeLinearSolver = 518,
      tNbrMaxIteration = 519,
      tRelaxationFactor = 520,
@@ -705,7 +705,7 @@
 #define tBeta 514
 #define tGamma 515
 #define tIterativeLoop 516
-#define tIterativeLoopN 517
+#define tIterativeLoopAdvanced 517
 #define tIterativeLinearSolver 518
 #define tNbrMaxIteration 519
 #define tRelaxationFactor 520

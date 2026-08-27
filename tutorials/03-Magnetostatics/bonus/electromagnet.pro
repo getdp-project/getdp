@@ -96,10 +96,10 @@ Function {
 
   // Parameters of the iterative loop below. Note that, unlike the hand-written
   // loop of tutorial 3, "IterativeLoop[]" takes a single (relative) tolerance;
-  // an absolute tolerance can be specified with "IterativeLoopN[]", mentioned
-  // at the end of this file. The relaxation factor multiplies the correction
-  // applied at each iteration: 1 means a full step, and values below 1
-  // under-relax the iteration, which can rescue a diverging Newton-Raphson
+  // an absolute tolerance can be specified with "IterativeLoopAdvanced[]",
+  // mentioned at the end of this file. The relaxation factor multiplies the
+  // correction applied at each iteration: 1 means a full step, and values below
+  // 1 under-relax the iteration, which can rescue a diverging Newton-Raphson
   // sequence on a steeply saturating b-h curve at the price of more iterations:
   NLTolRel = 1e-6;
   NLIterMax = 20;
@@ -248,15 +248,15 @@ Formulation {
 // its body may drive several systems in turn, which is how staggered coupled
 // problems are iterated to convergence (compare with tutorial 7).
 //
-// When more control is needed, "IterativeLoopN[]" takes the maximum number of
-// iterations and the relaxation factor, followed by a list of systems (or
-// post-operations) to assess, each with its own relative and absolute
+// When more control is needed, "IterativeLoopAdvanced[]" takes the maximum
+// number of iterations and the relaxation factor, followed by a list of systems
+// (or post-operations) to assess, each with its own relative and absolute
 // tolerances, the quantity to test ("Solution", "Residual" or "RecalcResidual")
 // and the norm to use ("L1Norm", "MeanL1Norm", "L2Norm", "MeanL2Norm" or
 // "LinfNorm"). The equivalent of the loop below, with an absolute tolerance
 // added, would read:
 //
-//   IterativeLoopN[NLIterMax, NLRelax,
+//   IterativeLoopAdvanced[NLIterMax, NLRelax,
 //     System { {Sys_Mag, NLTolRel, 1e-10, Solution MeanL2Norm} } ] {
 //     GenerateJac[Sys_Mag]; SolveJac[Sys_Mag];
 //   }

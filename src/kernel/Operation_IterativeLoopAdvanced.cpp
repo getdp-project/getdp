@@ -15,7 +15,7 @@
 #include "Cal_Quantity.h"
 
 extern struct CurrentData Current;
-extern int Flag_IterativeLoopN;
+extern int Flag_IterativeLoopAdvanced;
 extern int Flag_IterativeLoopConverged;
 
 /* ------------------------------------------------------------------------ */
@@ -97,7 +97,7 @@ double CalcMaxErrorRatio(Resolution *Resolution_P, DofData *DofData_P0,
 
     if(Message::GetVerbosity() > 5) {
       Message::Info(
-        "IterativeLoopN: %s of %s error ratio from system %s:  %.3g",
+        "IterativeLoopAdvanced: %s of %s error ratio from system %s:  %.3g",
         ILsystem.NormTypeString, ILsystem.NormOfString, DefineSystem_P->Name,
         ErrorRatio);
     }
@@ -137,7 +137,7 @@ double CalcMaxErrorRatio(Resolution *Resolution_P, DofData *DofData_P0,
 
     if(Message::GetVerbosity() > 5) {
       Message::Info(
-        "IterativeLoopN: %s error ratio from PostOperation %s:  %.3g",
+        "IterativeLoopAdvanced: %s error ratio from PostOperation %s:  %.3g",
         ILPostOp.NormTypeString, ILPostOp.PostOperationName, ErrorRatio);
     }
   }
@@ -149,10 +149,10 @@ double CalcMaxErrorRatio(Resolution *Resolution_P, DofData *DofData_P0,
 /*  O p e r a t i o n _ I t e r a t i v e L o o p N                         */
 /* ------------------------------------------------------------------------ */
 
-void Operation_IterativeLoopN(Resolution *Resolution_P, Operation *Operation_P,
-                              DofData *DofData_P0, GeoData *GeoData_P0,
-                              Resolution *Resolution2_P, DofData *DofData2_P0,
-                              int *Flag_Break)
+void Operation_IterativeLoopAdvanced
+  (Resolution *Resolution_P, Operation *Operation_P, DofData *DofData_P0,
+   GeoData *GeoData_P0, Resolution *Resolution2_P, DofData *DofData2_P0,
+   int *Flag_Break)
 {
   int NbrMaxIteration, RelaxationFactorIndex;
   int Num_Iteration, NbrPostOps, SavePostOpDataIndex, NbrSolutions;
@@ -216,7 +216,7 @@ void Operation_IterativeLoopN(Resolution *Resolution_P, Operation *Operation_P,
   Save_Iteration = Current.Iteration;
 
   for(Num_Iteration = 1; Num_Iteration <= NbrMaxIteration; Num_Iteration++) {
-    Flag_IterativeLoopN = 1;
+    Flag_IterativeLoopAdvanced = 1;
 
     if(Message::GetOnelabAction() == "stop" || Message::GetErrorCount()) break;
 
@@ -250,7 +250,7 @@ void Operation_IterativeLoopN(Resolution *Resolution_P, Operation *Operation_P,
       LinAlg_CopyVector(&Solution_P->x, PostOpResultPrevious_P);
     }
 
-    Message::Info("IterativeLoopN: Non linear iteration %d (Relaxation = %g)",
+    Message::Info("IterativeLoopAdvanced: Non linear iteration %d (Relaxation = %g)",
                   (int)Current.Iteration, Current.RelaxationFactor);
 
     // NB: SolveJac OR SolveJacAdapt are called here
@@ -269,7 +269,7 @@ void Operation_IterativeLoopN(Resolution *Resolution_P, Operation *Operation_P,
     }
     else if(Message::GetLastPETScError()) {
       Message::Warning("No valid solution found (PETSc-Error: %d)! "
-                       "Aborting IterativeLoopN",
+                       "Aborting IterativeLoopAdvanced",
                        Message::GetLastPETScError());
       break;
     }
@@ -288,7 +288,7 @@ void Operation_IterativeLoopN(Resolution *Resolution_P, Operation *Operation_P,
     }
 
     Message::Info(
-      "IterativeLoopN: Largest error ratio: %.3g  (after %d iteration%s)",
+      "IterativeLoopAdvanced: Largest error ratio: %.3g  (after %d iteration%s)",
       MaxErrorRatio, (int)Current.Iteration,
       ((int)Current.Iteration == 1) ? "" : "s");
     if(Message::GetProgressMeterStep() > 0 &&
@@ -297,10 +297,11 @@ void Operation_IterativeLoopN(Resolution *Resolution_P, Operation *Operation_P,
                                        "/IterativeLoop/ILmaxErrorRatio",
                                      std::vector<double>(1, MaxErrorRatio));
 
-    // NB: MaxErrorRatio is what is used for IterativeLoopN stop criterion
+    // NB: MaxErrorRatio is what is used for IterativeLoopAdvanced stop
+    // criterion
     if(MaxErrorRatio < 1.) {
       Message::Info(3,
-                    "IterativeLoopN converged (%d iterations, error ratio %g)",
+                    "IterativeLoopAdvanced converged (%d iterations, error ratio %g)",
                     (int)Current.Iteration, MaxErrorRatio);
       break;
     }
@@ -310,11 +311,11 @@ void Operation_IterativeLoopN(Resolution *Resolution_P, Operation *Operation_P,
     Num_Iteration = NbrMaxIteration;
     Flag_IterativeLoopConverged = 0;
     Message::Warning(
-      "IterativeLoopN did NOT converge (%d iterations, error ratio %g)",
+      "IterativeLoopAdvanced did NOT converge (%d iterations, error ratio %g)",
       (int)Current.Iteration, MaxErrorRatio);
   }
   Current.Iteration = Save_Iteration;
-  Flag_IterativeLoopN = 0;
+  Flag_IterativeLoopAdvanced = 0;
 
   // Finally destroy vectors and delete Lists
   // ----------------------------------------

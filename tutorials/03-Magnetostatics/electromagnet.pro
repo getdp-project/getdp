@@ -424,7 +424,7 @@ Resolution {
             Format "Residual %03g: abs %14.12e rel %14.12e"];
         }
         // Note that this explicit implementation of the iterative loop can be
-        // replaced by the built-in "IterativeLoop[]" or "IterativeLoopN[]"
+        // replaced by the built-in "IterativeLoop[]" or "IterativeLoopAdvanced[]"
         // resolution operations, which offer several refinements. The bonus
         // tutorial in the "bonus" subdirectory solves the same nonlinear model
         // that way.
