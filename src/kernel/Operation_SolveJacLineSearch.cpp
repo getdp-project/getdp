@@ -31,7 +31,7 @@ void Operation_SolveJacLineSearch
   Message::Info("Hello doing SolveJacLineSearch with super parameter %g!",
                 Operation_P->Case.SolveJacLineSearch.SuperParameter);
 
-  double c1 = Operation_P->Case.SolveJacLineSearch.SuperParameter;              
+  double c1 = Operation_P->Case.SolveJacLineSearch.SuperParameter;
   // dx <- Jac^-1 res
   LinAlg_Solve(&DofData_P->Jac, &DofData_P->res, &DofData_P->Solver,
                &DofData_P->dx);
@@ -40,7 +40,7 @@ void Operation_SolveJacLineSearch
   gVector x_saved;
   LinAlg_CreateVector(&x_saved, &DofData_P->Solver, DofData_P->NbrDof);
   LinAlg_CopyVector(&DofData_P->CurrentSolution->x, &x_saved);
-    
+
   // compute the residual and norm of previous x
   double Norm_old;
   double f_old;
@@ -67,30 +67,33 @@ void Operation_SolveJacLineSearch
     LinAlg_AddVectorProdVectorDouble(&DofData_P->CurrentSolution->x,
                               &DofData_P->dx, step,
                               &DofData_P->CurrentSolution->x);
-                              
+
     //compute residual and norm of new step x = x + step dx
     Treatment_Operation(Resolution_P,
                         Operation_P->Case.SolveJacLineSearch.Operation,
                         DofData_P0, GeoData_P0, NULL, NULL);
     LinAlg_ProdMatrixVector(&DofData_P->A, &DofData_P->CurrentSolution->x,
                 &DofData_P->res);
-    LinAlg_SubVectorVector(&DofData_P->b, &DofData_P->res, &DofData_P->res);	
+    LinAlg_SubVectorVector(&DofData_P->b, &DofData_P->res, &DofData_P->res);
     LinAlg_VectorNorm2(&DofData_P->res, &Norm);
     f_new = (1./2.)*Norm*Norm;
-    
+
+    Message::Info("f_new = %g", f_new);
+
     /* termination criteria*/
-  	if(f_new <  (f_old + c1 * step * Descent + epsilon_linesearch*f_old) ) {
-        break;
-      }
-      else{
-        step = step / 2;
-      }
-      if(it == NbrSteps_relax - 1) {
-        //Message::Warning(
-        //  "SolveJacAdapt: LineSearch failed at TimeStep %g iter %g with istep: %g and NbrSteps_relax: %g",
-        //  Current.TimeStep, Current.Iteration,it,NbrSteps_relax);
-        //Current.SolveJacAdaptFailed = 1;
-      }
+    if(f_new <  (f_old + c1 * step * Descent + epsilon_linesearch*f_old) ) {
+      Message::Info("I'm too good !");
+      break;
+    }
+    else{
+      step = step / 2;
+    }
+    if(it == NbrSteps_relax - 1) {
+      //Message::Warning(
+      //  "SolveJacAdapt: LineSearch failed at TimeStep %g iter %g with istep: %g and NbrSteps_relax: %g",
+      //  Current.TimeStep, Current.Iteration,it,NbrSteps_relax);
+      //Current.SolveJacAdaptFailed = 1;
+    }
   }
   LinAlg_DestroyVector(&x_saved);
 }
