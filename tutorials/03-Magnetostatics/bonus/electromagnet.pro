@@ -281,7 +281,7 @@ Resolution {
         //SolveJac[Sys_Mag];
 
         // Test:
-        SolveJacLineSearch[Sys_Mag, 42.42]{
+        SolveJacLineSearch[Sys_Mag, 1e-4]{
           // @Florent your Python call here
           GenerateJac[Sys_Mag];
         };
