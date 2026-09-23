@@ -14,6 +14,8 @@
 /*  O p e r a t i o n _ S o l v e J a c L i n e S e a r c h                 */
 /* ------------------------------------------------------------------------ */
 
+extern struct CurrentData Current;
+
 void Operation_SolveJacLineSearch
   (Resolution *Resolution_P, Operation *Operation_P, DofData *DofData_P,
    DofData *DofData_P0, GeoData *GeoData_P0)
@@ -82,7 +84,9 @@ void Operation_SolveJacLineSearch
 
     /* termination criteria*/
     if(f_new <  (f_old + c1 * step * Descent + epsilon_linesearch*f_old) ) {
-      Message::Info("I'm too good !");
+      Message::Info("Lineserach complete");
+      Message::Info("fnew: %g, fold: %g, step: %g",f_new,f_old,step);
+      Current.RelativeDifference = Norm;
       break;
     }
     else{
