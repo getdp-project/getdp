@@ -12,6 +12,7 @@
 #include "ExtendedGroup.h"
 #include "Cal_Quantity.h"
 #include "Message.h"
+#include "BF.h"
 
 extern struct Problem Problem_S;
 extern struct CurrentData Current;
@@ -577,6 +578,20 @@ void Get_CodesOfElement(struct FunctionSpace *FunctionSpace_P,
           (Node, Edge, Facet, Volume, GroupOfNodes, Region, ...)  */
 
   for(i_Entity = StartingIndex; i_Entity < Nbr_Entity; i_Entity++) {
+    /* BF_Edge_3F_d exists on quadrangular facets only (triangles have three
+       facet functions, quadrangles four).  On an element with both kinds of
+       facets -- prism, pyramid -- give it no dof on the triangles, so that
+       _a.._d can all be put on FacetsOf[...] of any mesh. */
+    if(TypeConstraint == FACETSOF && Current.Element &&
+       (BasisFunction_P->Function == (void (*)())BF_Edge_3F_d ||
+        BasisFunction_P->Function == (void (*)())BF_CurlEdge_3F_d)) {
+      int *Nodes =
+        Geo_GetNodesOfFacetInElement(Current.Element->GeoElement, i_Entity);
+      int nbNodes = 0;
+      while(Nodes[nbNodes]) nbNodes++;
+      if(nbNodes == 3) continue;
+    }
+
     Code_BasisFunction =
       BasisFunction_P->Num + (Num_SubFunction ? Num_SubFunction[i_Entity] : 0);
 

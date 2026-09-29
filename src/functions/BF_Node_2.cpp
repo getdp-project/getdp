@@ -5,6 +5,13 @@
 
 #include "ProData.h"
 #include "Message.h"
+#include "BF.h"
+
+/* The two nodes of each edge of the pyramid, in the order of Den_Pyramid
+   (kernel/GeoEntity.h). */
+
+static const int Pyr_EdgeNodes[8][2] = {{1, 2}, {1, 4}, {1, 5}, {2, 3},
+                                        {2, 5}, {3, 4}, {3, 5}, {4, 5}};
 
 /* ------------------------------------------------------------------------ */
 /*  B F _ N o d e _ 2                                                       */
@@ -155,8 +162,21 @@ void BF_Node_2E(struct Element *Element, int NumEntity, double u, double v,
   case PYRAMID_2:
   case PYRAMID_2_13N:
   case PYRAMID_3: // case PYRAMID_4
-    switch(NumEntity) {
-    default: Message::Error("BF_Node_2E not ready for PYRAMID");
+    /* N_a N_b, the product of the two (rational) vertex functions, as on every
+       other element.  The vertex functions of the pyramid restrict to the
+       barycentric coordinates on each triangle and to the bilinear functions
+       on the base, so the trace is lambda_a lambda_b on a triangle -- the
+       tetrahedron's -- and the product of bilinears on the base -- the
+       hexahedron's: the space stays H1 conforming across a hybrid mesh, and
+       BF_GradNode_2E H(curl) conforming. */
+    if(NumEntity < 1 || NumEntity > 8) {
+      WrongNumEntity;
+    }
+    else {
+      double Na, Nb;
+      BF_Node(Element, Pyr_EdgeNodes[NumEntity - 1][0], u, v, w, &Na);
+      BF_Node(Element, Pyr_EdgeNodes[NumEntity - 1][1], u, v, w, &Nb);
+      *s = Na * Nb;
     }
     break;
 
@@ -614,8 +634,19 @@ void BF_GradNode_2E(struct Element *Element, int NumEntity, double u, double v,
   case PYRAMID_2:
   case PYRAMID_2_13N:
   case PYRAMID_3: // case PYRAMID_4
-    switch(NumEntity) {
-    default: Message::Error("BF_GradNode_2E not ready for PYRAMID");
+    /* grad(N_a N_b) = N_a grad N_b + N_b grad N_a; see BF_Node_2E */
+    if(NumEntity < 1 || NumEntity > 8) {
+      WrongNumEntity;
+    }
+    else {
+      double Na, Nb, dNa[3], dNb[3];
+      const int a = Pyr_EdgeNodes[NumEntity - 1][0];
+      const int b = Pyr_EdgeNodes[NumEntity - 1][1];
+      BF_Node(Element, a, u, v, w, &Na);
+      BF_Node(Element, b, u, v, w, &Nb);
+      BF_GradNode(Element, a, u, v, w, dNa);
+      BF_GradNode(Element, b, u, v, w, dNb);
+      for(int d = 0; d < 3; d++) s[d] = Na * dNb[d] + Nb * dNa[d];
     }
     break;
 
