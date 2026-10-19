@@ -1270,6 +1270,7 @@ struct StringXFunction2Nbr F_Function[] =
 
    // F_Geometry
    {"Normal", (CAST)F_Normal, 0, 0},
+   {"NormalG", (CAST)F_NormalG, 0, 0},
    {"NormalSource", (CAST)F_NormalSource, 0, 0},
    {"Tangent", (CAST)F_Tangent, 0, 0},
    {"TangentSource", (CAST)F_TangentSource, 0, 0},
