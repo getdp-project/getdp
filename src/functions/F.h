@@ -85,6 +85,7 @@ void F_ElastoCylinderWallsOutAbc2Pade(F_ARG);
 
 void F_ProjectPointOnEllipse(F_ARG);
 void F_Normal(F_ARG);
+void F_NormalG(F_ARG);
 void F_NormalSource(F_ARG);
 void F_Tangent(F_ARG);
 void F_TangentSource(F_ARG);

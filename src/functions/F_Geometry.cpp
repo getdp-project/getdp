@@ -52,6 +52,61 @@ void F_Normal(F_ARG)
 #endif
 }
 
+void F_NormalG(F_ARG)
+{
+#if !defined(HAVE_KERNEL)
+  Message::Error("F_NormalG requires Kernel");
+#else
+  int k;
+
+  if(!Current.Element || Current.Element->Num == NO_ELEMENT)
+    Message::Error("No element on which to compute 'F_NormalG'");
+
+  if(Current.Element->Type == QUADRANGLE) {
+    // normal of the surface Jacobian at the current Gauss point: x_u ^ x_v.
+    // Normal[] is the constant normal of the triangle through the first three
+    // nodes, which is not the normal {d f} is tangent to on a warped quad
+    double *x = Current.Element->x, *y = Current.Element->y,
+           *z = Current.Element->z;
+    double u = Current.u, v = Current.v;
+    double dNu[4] = {-(1. - v) / 4., (1. - v) / 4., (1. + v) / 4.,
+                     -(1. + v) / 4.};
+    double dNv[4] = {-(1. - u) / 4., -(1. + u) / 4., (1. + u) / 4.,
+                     (1. - u) / 4.};
+    double xu[3] = {0., 0., 0.}, xv[3] = {0., 0., 0.};
+    for(k = 0; k < 4; k++) {
+      xu[0] += dNu[k] * x[k]; xu[1] += dNu[k] * y[k]; xu[2] += dNu[k] * z[k];
+      xv[0] += dNv[k] * x[k]; xv[1] += dNv[k] * y[k]; xv[2] += dNv[k] * z[k];
+    }
+    V->Val[0] = xu[1] * xv[2] - xu[2] * xv[1];
+    V->Val[1] = xu[2] * xv[0] - xu[0] * xv[2];
+    V->Val[2] = xu[0] * xv[1] - xu[1] * xv[0];
+    double norm = sqrt(SQU(V->Val[0]) + SQU(V->Val[1]) + SQU(V->Val[2]));
+    V->Val[0] /= norm;
+    V->Val[1] /= norm;
+    V->Val[2] /= norm;
+  }
+  else
+    Geo_CreateNormal(Current.Element->Type, Current.Element->x,
+                     Current.Element->y, Current.Element->z, V->Val);
+
+  if(Current.NbrHar != 1) {
+    V->Val[MAX_DIM] = 0.;
+    V->Val[MAX_DIM + 1] = 0.;
+    V->Val[MAX_DIM + 2] = 0.;
+    for(k = 2; k < std::min(NBR_MAX_HARMONIC, Current.NbrHar); k += 2) {
+      V->Val[MAX_DIM * k] = V->Val[0];
+      V->Val[MAX_DIM * k + 1] = V->Val[1];
+      V->Val[MAX_DIM * k + 2] = V->Val[2];
+      V->Val[MAX_DIM * (k + 1)] = 0.;
+      V->Val[MAX_DIM * (k + 1) + 1] = 0.;
+      V->Val[MAX_DIM * (k + 1) + 2] = 0.;
+    }
+  }
+  V->Type = VECTOR;
+#endif
+}
+
 void F_NormalSource(F_ARG)
 {
 #if !defined(HAVE_KERNEL)
