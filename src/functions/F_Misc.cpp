@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include <vector>
 #include "GetDPConfig.h"
 #include "ProData.h"
 #include "ProDefine.h"
@@ -64,6 +65,55 @@ void F_QuadraturePointIndex(F_ARG)
 {
   V->Type = SCALAR;
   V->Val[0] = Current.QuadraturePointIndex;
+}
+
+// Values shared by the terms of an element at the same quadrature point:
+// SetQuadraturePointValue[value, slot] stores (and returns) value,
+// QuadraturePointValue[slot] reads it back.  Faster than SetVariable /
+// GetVariable (no string key, no export), and a value stored for another
+// element is an error, not a stale value.
+struct QuadraturePointValue {
+  int ElementNum;
+  struct Value Value;
+};
+
+static std::vector<std::vector<struct QuadraturePointValue> >
+  QuadraturePointValues;
+
+void F_SetQuadraturePointValue(F_ARG)
+{
+  if((A + 1)->Type != SCALAR || (A + 1)->Val[0] < 0) {
+    Message::Error("Slot of SetQuadraturePointValue must be a nonnegative "
+                   "scalar");
+    return;
+  }
+  std::size_t slot = (std::size_t)(A + 1)->Val[0];
+  std::size_t qp = (std::size_t)Current.QuadraturePointIndex;
+  if(slot >= QuadraturePointValues.size())
+    QuadraturePointValues.resize(slot + 1);
+  std::vector<struct QuadraturePointValue> &v = QuadraturePointValues[slot];
+  if(qp >= v.size()) v.resize(qp + 1);
+  v[qp].ElementNum = Current.Element ? Current.Element->Num : -1;
+  Cal_CopyValue(A, &v[qp].Value);
+  Cal_CopyValue(A, V);
+}
+
+void F_QuadraturePointValue(F_ARG)
+{
+  std::size_t slot = (A->Type == SCALAR && A->Val[0] >= 0) ?
+                       (std::size_t)A->Val[0] : QuadraturePointValues.size();
+  std::size_t qp = (std::size_t)Current.QuadraturePointIndex;
+  int ele = Current.Element ? Current.Element->Num : -1;
+  if(slot >= QuadraturePointValues.size() ||
+     qp >= QuadraturePointValues[slot].size() ||
+     QuadraturePointValues[slot][qp].ElementNum != ele) {
+    Message::Error("QuadraturePointValue[%g]: no value stored for element "
+                   "%d at quadrature point %d", A->Val[0], ele, (int)qp);
+    Cal_ZeroValue(V);
+    V->Type = SCALAR;
+    return;
+  }
+  Cal_CopyValue(&QuadraturePointValues[slot][qp].Value, V);
 }
 
 void F_GetCpuTime(F_ARG)
