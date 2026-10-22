@@ -174,15 +174,33 @@ void Init_SystemData(struct DofData *DofData_P, int Flag_Jac)
 /*  G e n e r a t e _ S y s t e m                                           */
 /* ------------------------------------------------------------------------ */
 
-static void ZeroMatrix(gMatrix *M, gSolver *S, int N)
+static void ZeroMatrix(gMatrix *M, gSolver *S, int N, bool keepMask = false)
 {
   // We destroy and recreate the matrix to avoid filling-in the mask when
   // generating systems on meshes with changing topologies (remeshing, moving
   // band, ..., e.g. in time loops) or when constraints are updated. Using
   // LinAlg_ZeroMatrix preserves the mask from iteration to iteration, which
   // increases memory every time we reassemble.
+  //
+  // With -sparsity-keep the mask is the exact sparsity pattern, computed once
+  // and assumed fixed: keeping it lets the direct solver reuse its symbolic
+  // factorization (ordering) from one solve to the next.
+  if(keepMask) {
+    LinAlg_ZeroMatrix(M);
+    return;
+  }
   LinAlg_DestroyMatrix(M);
   LinAlg_CreateMatrix(M, S, N, N, true);
+}
+
+// systems whose exact sparsity pattern has been computed (-sparsity and
+// -sparsity-keep)
+static std::set<std::string> sparsity_done;
+
+static bool KeepMatrixMask(struct DefineSystem *DefineSystem_P)
+{
+  return Flag_SPARSITY_PATTERN == 3 &&
+         sparsity_done.count(DefineSystem_P->Name);
 }
 
 void ExtrapolatingPolynomial(int degreewanted, struct DofData *DofData_P,
@@ -397,7 +415,7 @@ void Generate_System(struct DefineSystem *DefineSystem_P,
   else {
     if(!Current.DofData->Flag_RHS && !Flag_Cumulative) {
       ZeroMatrix(&Current.DofData->A, &Current.DofData->Solver,
-                 Current.DofData->NbrDof);
+                 Current.DofData->NbrDof, KeepMatrixMask(DefineSystem_P));
     }
     if(!Flag_Cumulative) {
       LinAlg_ZeroVector(&Current.DofData->b);
@@ -439,14 +457,13 @@ void Generate_System(struct DefineSystem *DefineSystem_P,
 
   if(Flag_Jac && !Flag_Cumulative)
     ZeroMatrix(&Current.DofData->Jac, &Current.DofData->Solver,
-               Current.DofData->NbrDof);
+               Current.DofData->NbrDof, KeepMatrixMask(DefineSystem_P));
 
   Nbr_Formulation = List_Nbr(DefineSystem_P->FormulationIndex);
 
-  static std::set<std::string> sparsity_done;
-
   if(Flag_SPARSITY_PATTERN == 2 || // each time
-     (Flag_SPARSITY_PATTERN == 1 && !sparsity_done.count(DefineSystem_P->Name))) { // once
+     ((Flag_SPARSITY_PATTERN == 1 || Flag_SPARSITY_PATTERN == 3) &&
+      !sparsity_done.count(DefineSystem_P->Name))) { // once
     sparsity_done.insert(DefineSystem_P->Name);
     Message::Info("Computing exact sparsity patterns");
     // do a first "fake" assembly pass to compute the exact sparsity patterns
@@ -575,12 +592,12 @@ void ReGenerate_System(struct DefineSystem *DefineSystem_P,
   struct Formulation *Formulation_P;
 
   ZeroMatrix(&Current.DofData->A, &Current.DofData->Solver,
-             Current.DofData->NbrDof);
+             Current.DofData->NbrDof, KeepMatrixMask(DefineSystem_P));
   LinAlg_ZeroVector(&Current.DofData->b);
 
   if(Flag_Jac)
     ZeroMatrix(&Current.DofData->Jac, &Current.DofData->Solver,
-               Current.DofData->NbrDof);
+               Current.DofData->NbrDof, KeepMatrixMask(DefineSystem_P));
 
   Nbr_Formulation = List_Nbr(DefineSystem_P->FormulationIndex);
 
