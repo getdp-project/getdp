@@ -71,6 +71,11 @@ static void Info(int level, char *arg0)
       "per system (or -s)\n"
       "  -sparsity-all             always compute sparsity and parallel layout "
       "(or -sa)\n"
+      "  -sparsity-keep            same as -sparsity, and keep the matrix "
+      "structure\n"
+      "                            between assemblies (the direct solver "
+      "reuses its\n"
+      "                            ordering) (or -sk)\n"
 #endif
       "Linear solver options:\n"
 #if defined(HAVE_PETSC)
@@ -175,6 +180,11 @@ static void Get_Options(int argc, char *argv[], int *sargc, char **sargv,
       else if(!strcmp(argv[i] + 1, "sparsity-all") ||
               !strcmp(argv[i] + 1, "sa")) {
         Flag_SPARSITY_PATTERN = 2;
+        i++;
+      }
+      else if(!strcmp(argv[i] + 1, "sparsity-keep") ||
+              !strcmp(argv[i] + 1, "sk")) {
+        Flag_SPARSITY_PATTERN = 3;
         i++;
       }
       else if(!strcmp(argv[i] + 1, "bin")) {

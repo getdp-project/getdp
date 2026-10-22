@@ -1068,6 +1068,27 @@ void F_SquDyadicProduct(F_ARG)
   V->Type = TENSOR_SYM;
 }
 
+void F_DyadicProduct(F_ARG)
+{
+  // a (x) b, i.e. the tensor T with T u = a (b . u); real values only, as
+  // SquDyadicProduct
+  if(A->Type != VECTOR || (A + 1)->Type != VECTOR)
+    Message::Error("Non vector argument(s) for function 'DyadicProduct'");
+
+  // V is the same Value as A: copy both arguments before writing V
+  double a[3] = {A->Val[0], A->Val[1], A->Val[2]};
+  double b[3] = {(A + 1)->Val[0], (A + 1)->Val[1], (A + 1)->Val[2]};
+  for(int i = 0; i < 3; i++)
+    for(int j = 0; j < 3; j++) V->Val[3 * i + j] = a[i] * b[j];
+
+  if(Current.NbrHar > 1) {
+    for(int k = 1; k < std::min(NBR_MAX_HARMONIC, Current.NbrHar); k++)
+      for(int i = 0; i < 9; i++) V->Val[MAX_DIM * k + i] = 0.;
+  }
+
+  V->Type = TENSOR;
+}
+
 /* ------------------------------------------------------------------------ */
 /*  Get Vector Components                                                   */
 /* ------------------------------------------------------------------------ */
