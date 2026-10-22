@@ -489,6 +489,12 @@ Computes the sparsity and parallel matrix layout once per system.
 
 Always computes sparsity and parallel matrix layout.
 
+@item -sparsity-keep
+
+Same as @code{-sparsity}, and keeps the matrix structure between
+assemblies (the values are reset to zero and reassembled), so that the
+direct solver reuses its ordering.
+
 @item -bin
 
 Selects binary format for output files.
@@ -2178,6 +2184,11 @@ Creates a diagonal second-rank tensor of order 3 from 3 scalars.
 
 Dyadic product of the vector given by @var{expression} with itself.
 
+@item DyadicProduct
+@code{[@var{expression}, @var{expression}]}
+
+Dyadic product of the two vectors given by the expressions.
+
 @item CompX
 @code{[@var{expression}]}
 
@@ -2524,6 +2535,18 @@ Returns the tag (number) of the current element.
 @code{[]}
 
 Returns the index of the current quadrature point.
+
+@item SetQuadraturePointValue
+@code{[@var{expression}, @var{expression-cst}]}
+
+Stores the value of the first expression for the current element and
+quadrature point in the slot given by the second, and returns it.
+
+@item QuadraturePointValue
+@code{[@var{expression-cst}]}
+
+Returns the value stored by @code{SetQuadraturePointValue} in the given
+slot for the current element and quadrature point.
 
 @item Distance
 @code{[@var{expression}]@{@var{expression-cst}@}}
