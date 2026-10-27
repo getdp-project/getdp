@@ -169,8 +169,10 @@ InitData(ILSField *MyField, ILSField *AllField, struct Operation *Operation_P,
   MyField->nb_field =
     List_Nbr(Operation_P->Case.IterativeLinearSolver.MyFieldTag);
   tab_nb_field_loc.resize(mpi_comm_size);
-  MPI_Allgather(&MyField->nb_field, 1, MPI_INT, &tab_nb_field_loc[0], 1,
-                MPI_INT, PETSC_COMM_WORLD);
+  // (the counts of MPI_Allgatherv are int, the fields PetscInt)
+  int nb_field_loc = MyField->nb_field;
+  MPI_Allgather(&nb_field_loc, 1, MPI_INT, &tab_nb_field_loc[0], 1, MPI_INT,
+                PETSC_COMM_WORLD);
 
   AllField->nb_field = 0;
   for(int irank = 0; irank < mpi_comm_size; irank++)
@@ -199,12 +201,11 @@ InitData(ILSField *MyField, ILSField *AllField, struct Operation *Operation_P,
   AllField->ILSTag.resize(AllField->nb_field);
   for(int iField = 0; iField < AllField->nb_field; iField++)
     AllField->ILSTag[iField] = iField;
-  MPI_Allgatherv(&MyField->GmshTag[0], MyField->nb_field, MPI_INT,
+  MPI_Allgatherv(&MyField->GmshTag[0], nb_field_loc, MPIU_INT,
                  &AllField->GmshTag[0], &tab_nb_field_loc[0], &displs[0],
-                 MPI_INT, PETSC_COMM_WORLD);
-  MPI_Allgatherv(&MyField->rank[0], MyField->nb_field, MPI_INT,
-                 &AllField->rank[0], &tab_nb_field_loc[0], &displs[0], MPI_INT,
-                 PETSC_COMM_WORLD);
+                 MPIU_INT, PETSC_COMM_WORLD);
+  MPI_Allgatherv(&MyField->rank[0], nb_field_loc, MPIU_INT, &AllField->rank[0],
+                 &tab_nb_field_loc[0], &displs[0], MPIU_INT, PETSC_COMM_WORLD);
 
   // Now the (local) fields in RAM must be read
   (*B_std).resize(MyField->nb_field);
@@ -221,12 +222,11 @@ InitData(ILSField *MyField, ILSField *AllField, struct Operation *Operation_P,
   }
 
   // Share information on the size of the local fields with other tasks
-  MPI_Allreduce(&MyField->n_elem, &AllField->n_elem, 1, MPI_INT, MPI_SUM,
+  MPI_Allreduce(&MyField->n_elem, &AllField->n_elem, 1, MPIU_INT, MPI_SUM,
                 PETSC_COMM_WORLD);
   AllField->size.resize(AllField->nb_field);
-  MPI_Allgatherv(&MyField->size[0], MyField->nb_field, MPI_INT,
-                 &AllField->size[0], &tab_nb_field_loc[0], &displs[0], MPI_INT,
-                 PETSC_COMM_WORLD);
+  MPI_Allgatherv(&MyField->size[0], nb_field_loc, MPIU_INT, &AllField->size[0],
+                 &tab_nb_field_loc[0], &displs[0], MPIU_INT, PETSC_COMM_WORLD);
 
   // Compute the starting/ending index in the futur Petsc Vec containing all the
   // Gmsh fields
