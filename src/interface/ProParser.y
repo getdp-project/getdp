@@ -340,7 +340,7 @@ struct doubleXstring{
 %token      tTimeLoopTheta tTimeLoopNewmark tTimeLoopRungeKutta tTimeLoopAdaptive
 %token        tTime0 tTimeMax tTheta
 %token        tBeta tGamma
-%token      tIterativeLoop tIterativeLoopN tIterativeLinearSolver
+%token      tIterativeLoop tIterativeLoopAdvanced tIterativeLinearSolver
 %token      tNbrMaxIteration tRelaxationFactor
 %token      tIterativeTimeReduction
 %token        tSetCommSelf tSetCommWorld tBarrier
@@ -382,7 +382,7 @@ struct doubleXstring{
 %token        tStoreMaxInRegister tStoreMaxXinRegister tStoreMaxYinRegister
 %token        tStoreMaxZinRegister tStoreMinInRegister tStoreMinXinRegister
 %token        tStoreMinYinRegister tStoreMinZinRegister
-%token        tLastTimeStepOnly tAppendTimeStepToFileName tTimeValue tTimeImagValue
+%token        tLastTimeStepOnly tAppendTimeStepToFileName tTimeValue tTimeImagValue tDistributed
 %token        tTimeInterval tAtGaussPoints
 %token        tAppendExpressionToFileName tAppendExpressionFormat
 %token        tOverrideTimeStepValue tNoMesh
@@ -5598,12 +5598,12 @@ OperationTerm :
       Operation_P->Case.TimeLoopAdaptive.OperationEnd = $24;
     }
 
-  | tIterativeLoopN '[' FExpr ',' Expression ',' IterativeLoopDefinitions ']'
+  | tIterativeLoopAdvanced '[' FExpr ',' Expression ',' IterativeLoopDefinitions ']'
                     '{' Operation '}'
     { List_Pop(Operation_L);
       Operation_P = (struct Operation*)
         List_Pointer(Operation_L, List_Nbr(Operation_L)-1);
-      Operation_P->Type = OPERATION_ITERATIVELOOPN;
+      Operation_P->Type = OPERATION_ITERATIVELOOPADVANCED;
       Operation_P->Case.IterativeLoop.NbrMaxIteration = (int)$3;
       Operation_P->Case.IterativeLoop.RelaxationFactorIndex = $5;
       Operation_P->Case.IterativeLoop.Operation = $10;
@@ -6612,7 +6612,7 @@ IterativeLoopDefinitions :
       IterativeLoopPO_S.NormType = Get_DefineForString(ErrorNorm_Type, $9, &FlagError);
       if(FlagError){
         Get_Valid_SXD($9, ErrorNorm_Type);
-        vyyerror(0, "Unknown error norm type of IterativeLoopN PostOperation %s", $3);
+        vyyerror(0, "Unknown error norm type of IterativeLoopAdvanced PostOperation %s", $3);
       }
       IterativeLoopPO_S.NormTypeString = $9;
       List_Add($$ = $1, &IterativeLoopPO_S);
@@ -7239,6 +7239,7 @@ PostOperation :
       PostOperation_S.Comma = NULL;
       PostOperation_S.CatFile = 0;
       PostOperation_S.PostSubOperation = NULL;
+      PostOperation_S.Distributed = false;
       level_Append = 0;
     }
 
@@ -7346,6 +7347,16 @@ PostOperationTerm :
       PostOperation_S.ResampleTimeStep = $7;
     }
 
+  | tDistributed tEND
+    {
+      PostOperation_S.Distributed = true;
+    }
+
+  | tDistributed FExpr tEND
+    {
+      PostOperation_S.Distributed = $2 ? true : false;
+    }
+
   | tOperation  '{' PostSubOperations '}'
     {
       PostOperation_S.PostSubOperation = $3;
@@ -7371,6 +7382,7 @@ SeparatePostOperation :
       PostOperation_S.Comma = NULL;
       PostOperation_S.CatFile = 0;
       PostOperation_S.PostSubOperation = NULL;
+      PostOperation_S.Distributed = false;
       level_Append = $2; index_Append = -1;
       int i;
       if((i = List_ISearchSeq(Problem_S.PostProcessing, $5,
@@ -7485,6 +7497,7 @@ PostSubOperations :
       PostSubOperation_S.TimeInterval_Flag = 0;
       PostSubOperation_S.TimeInterval[0] = 0.;
       PostSubOperation_S.TimeInterval[1] = 0.;
+      PostSubOperation_S.Distributed = false;
      }
     PostSubOperation
     {
@@ -7507,6 +7520,8 @@ PostSubOperations :
           PostSubOperation_S.OverrideTimeStepValue = PostOperation_S.OverrideTimeStepValue;
 	if(!PostSubOperation_S.CatFile)
           PostSubOperation_S.CatFile = PostOperation_S.CatFile;
+  if(!PostSubOperation_S.Distributed)
+          PostSubOperation_S.Distributed = PostOperation_S.Distributed;
 
 	List_Add($$ = $1, &PostSubOperation_S);
       }
@@ -8228,6 +8243,14 @@ PrintOption :
         PostSubOperation_S.NewCoordinates = 1;
         PostSubOperation_S.NewCoordinatesFile = $3;
       }
+    }
+  | ',' tDistributed
+    {
+      PostSubOperation_S.Distributed = 1;
+    }
+  | ',' tDistributed FExpr
+    {
+      PostSubOperation_S.Distributed = $3 ? 1 : 0;
     }
  ;
 

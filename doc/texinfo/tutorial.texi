@@ -192,8 +192,16 @@ On the command line:
 
 Interactively with Gmsh: open @code{electromagnet.pro} with "File->Open", then press "Run".
 
+@subheading Bonus
+
+The bonus tutorial (@pxref{Tutorial Magnetostatics bonus}) solves the same nonlinear model with GetDP's built-in nonlinear machinery: a @code{JacNL[]} term for the Newton-Raphson tangent, and the @code{IterativeLoop[]} resolution operation in place of the hand-written iteration.
+
 @center@image{images/03-Magnetostatics,14cm,,Screenshot of tutorial 03-Magnetostatics}
 @center See @url{https://gitlab.onelab.info/getdp/getdp/-/tree/master/tutorials/03-Magnetostatics,tutorials/03-Magnetostatics}.
+
+@menu
+* Tutorial Magnetostatics bonus::
+@end menu
 
 @subheading File @file{electromagnet.geo}
 @verbatiminclude ../../tutorials/03-Magnetostatics/electromagnet.geo
@@ -205,6 +213,53 @@ Interactively with Gmsh: open @code{electromagnet.pro} with "File->Open", then p
 @verbatiminclude ../../tutorials/03-Magnetostatics/electromagnet_common.pro
 
 @c -------------------------------------------------------------------------
+@c Tutorial 3 bonus: Nonlinear magnetostatics with built-in iterative loops
+@c -------------------------------------------------------------------------
+
+@page
+@node Tutorial Magnetostatics bonus, , , Tutorial Magnetostatics
+@subsection Tutorial 3 bonus: Nonlinear magnetostatics with built-in iterative loops
+
+The nonlinear magnetostatic model of tutorial 3 is solved again, letting GetDP drive the nonlinear iteration. The Newton-Raphson tangent contribution is declared with a single @code{JacNL[]} term instead of being written out as separate linearized terms, and the hand-written @code{While[]} loop is replaced by the built-in @code{IterativeLoop[]} resolution operation, which assembles and solves the tangent system with @code{GenerateJac[]} and @code{SolveJac[]}, applies the relaxed increment and monitors convergence on its own. Picard iterations then come for free, as the same loop without the @code{JacNL[]} term.
+
+@subsubheading Features
+
+@itemize @bullet
+@item
+Newton-Raphson linearization through a single @code{JacNL[]} term
+@item
+Incremental resolution with @code{GenerateJac[]} and @code{SolveJac[]}
+@item
+Built-in @code{IterativeLoop[]} nonlinear loop, with relaxation
+@item
+Finer convergence control with @code{IterativeLoopAdvanced[]}
+@end itemize
+
+See the comments in @code{electromagnet.pro} and @code{electromagnet.geo} for details.
+
+@subsubheading Running the tutorial
+
+On the command line:
+@example
+> gmsh electromagnet.geo -2
+> getdp electromagnet.pro -solve Mag -pos Map
+@end example
+
+Interactively with Gmsh: open @code{electromagnet.pro} with "File->Open", then press "Run".
+
+@center@image{images/03-Magnetostatics_bonus,14cm,,Screenshot of tutorial 03-Magnetostatics/bonus}
+@center See @url{https://gitlab.onelab.info/getdp/getdp/-/tree/master/tutorials/03-Magnetostatics/bonus,tutorials/03-Magnetostatics/bonus}.
+
+@subsubheading File @file{electromagnet.geo}
+@verbatiminclude ../../tutorials/03-Magnetostatics/bonus/electromagnet.geo
+
+@subsubheading File @file{electromagnet.pro}
+@verbatiminclude ../../tutorials/03-Magnetostatics/bonus/electromagnet.pro
+
+@subsubheading File @file{electromagnet_common.pro}
+@verbatiminclude ../../tutorials/03-Magnetostatics/bonus/electromagnet_common.pro
+
+@c -------------------------------------------------------------------------
 @c Tutorial 4: Magneto-quasistatic model of an electromagnet
 @c -------------------------------------------------------------------------
 
@@ -212,7 +267,7 @@ Interactively with Gmsh: open @code{electromagnet.pro} with "File->Open", then p
 @node Tutorial Magneto-quasistatics, Tutorial Full wave, Tutorial Magnetostatics, GetDP tutorial
 @section Tutorial 4: Magneto-quasistatic model of an electromagnet
 
-We consider the same electromagnet model as in tutorial 3, but in magneto-quasistatic regime, i.e. allowing for time-dependent currents in the inductor and eddy currents in the core. We still consider an imposed current density in the inductor, neglecting skin and proximity effects in the coil turns. In addition to the 2D model (invariant along the z-axis) we also consider an axisymmetric model (invariant by rotation around the y-axis).
+We consider the same electromagnet model as in tutorial 3 (@pxref{Tutorial Magnetostatics}), but in magneto-quasistatic regime, i.e. allowing for time-dependent currents in the inductor and eddy currents in the core. We still consider an imposed current density in the inductor, neglecting skin and proximity effects in the coil turns. In addition to the 2D model (invariant along the z-axis) we also consider an axisymmetric model (invariant by rotation around the y-axis).
 
 @subheading Features
 
@@ -312,7 +367,7 @@ Interactively with Gmsh: open @code{full_wave.pro} with "File->Open", then press
 @node Tutorial Global quantities, Tutorial Coupled problems, Tutorial Full wave, GetDP tutorial
 @section Tutorial 6: Global quantities in electrostatics
 
-We consider the same model as in tutorial 1, i.e. a 2D electrostatic model of a microstrip line with only one half of the geometry modelled by symmetry. We introduce global quantities (voltage and charge) in the function space, which lets us naturally handle floating potentials and compute the capacitance.
+We consider the same model as in tutorial 1 (@pxref{Tutorial Electrostatics}), i.e. a 2D electrostatic model of a microstrip line with only one half of the geometry modelled by symmetry. We introduce global quantities (voltage and charge) in the function space, which lets us naturally handle floating potentials and compute the capacitance.
 
 @subheading Features
 
@@ -481,6 +536,10 @@ On the command line:
 
 Interactively with Gmsh: open @code{transfo.pro} with "File->Open", then press "Run".
 
+@subheading Bonus
+
+The bonus tutorial (@pxref{Tutorial Template library bonus}) reimplements the electromagnet models of tutorials 3 and 4 with the same template library, which makes static, time-domain and frequency-domain analyses -- with or without axisymmetry -- available from a single compact model file.
+
 @center@image{images/09-Template_library,14cm,,Screenshot of tutorial 09-Template_library}
 @center See @url{https://gitlab.onelab.info/getdp/getdp/-/tree/master/tutorials/09-Template_library,tutorials/09-Template_library}.
 
@@ -553,7 +612,7 @@ Interactively with Gmsh: open @code{electromagnet.pro} with "File->Open", then p
 @node Tutorial Gauging, , Tutorial Template library, GetDP tutorial
 @section Tutorial 10: Tree-cotree and Coulomb gauging
 
-We consider a 3D version of the single-phase transformer of tutorial 9. The primary winding is driven by a voltage source and the secondary winding feeds a selectable load (resistance, inductance or capacitance). In 3D, the curl-curl equation does not uniquely determine the magnetic vector potential "a": gradient fields must be removed by imposing a gauge condition. Two strategies are presented and can be selected at runtime: tree-cotree gauging as in tutorial 8 (which constrains the degrees of freedom on a spanning tree of the mesh) and Coulomb gauging (which enforces "div a = 0" weakly via a scalar Lagrange multiplier). Both produce the same magnetic flux density "b = curl a".
+We consider a 3D version of the single-phase transformer of tutorial 9 (@pxref{Tutorial Template library}). The primary winding is driven by a voltage source and the secondary winding feeds a selectable load (resistance, inductance or capacitance). In 3D, the curl-curl equation does not uniquely determine the magnetic vector potential "a": gradient fields must be removed by imposing a gauge condition. Two strategies are presented and can be selected at runtime: tree-cotree gauging (which constrains the degrees of freedom on a spanning tree of the mesh), as in tutorial 8 (@pxref{Tutorial Circuit coupling}), and Coulomb gauging (which enforces "div a = 0" weakly via a scalar Lagrange multiplier). Both produce the same magnetic flux density "b = curl a".
 
 @subheading Features
 

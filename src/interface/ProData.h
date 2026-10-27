@@ -693,6 +693,7 @@ struct FemLocalTermActive {
   int Type_FormEqu, Type_FormDof, Type_ValueDof;
   int Type_DefineQuantityDof;
   int SymmetricalMatrix;
+  int ScalarCoefficient; // the term is (constants) * Dof{}
 
   List_T *IntegrationCase_L, *JacobianCase_L;
   int CriterionIndex;
@@ -1357,7 +1358,7 @@ struct IterativeLoopSystem {
 #define OPERATION_INIT_MOVINGBAND2D 38
 #define OPERATION_ITERATIVELINEARSOLVER 39
 #define OPERATION_ITERATIVELOOP 40
-#define OPERATION_ITERATIVELOOPN 41
+#define OPERATION_ITERATIVELOOPADVANCED 41
 #define OPERATION_ITERATIVETIMEREDUCTION 42
 #define OPERATION_LANCZOS 43
 #define OPERATION_MESH_MOVINGBAND2D 44
@@ -1521,6 +1522,7 @@ struct PostOperation {
   List_T *TimeValue_L, *TimeImagValue_L;
   int LastTimeStepOnly, OverrideTimeStepValue, NoMesh, CatFile;
   int AppendTimeStepToFileName;
+  bool Distributed;
 };
 
 struct PostSubOperation {
@@ -1535,6 +1537,7 @@ struct PostSubOperation {
   char *NewCoordinatesFile;
   int ValueIndex;
   int ChangeOfCoordinates[3], LastTimeStepOnly, AppendTimeStepToFileName;
+  bool Distributed;
   int AppendExpressionToFileName;
   char *AppendStringToFileName, *AppendExpressionFormat;
   int OverrideTimeStepValue, NoMesh;
@@ -1690,7 +1693,7 @@ struct CurrentData {
   struct DofData *DofData;
   struct GeoData *GeoData;
 
-  // PostOperation based solutions for TimeLoopAdaptive, IterativeLoopN
+  // PostOperation based solutions for TimeLoopAdaptive, IterativeLoopAdvanced
   List_T *PostOpData_L;
   int PostOpDataIndex;
 

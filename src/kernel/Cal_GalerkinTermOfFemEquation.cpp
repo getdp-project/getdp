@@ -9,6 +9,7 @@
 //
 
 #include <map>
+#include <vector>
 #include <math.h>
 #include "ProData.h"
 #include "ProDefine.h"
@@ -93,9 +94,48 @@ void Cal_InitGalerkinTermOfFemEquation(
         if(WholeQuantity_P->Type == WQ_BINARYOPERATOR &&
            WholeQuantity_P->Case.Operator.TypeOperator == OP_CROSSPRODUCT)
           FI->SymmetricalMatrix = 0;
-        // FIXME: we should detect nonsymmetric tensors
+        // nonsymmetric tensors are detected during assembly (see
+        // Cal_vBFxDof)
       }
     }
+  }
+
+  // a general expression keeps the matrix symmetric if it only multiplies or
+  // divides the Dof by constants, e.g. 'mu0 * Dof{h}' or '-Dof{u} / 2'
+  FI->ScalarCoefficient = 0;
+  if(FI->SymmetricalMatrix &&
+     EquationTerm_P->Case.LocalTerm.Term.CanonicalWholeQuantity == CWQ_NONE) {
+    std::vector<bool> hasDof; // stack: does the operand contain the Dof?
+    bool ok = true;
+    for(int i = 0;
+        ok && i < List_Nbr(EquationTerm_P->Case.LocalTerm.Term.WholeQuantity);
+        i++) {
+      struct WholeQuantity *WholeQuantity_P = (struct WholeQuantity *)
+        List_Pointer(EquationTerm_P->Case.LocalTerm.Term.WholeQuantity, i);
+      if(WholeQuantity_P->Type == WQ_CONSTANT)
+        hasDof.push_back(false);
+      else if(WholeQuantity_P->Type == WQ_OPERATORANDQUANTITY &&
+              i == EquationTerm_P->Case.LocalTerm.Term.DofIndexInWholeQuantity)
+        hasDof.push_back(true);
+      else if(WholeQuantity_P->Type == WQ_UNARYOPERATOR &&
+              WholeQuantity_P->Case.Operator.TypeOperator == OP_NEG)
+        ok = !hasDof.empty();
+      else if(WholeQuantity_P->Type == WQ_BINARYOPERATOR &&
+              (WholeQuantity_P->Case.Operator.TypeOperator == OP_TIME ||
+               WholeQuantity_P->Case.Operator.TypeOperator == OP_DIVIDE) &&
+              hasDof.size() >= 2) {
+        bool right = hasDof.back();
+        hasDof.pop_back();
+        bool left = hasDof.back();
+        // the Dof can only appear once, and not as a divisor
+        ok = !(left && right) && !(right && WholeQuantity_P->Case.Operator
+                                                .TypeOperator == OP_DIVIDE);
+        hasDof.back() = left || right;
+      }
+      else
+        ok = false;
+    }
+    FI->ScalarCoefficient = ok && hasDof.size() == 1 && hasDof[0];
   }
 
   if(FI->SymmetricalMatrix) { FI->Type_FormDof = FI->Type_FormEqu; }
@@ -325,7 +365,9 @@ void Cal_EndGalerkinTermOfFemEquation() { assDiag_done.clear(); }
 /*  C a l _ a p p l y M e t r i c T e n s o r                               */
 /* ------------------------------------------------------------------------ */
 
-void Cal_applyMetricTensor(struct EquationTerm *EquationTerm_P,
+// returns false if the metric tensor can make the elementary matrix
+// nonsymmetric
+bool Cal_applyMetricTensor(struct EquationTerm *EquationTerm_P,
                            struct FemLocalTermActive *FI,
                            struct QuantityStorage *QuantityStorage_P0,
                            int Nbr_Dof, struct Value vBFxDof[])
@@ -336,7 +378,7 @@ void Cal_applyMetricTensor(struct EquationTerm *EquationTerm_P,
   struct Value detS;
 
   mi = EquationTerm_P->Case.LocalTerm.ExpressionIndexForMetricTensor;
-  if(mi == -1) return;
+  if(mi == -1) return true;
   Get_ValueOfExpression(
     (struct Expression *)List_Pointer(Problem_S.Expression, mi),
     QuantityStorage_P0, Current.u, Current.v, Current.w, &S);
@@ -349,7 +391,7 @@ void Cal_applyMetricTensor(struct EquationTerm *EquationTerm_P,
   if(S.Type != TENSOR_SYM && S.Type != TENSOR && S.Type != TENSOR_DIAG) {
     Message::Error("Cannot interpret field type %s as metric tensor",
                    Get_StringForDefine(Field_Type, S.Type));
-    return;
+    return false;
   }
 
   Cal_DetValue(&S, &detS);
@@ -394,6 +436,7 @@ void Cal_applyMetricTensor(struct EquationTerm *EquationTerm_P,
                    Get_StringForDefine(Field_Type, FI->Type_FormDof));
     break;
   }
+  return S.Type != TENSOR;
 }
 
 /* ------------------------------------------------------------------------ */
@@ -407,7 +450,8 @@ int Cal_vBFxDof(struct EquationTerm *EquationTerm_P,
                 void (*xFunctionBFDof[NBR_MAX_BASISFUNCTIONS])(
                   struct Element *Element, int NumEntity, double u, double v,
                   double w, double Value[]),
-                double vBFxEqu[][MAX_DIM], struct Value vBFxDof[])
+                double vBFxEqu[][MAX_DIM], struct Value vBFxDof[],
+                bool *Symmetric)
 {
   double vBFuDof[NBR_MAX_BASISFUNCTIONS][MAX_DIM];
   double u, v, w;
@@ -490,9 +534,14 @@ int Cal_vBFxDof(struct EquationTerm *EquationTerm_P,
     }
   }
 
-  /* Compute remaining factors in the term */
+  /* Compute remaining factors in the term; the elementary matrix is only
+     known to be symmetric for 'Dof{}', 'expr[] * Dof{}' with a scalar or
+     symmetric tensor expr[], and constants times 'Dof{}' */
 
-  if(EquationTerm_P->Case.LocalTerm.Term.CanonicalWholeQuantity == CWQ_DOF) {}
+  *Symmetric = false;
+  if(EquationTerm_P->Case.LocalTerm.Term.CanonicalWholeQuantity == CWQ_DOF) {
+    *Symmetric = true;
+  }
   else if(EquationTerm_P->Case.LocalTerm.Term.CanonicalWholeQuantity ==
           CWQ_EXP_TIME_DOF) {
     Get_ValueOfExpression(
@@ -502,17 +551,22 @@ int Cal_vBFxDof(struct EquationTerm *EquationTerm_P,
       QuantityStorage_P0, Current.u, Current.v, Current.w, &CoefPhys);
     for(int j = 0; j < Nbr_Dof; j++)
       Cal_ProductValue(&CoefPhys, &vBFxDof[j], &vBFxDof[j]);
+    *Symmetric = (CoefPhys.Type == SCALAR || CoefPhys.Type == TENSOR_DIAG ||
+                  CoefPhys.Type == TENSOR_SYM);
   }
-  else
+  else {
     Cal_WholeQuantity(
       Current.Element, QuantityStorage_P0,
       EquationTerm_P->Case.LocalTerm.Term.WholeQuantity, Current.u, Current.v,
       Current.w, EquationTerm_P->Case.LocalTerm.Term.DofIndexInWholeQuantity,
       Nbr_Dof, vBFxDof);
+    *Symmetric = FI->ScalarCoefficient;
+  }
 
   /* Compute using metric tensor if defined */
-  Cal_applyMetricTensor(EquationTerm_P, FI, QuantityStorage_P0, Nbr_Dof,
-                        vBFxDof);
+  if(!Cal_applyMetricTensor(EquationTerm_P, FI, QuantityStorage_P0, Nbr_Dof,
+                            vBFxDof))
+    *Symmetric = false;
 
   return 1;
 }
@@ -535,6 +589,7 @@ void Cal_GalerkinTermOfFemEquation(struct Element *Element,
   int Nbr_Equ, Nbr_Dof = 0;
   int i, j, k, Type_Dimension, Nbr_IntPoints, i_IntPoint;
   int NextElement;
+  bool HalfMatrix, Symmetric;
 
   double weight, Factor = 1.;
   double vBFuEqu[NBR_MAX_BASISFUNCTIONS][MAX_DIM];
@@ -730,7 +785,11 @@ void Cal_GalerkinTermOfFemEquation(struct Element *Element,
     }
 #endif
 
-    if(FI->SymmetricalMatrix)
+    // with the same test and shape functions, only the lower triangle is
+    // computed, as long as the integrand is known to be symmetric
+    HalfMatrix = FI->SymmetricalMatrix;
+
+    if(HalfMatrix)
       for(i = 0; i < Nbr_Equ; i++)
         for(j = 0; j <= i; j++)
           for(k = 0; k < Current.NbrHar; k++) Ek[i][j][k] = 0.;
@@ -858,13 +917,23 @@ void Cal_GalerkinTermOfFemEquation(struct Element *Element,
         Current.Element = Element;
         if(Cal_vBFxDof(EquationTerm_P, FI, QuantityStorage_P0,
                        QuantityStorageDof_P, Nbr_Dof, xFunctionBFDof, vBFxEqu,
-                       vBFxDof)) {
+                       vBFxDof, &Symmetric)) {
+          if(HalfMatrix && !Symmetric) {
+            // not known to be symmetric: complete the upper triangle with the
+            // (symmetric) contributions so far, and compute the full matrix
+            // from now on
+            for(i = 1; i < Nbr_Equ; i++)
+              for(j = 0; j < i; j++)
+                for(k = 0; k < Current.NbrHar; k++) Ek[j][i][k] = Ek[i][j][k];
+            HalfMatrix = false;
+          }
+
           Factor =
             FI->CoefJac *
             ((FI->Flag_ChangeCoord) ? weight * fabs(Element->DetJac) : weight);
 
           /* Product and assembly in elementary submatrix (k?-1.:1.)*   */
-          if(FI->SymmetricalMatrix)
+          if(HalfMatrix)
             for(i = 0; i < Nbr_Equ; i++)
               for(j = 0; j <= i; j++)
                 for(k = 0; k < Current.NbrHar; k++)
@@ -947,7 +1016,7 @@ void Cal_GalerkinTermOfFemEquation(struct Element *Element,
     /* Complete elementary matrix if symmetrical */
     /* ----------------------------------------- */
 
-    if(FI->SymmetricalMatrix)
+    if(HalfMatrix)
       for(i = 1; i < Nbr_Equ; i++)
         for(j = 0; j < i; j++)
           for(k = 0; k < Current.NbrHar; k++) Ek[j][i][k] = Ek[i][j][k];

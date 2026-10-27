@@ -175,6 +175,7 @@ dFunction                    return tdFunction;
 Dimension                    return tDimension;
 DimNameSpace                 return tDimNameSpace;
 DirName                      return tDirName;
+Distributed                  return tDistributed;
 DivisionCoefficient          return tDivisionCoefficient;
 DofValue                     return tDofValue;
 Dt                           return tDt;
@@ -288,7 +289,8 @@ Integration                  return tIntegration;
 Iso                          return tIso;
 IterativeLinearSolver        return tIterativeLinearSolver;
 IterativeLoop                return tIterativeLoop;
-IterativeLoopN               return tIterativeLoopN;
+IterativeLoopAdvanced        return tIterativeLoopAdvanced;
+IterativeLoopN               return tIterativeLoopAdvanced;
 IterativeTimeReduction       return tIterativeTimeReduction;
 
 JacNL                        return tJacNL;
