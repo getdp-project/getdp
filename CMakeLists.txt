@@ -46,6 +46,7 @@ opt(OPENMP "Enable OpenMP parallelization of some functions (experimental)" OFF)
 opt(PETSC "Enable PETSc linear solver" ${DEFAULT})
 opt(PRIVATE_API "Enable private API" OFF)
 opt(PYTHON "Enable Python functions" ${DEFAULT})
+opt(RPATH "Use RPATH in dynamically linked targets" ON)
 opt(SLEPC "Enable SLEPc eigensolver" ${DEFAULT})
 opt(SPARSKIT "Enable Sparskit solver instead of PETSc (requires Fortran)" ${DEFAULT})
 opt(SYSTEM_CONTRIB "Use system versions of contrib libraries, when possible" OFF)
@@ -126,6 +127,41 @@ if(NOT GETDP_PACKAGER)
   endif()
   string(REPLACE "\\" " " PACKAGER ${PACKAGER})
   set(GETDP_PACKAGER "${PACKAGER}")
+endif()
+
+if(ENABLE_RPATH)
+  set(CMAKE_MACOSX_RPATH 1)
+
+  # make sure that dynamic libraries (e.g. libgmsh, whose install name is
+  # @rpath/libgmsh.X.Y.dylib) can be found when installing/displacing the
+  # binaries: from https://gitlab.kitware.com/cmake/community/wikis/doc/
+  # cmake/RPATH-handling:
+
+  # use, i.e. don't skip the full RPATH for the build tree
+  set(CMAKE_SKIP_BUILD_RPATH FALSE)
+
+  # when building, don't use the install RPATH already (but later on when
+  # installing)
+  set(CMAKE_BUILD_WITH_INSTALL_RPATH FALSE)
+  set(CMAKE_INSTALL_RPATH "${CMAKE_INSTALL_PREFIX}/lib")
+
+  # add the automatically determined parts of the RPATH which point to
+  # directories outside the build tree to the install RPATH
+  set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
+
+  # the RPATH to be used when installing, but only if it's not a system directory
+  list(FIND CMAKE_PLATFORM_IMPLICIT_LINK_DIRECTORIES "${CMAKE_INSTALL_PREFIX}/lib"
+       isSystemDir)
+  if("${isSystemDir}" STREQUAL "-1")
+    if(APPLE)
+      set(CMAKE_INSTALL_RPATH "@executable_path/../lib")
+    else()
+      set(CMAKE_INSTALL_RPATH "\\\$ORIGIN/../lib")
+    endif()
+  endif()
+else()
+  set(CMAKE_MACOSX_RPATH 0)
+  set(CMAKE_SKIP_BUILD_RPATH TRUE)
 endif()
 
 if(APPLE)
