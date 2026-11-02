@@ -592,6 +592,21 @@ void SolvingAnalyse()
         DofData_P0 =
           (struct DofData *)List_Pointer(DofData_L, 0); /* New Value ... */
       }
+      else {
+        // the values needed by the main resolution have been copied into its
+        // Dofs (TransferSolution, InitFromResolution constraints): free the
+        // systems of the pre-resolution, including their matrices and solvers
+        // (e.g. LU factors), so that they don't stay in memory during the
+        // whole main resolution
+        for(j = 0; j < Nbr_DefineSystem2; j++)
+          Dof_FreeDofData(DofData2_P0 + j);
+      }
+      List_Delete(DofData2_L); // the DofData structs have been copied or freed
+
+      Current.NbrSystem = Nbr_DefineSystem;
+      Current.DofData_P0 = DofData_P0;
+      Current.DofData = DofData_P0;
+      Dof_SetCurrentDofData(DofData_P0);
 
       Message::Direct("E n d   P r e - R e s o l u t i o n  (%d/%d)", i + 1,
                       Nbr_PreResolution);
