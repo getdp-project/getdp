@@ -747,14 +747,18 @@ int MainKernel(int argc, char *argv[])
   }
 
 #if defined(HAVE_GMSH)
-  Message::Info("Initializing Gmsh");
-  gmsh::initialize();
-  gmsh::option::setNumber("General.Terminal", 0);
   GmshMsg *msg = 0;
-  if(!GmshGetMessageHandler() && !Flag_CALLED_WITH_ONELAB_SERVER) {
-    // do not set msg handler if one is provided (e.g. on Android/iOS)
-    msg = new GmshMsg;
-    GmshSetMessageHandler(msg);
+  if(!Flag_CALLED_WITH_ONELAB_SERVER) {
+    // when called within the program that runs the ONELAB server (the mobile
+    // and web apps), Gmsh is initialized already, with the program's options
+    // and message handler
+    Message::Info("Initializing Gmsh");
+    gmsh::initialize();
+    gmsh::option::setNumber("General.Terminal", 0);
+    if(!GmshGetMessageHandler()) {
+      msg = new GmshMsg;
+      GmshSetMessageHandler(msg);
+    }
   }
   int j = 0;
   while(Name_GmshReadFile[j]) {
@@ -833,5 +837,15 @@ int getdp(const std::vector<std::string> &args, void *ptr)
   int argc = args.size();
   std::vector<char *> argv(argc + 1, (char *)0);
   for(int i = 0; i < argc; i++) argv[i] = (char *)args[i].c_str();
-  return MainKernel(argc, &argv[0]);
+  if(!Flag_CALLED_WITH_ONELAB_SERVER) return MainKernel(argc, &argv[0]);
+  // errors throw within the program that runs the ONELAB server: free what
+  // the run left, so that the next run starts afresh
+  try {
+    return MainKernel(argc, &argv[0]);
+  } catch(...) {
+    int errors = Message::GetErrorCount() ? Message::GetErrorCount() : 1;
+    Free_GlobalVariables();
+    Message::Finalize();
+    return errors;
+  }
 }

@@ -82,7 +82,7 @@ double Message::_cpuOpLastCpu = 0.;
 double Message::_cpuOpLastWall = 0.;
 GmshClient *Message::_client = 0;
 onelab::client *Message::_onelabClient = 0;
-#if !defined(HAVE_ONELAB) // if Gmsh is compiled without onelab
+#if !defined(HAVE_GMSH) // the Gmsh library defines it (with ONELAB enabled)
 onelab::server *onelab::server::_server = 0;
 #endif
 
@@ -294,6 +294,9 @@ void Message::Fatal(const char *fmt, ...)
     fflush(stderr);
   }
 
+  // within the program that runs the ONELAB server (the mobile and web apps),
+  // which an exit would end
+  if(_exitOnError == 2) throw "GetDP fatal error";
   Exit(1);
 }
 

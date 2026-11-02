@@ -17,11 +17,13 @@
 
 #if defined(HAVE_GMSH)
 #include "gmsh.h"
+#include "GModel.h"
 #endif
 
 #define SQU(a) ((a) * (a))
 
 extern double Flag_ORDER, Flag_MSH_SCALING;
+extern int Flag_CALLED_WITH_ONELAB_SERVER;
 
 FILE *File_GEO;
 char *name;
@@ -413,7 +415,25 @@ static void Geo_SnapNodes(struct GeoData *GeoData_P)
 static void Geo_ReadFileWithGmsh(struct GeoData *GeoData_P)
 {
 #if defined(HAVE_GMSH)
-  gmsh::open(name);
+  // within the program that runs the ONELAB server (the mobile and web apps),
+  // read the mesh in a model of its own, and leave the one Gmsh shows alone,
+  // made current again also when an error throws
+  struct restoreModel {
+    GModel *shown = nullptr;
+    ~restoreModel()
+    {
+      if(!shown) return;
+      delete GModel::current();
+      GModel::setCurrent(shown);
+    }
+  } restore;
+  if(Flag_CALLED_WITH_ONELAB_SERVER) {
+    restore.shown = GModel::current();
+    GModel::setCurrent(new GModel());
+    gmsh::merge(name);
+  }
+  else
+    gmsh::open(name);
 
   /* N O D E S */
 
