@@ -389,19 +389,22 @@ void Pos_Formulation(struct Formulation *Formulation_P,
   int i, Order = 0;
 
   if(PostSubOperation_P->Type == POP_MERGE) {
-    Message::SendMergeFileRequest(PostSubOperation_P->FileOut);
+    Message::SendMergeFileRequest(
+      Fix_RelativePath(PostSubOperation_P->FileOut, Name_Path));
     return;
   }
 
   if(PostSubOperation_P->Type == POP_DELETEFILE) {
-    Message::Info("DeleteFile[%s]", PostSubOperation_P->FileOut);
-    RemoveFile(PostSubOperation_P->FileOut);
+    std::string name = Fix_RelativePath(PostSubOperation_P->FileOut, Name_Path);
+    Message::Info("DeleteFile[%s]", name.c_str());
+    RemoveFile(name);
     return;
   }
 
   if(PostSubOperation_P->Type == POP_CREATEDIR) {
-    Message::Info("CreateDir[%s]", PostSubOperation_P->FileOut);
-    CreateDirs(PostSubOperation_P->FileOut);
+    std::string name = Fix_RelativePath(PostSubOperation_P->FileOut, Name_Path);
+    Message::Info("CreateDir[%s]", name.c_str());
+    CreateDirs(name);
     return;
   }
 

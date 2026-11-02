@@ -3320,14 +3320,9 @@ void Treatment_Operation(struct Resolution *Resolution_P, List_T *Operation_L,
     case OPERATION_WRITE: Flag_Binary = 1;
     case OPERATION_PRINT:
       if(Operation_P->Case.Print.FileOut) {
-        if(Operation_P->Case.Print.FileOut[0] == '/' ||
-           Operation_P->Case.Print.FileOut[0] == '\\') {
-          strcpy(FileName, Operation_P->Case.Print.FileOut);
-        }
-        else {
-          strcpy(FileName, Name_Path);
-          strcat(FileName, Operation_P->Case.Print.FileOut);
-        }
+        strcpy(FileName,
+               Fix_RelativePath(Operation_P->Case.Print.FileOut, Name_Path)
+                 .c_str());
         if(!(fp = FOpen(FileName, "ab"))) {
           Message::Error("Unable to open file '%s'", FileName);
           break;
@@ -3416,9 +3411,14 @@ void Treatment_Operation(struct Resolution *Resolution_P, List_T *Operation_L,
           std::string path(Name_Path), file("file_");
           std::string mat("mat_"), vec("vec_"), sol("sol_");
           std::string jac("jac_"), res("res_"), dx("dx_");
-          std::string name(Operation_P->Case.Print.FileOut ?
-                             Operation_P->Case.Print.FileOut :
-                             DefineSystem_P->Name);
+          std::string name(DefineSystem_P->Name);
+          if(Operation_P->Case.Print.FileOut) {
+            // prefix the base name only, keeping the (already fixed) directory
+            std::string full(FileName);
+            std::string::size_type i = full.find_last_of("/\\");
+            path = (i == std::string::npos) ? "" : full.substr(0, i + 1);
+            name = (i == std::string::npos) ? full : full.substr(i + 1);
+          }
           if(DofData_P->Flag_Init[1] || DofData_P->Flag_Init[2] ||
              DofData_P->Flag_Init[3] || DofData_P->Flag_Init[4] ||
              DofData_P->Flag_Init[5] || DofData_P->Flag_Init[6] ||
