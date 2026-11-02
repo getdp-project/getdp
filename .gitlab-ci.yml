@@ -57,7 +57,8 @@ windows_ci:
     - cd build
     - cmake -DGETDP_HOST=getdp.info -DENABLE_SPARSKIT=0 -DENABLE_PETSC=1 -DPETSC_ARCH=complex_mumps_seq -DPETSC_DIR=/petsc-3.23.2 -DSLEPC_DIR=/slepc-3.23.2 ${EXTRA_OPTION} ..
     - make package -j 8
-    - PKG=`ls getdp-*.tar*`; scp ${PKG} geuzaine@getdp.info:.wwwgetdp/bin/Linux/${PKG/\.tar\.gz/c\.tgz}
+    - PKG=`ls getdp-*.tar.gz`; NEW=${PKG/\.tar\.gz/c\.tgz}; sed "s/${PKG}/${NEW}/" ${PKG}.sha256 > ${NEW}.sha256
+    - scp ${PKG} geuzaine@getdp.info:.wwwgetdp/bin/Linux/${NEW}; scp ${NEW}.sha256 geuzaine@getdp.info:.wwwgetdp/bin/Linux/
     - ctest -j 8 --output-on-failure
   tags:
     - linux64
@@ -72,7 +73,8 @@ windows_ci:
     - cd build
     - cmake -DGETDP_HOST=getdp.info -DENABLE_SPARSKIT=0 -DENABLE_PETSC=1 -DPETSC_ARCH=real_mumps_seq -DPETSC_DIR=/petsc-3.23.2 -DSLEPC_DIR=/slepc-3.23.2 ${EXTRA_OPTION} ..
     - make package -j 8
-    - PKG=`ls getdp-*.tar*`; scp ${PKG} geuzaine@getdp.info:.wwwgetdp/bin/Linux/${PKG/\.tar\.gz/r\.tgz}
+    - PKG=`ls getdp-*.tar.gz`; NEW=${PKG/\.tar\.gz/r\.tgz}; sed "s/${PKG}/${NEW}/" ${PKG}.sha256 > ${NEW}.sha256
+    - scp ${PKG} geuzaine@getdp.info:.wwwgetdp/bin/Linux/${NEW}; scp ${NEW}.sha256 geuzaine@getdp.info:.wwwgetdp/bin/Linux/
     - ctest -j 8 --output-on-failure
   tags:
     - linux64
@@ -87,7 +89,8 @@ windows_ci:
     - cd build
     - cmake -DGETDP_HOST=getdp.info -DENABLE_SPARSKIT=0 -DENABLE_PETSC=1 -DPETSC_ARCH=real_mumps_seq -DPETSC_DIR=/petsc-3.23.2 -DSLEPC_DIR=/slepc-3.23.2 -DENABLE_MULTIHARMONIC=1 ${EXTRA_OPTION} ..
     - make package -j 8
-    - PKG=`ls getdp-*.tar*`; scp ${PKG} geuzaine@getdp.info:.wwwgetdp/bin/Linux/${PKG/\.tar\.gz/r-MH\.tgz}
+    - PKG=`ls getdp-*.tar.gz`; NEW=${PKG/\.tar\.gz/r-MH\.tgz}; sed "s/${PKG}/${NEW}/" ${PKG}.sha256 > ${NEW}.sha256
+    - scp ${PKG} geuzaine@getdp.info:.wwwgetdp/bin/Linux/${NEW}; scp ${NEW}.sha256 geuzaine@getdp.info:.wwwgetdp/bin/Linux/
     - ctest -j 1 --output-on-failure
   tags:
     - linux64
@@ -147,7 +150,7 @@ linux_official_petsc_real_mh_release:
     - cd build
     - c:\cygwin64\bin\bash -c "/usr/bin/cmake -DGETDP_HOST=getdp.info -DCMAKE_PREFIX_PATH='/usr/local;/usr/x86_64-w64-mingw32/sys-root/mingw' -DCMAKE_C_COMPILER=/usr/bin/x86_64-w64-mingw32-gcc.exe -DCMAKE_CXX_COMPILER=/usr/bin/x86_64-w64-mingw32-g++.exe -DCMAKE_Fortran_COMPILER=/usr/bin/x86_64-w64-mingw32-gfortran.exe -DCMAKE_RC_COMPILER=/usr/bin/x86_64-w64-mingw32-windres.exe -DENABLE_SPARSKIT=0 -DENABLE_PETSC=1 -DPETSC_ARCH=complex_mumps_seq -DPETSC_DIR=/home/geuzaine/src/petsc -DSLEPC_DIR=/home/geuzaine/src/slepc ${EXTRA_OPTION} .."
     - c:\cygwin64\bin\bash -c "/usr/bin/make package -j 4"
-    - c:\cygwin64\bin\bash -c 'PKG=`ls getdp-*.zip`; /usr/bin/scp -o StrictHostKeyChecking=no -i /home/geuzaine/.ssh/id_rsa ${PKG} geuzaine@getdp.info:.wwwgetdp/bin/Windows/${PKG/\.zip/c\.zip}'
+    - c:\cygwin64\bin\bash -c 'PKG=`ls getdp-*.zip`; NEW=${PKG/\.zip/c\.zip}; sed "s/${PKG}/${NEW}/" ${PKG}.sha256 > ${NEW}.sha256; /usr/bin/scp -o StrictHostKeyChecking=no -i /home/geuzaine/.ssh/id_rsa ${PKG} geuzaine@getdp.info:.wwwgetdp/bin/Windows/${NEW}; /usr/bin/scp -o StrictHostKeyChecking=no -i /home/geuzaine/.ssh/id_rsa ${NEW}.sha256 geuzaine@getdp.info:.wwwgetdp/bin/Windows/'
     - c:\cygwin64\bin\bash -c "/usr/bin/ctest -j 4 --output-on-failure"
 
 .windows_official_petsc_real: &windows_official_petsc_real
@@ -158,7 +161,7 @@ linux_official_petsc_real_mh_release:
     - cd build
     - c:\cygwin64\bin\bash -c "/usr/bin/cmake -DGETDP_HOST=getdp.info -DCMAKE_PREFIX_PATH='/usr/local;/usr/x86_64-w64-mingw32/sys-root/mingw' -DCMAKE_C_COMPILER=/usr/bin/x86_64-w64-mingw32-gcc.exe -DCMAKE_CXX_COMPILER=/usr/bin/x86_64-w64-mingw32-g++.exe -DCMAKE_Fortran_COMPILER=/usr/bin/x86_64-w64-mingw32-gfortran.exe -DCMAKE_RC_COMPILER=/usr/bin/x86_64-w64-mingw32-windres.exe -DENABLE_SPARSKIT=0 -DENABLE_PETSC=1 -DPETSC_ARCH=real_mumps_seq -DPETSC_DIR=/home/geuzaine/src/petsc -DSLEPC_DIR=/home/geuzaine/src/slepc ${EXTRA_OPTION} .."
     - c:\cygwin64\bin\bash -c "/usr/bin/make package -j 4"
-    - c:\cygwin64\bin\bash -c 'PKG=`ls getdp-*.zip`; /usr/bin/scp -o StrictHostKeyChecking=no -i /home/geuzaine/.ssh/id_rsa ${PKG} geuzaine@getdp.info:.wwwgetdp/bin/Windows/${PKG/\.zip/r\.zip}'
+    - c:\cygwin64\bin\bash -c 'PKG=`ls getdp-*.zip`; NEW=${PKG/\.zip/r\.zip}; sed "s/${PKG}/${NEW}/" ${PKG}.sha256 > ${NEW}.sha256; /usr/bin/scp -o StrictHostKeyChecking=no -i /home/geuzaine/.ssh/id_rsa ${PKG} geuzaine@getdp.info:.wwwgetdp/bin/Windows/${NEW}; /usr/bin/scp -o StrictHostKeyChecking=no -i /home/geuzaine/.ssh/id_rsa ${NEW}.sha256 geuzaine@getdp.info:.wwwgetdp/bin/Windows/'
     - c:\cygwin64\bin\bash -c "/usr/bin/ctest -j 4 --output-on-failure"
 
 .windows_official_petsc_real_mh: &windows_official_petsc_real_mh
@@ -169,7 +172,7 @@ linux_official_petsc_real_mh_release:
     - cd build
     - c:\cygwin64\bin\bash -c "/usr/bin/cmake -DGETDP_HOST=getdp.info -DCMAKE_PREFIX_PATH='/usr/local;/usr/x86_64-w64-mingw32/sys-root/mingw' -DCMAKE_C_COMPILER=/usr/bin/x86_64-w64-mingw32-gcc.exe -DCMAKE_CXX_COMPILER=/usr/bin/x86_64-w64-mingw32-g++.exe -DCMAKE_Fortran_COMPILER=/usr/bin/x86_64-w64-mingw32-gfortran.exe -DCMAKE_RC_COMPILER=/usr/bin/x86_64-w64-mingw32-windres.exe -DENABLE_SPARSKIT=0 -DENABLE_PETSC=1 -DPETSC_ARCH=real_mumps_seq -DPETSC_DIR=/home/geuzaine/src/petsc -DSLEPC_DIR=/home/geuzaine/src/slepc -DENABLE_MULTIHARMONIC=1 ${EXTRA_OPTION} .."
     - c:\cygwin64\bin\bash -c "/usr/bin/make package -j 4"
-    - c:\cygwin64\bin\bash -c 'PKG=`ls getdp-*.zip`; /usr/bin/scp -o StrictHostKeyChecking=no -i /home/geuzaine/.ssh/id_rsa ${PKG} geuzaine@getdp.info:.wwwgetdp/bin/Windows/${PKG/\.zip/r-MH\.zip}'
+    - c:\cygwin64\bin\bash -c 'PKG=`ls getdp-*.zip`; NEW=${PKG/\.zip/r-MH\.zip}; sed "s/${PKG}/${NEW}/" ${PKG}.sha256 > ${NEW}.sha256; /usr/bin/scp -o StrictHostKeyChecking=no -i /home/geuzaine/.ssh/id_rsa ${PKG} geuzaine@getdp.info:.wwwgetdp/bin/Windows/${NEW}; /usr/bin/scp -o StrictHostKeyChecking=no -i /home/geuzaine/.ssh/id_rsa ${NEW}.sha256 geuzaine@getdp.info:.wwwgetdp/bin/Windows/'
 #    - c:\cygwin64\bin\bash -c "/usr/bin/ctest -j 4 --output-on-failure"
   allow_failure: true
 
@@ -239,8 +242,8 @@ windows_official_petsc_real_mh_release:
     - cd build
     - cmake -DGETDP_HOST=getdp.info -DCMAKE_Fortran_COMPILER=gfortran -DENABLE_SPARSKIT=0 -DENABLE_PETSC=1 -DPETSC_ARCH=complex_mumps_seq -DPETSC_DIR=/Users/geuzaine/src/petsc -DSLEPC_DIR=/Users/geuzaine/src/slepc -DENABLE_PYTHON=0 ${EXTRA_OPTION} ..
     - make package -j 4
-    - PKG=`ls getdp-*.tar*`
-    - scp ${PKG} geuzaine@getdp.info:.wwwgetdp/bin/macOS/${PKG/\.tar\.gz/c\.tgz}
+    - PKG=`ls getdp-*.tar.gz`; NEW=${PKG/\.tar\.gz/c\.tgz}; sed "s/${PKG}/${NEW}/" ${PKG}.sha256 > ${NEW}.sha256
+    - scp ${PKG} geuzaine@getdp.info:.wwwgetdp/bin/macOS/${NEW}; scp ${NEW}.sha256 geuzaine@getdp.info:.wwwgetdp/bin/macOS/
     - ctest -j 4 --output-on-failure
 
 .macos_official_petsc_real: &macos_official_petsc_real
@@ -251,8 +254,8 @@ windows_official_petsc_real_mh_release:
     - cd build
     - cmake -DGETDP_HOST=getdp.info -DCMAKE_Fortran_COMPILER=gfortran -DENABLE_SPARSKIT=0 -DENABLE_PETSC=1 -DPETSC_ARCH=real_mumps_seq -DPETSC_DIR=/Users/geuzaine/src/petsc -DSLEPC_DIR=/Users/geuzaine/src/slepc -DENABLE_PYTHON=0 ${EXTRA_OPTION} ..
     - make package -j 4
-    - PKG=`ls getdp-*.tar*`
-    - scp ${PKG} geuzaine@getdp.info:.wwwgetdp/bin/macOS/${PKG/\.tar\.gz/r\.tgz}
+    - PKG=`ls getdp-*.tar.gz`; NEW=${PKG/\.tar\.gz/r\.tgz}; sed "s/${PKG}/${NEW}/" ${PKG}.sha256 > ${NEW}.sha256
+    - scp ${PKG} geuzaine@getdp.info:.wwwgetdp/bin/macOS/${NEW}; scp ${NEW}.sha256 geuzaine@getdp.info:.wwwgetdp/bin/macOS/
     - ctest -j 4 --output-on-failure
 
 .macos_official_petsc_real_mh: &macos_official_petsc_real_mh
@@ -263,8 +266,8 @@ windows_official_petsc_real_mh_release:
     - cd build
     - cmake -DGETDP_HOST=getdp.info -DCMAKE_Fortran_COMPILER=gfortran -DENABLE_SPARSKIT=0 -DENABLE_PETSC=1 -DPETSC_ARCH=real_mumps_seq -DPETSC_DIR=/Users/geuzaine/src/petsc -DSLEPC_DIR=/Users/geuzaine/src/slepc -DENABLE_PYTHON=0 -DENABLE_MULTIHARMONIC=1 ${EXTRA_OPTION} ..
     - make package -j 4
-    - PKG=`ls getdp-*.tar*`
-    - scp ${PKG} geuzaine@getdp.info:.wwwgetdp/bin/macOS/${PKG/\.tar\.gz/r-MH\.tgz}
+    - PKG=`ls getdp-*.tar.gz`; NEW=${PKG/\.tar\.gz/r-MH\.tgz}; sed "s/${PKG}/${NEW}/" ${PKG}.sha256 > ${NEW}.sha256
+    - scp ${PKG} geuzaine@getdp.info:.wwwgetdp/bin/macOS/${NEW}; scp ${NEW}.sha256 geuzaine@getdp.info:.wwwgetdp/bin/macOS/
     - ctest -j 4 --output-on-failure
 
 macosx_official_petsc_complex_snapshot:
@@ -389,7 +392,8 @@ macosarm_official_petsc_real_mh_release:
     - cd build_src
     - cmake ${EXTRA_OPTION} ..
     - make package_source
-    - PKG=`ls getdp-*.tar*`; scp ${PKG} geuzaine@getdp.info:.wwwgetdp/src/${PKG/\.tar\.gz/\.tgz}
+    - PKG=`ls getdp-*.tar.gz`; NEW=${PKG/\.tar\.gz/\.tgz}; sed "s/${PKG}/${NEW}/" ${PKG}.sha256 > ${NEW}.sha256
+    - scp ${PKG} geuzaine@getdp.info:.wwwgetdp/src/${NEW}; scp ${NEW}.sha256 geuzaine@getdp.info:.wwwgetdp/src/
   tags:
     - linux64
     - docker

@@ -1174,6 +1174,8 @@ set(CPACK_RESOURCE_FILE_WELCOME ${WELCOME_FILE})
 set(CPACK_PACKAGE_EXECUTABLE "getdp")
 set(CPACK_STRIP_FILES TRUE)
 set(CPACK_SOURCE_GENERATOR TGZ)
+# write a .sha256 file next to each package
+set(CPACK_PACKAGE_CHECKSUM SHA256)
 set(CPACK_SOURCE_IGNORE_FILES "${CMAKE_CURRENT_BINARY_DIR}" "/CVS/" "/.svn" "/.git"
     "~$" "DS_Store$" "GetDPConfig.h$" "GetDPVersion.h$" "/benchmarks*" "/tmp/"
     "/bin/" "/lib/" "/nightly/" "GPATH" "GRTAGS" "GSYMS" "GTAGS" "/HTML/"
