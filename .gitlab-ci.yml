@@ -411,6 +411,25 @@ source_official_release:
     - /^getdp_.*$/
 
 # ----------------------------------------------
+# Stable links (release tags only, not candidates)
+# ----------------------------------------------
+
+stable_official_release:
+  stage: .post
+  image: onelab/ci
+  only:
+    - /^getdp_[0-9_]+$/
+  <<: *ssh_config
+  script:
+    - VERSION=${CI_COMMIT_TAG#getdp_}; VERSION=${VERSION//_/.}
+    # links from the stable names to this version, and checksum files that
+    # name the stable files, so that they can be checked as such
+    - for DIR in bin/Linux bin/Windows bin/macOS src; do ssh geuzaine@getdp.info "cd .wwwgetdp/${DIR} && ls getdp-${VERSION}-* > /dev/null && rm -f getdp-stable-* && for f in getdp-${VERSION}-*; do case \$f in *.sha256) sed s/${VERSION}/stable/ \$f > getdp-stable-\${f#getdp-${VERSION}-};; *) ln -s \$f getdp-stable-\${f#getdp-${VERSION}-};; esac; done"; done
+  tags:
+    - linux64
+    - docker
+
+# ----------------------------------------------
 # Official documentation (master branch only)
 # ----------------------------------------------
 
