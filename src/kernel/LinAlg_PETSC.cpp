@@ -1068,13 +1068,53 @@ void LinAlg_AddProdVectorDoubleProdVectorDouble(double alpha, gVector *V1,
   _try(VecAXPBYPCZ(V3->V, alpha1, beta1, gamma1, V1->V, V2->V));
 }
 
+// Nonzero structure of X relative to Y (collective): SAME_NONZERO_PATTERN if X
+// and Y have the same nonzeros, SUBSET_NONZERO_PATTERN if those of X are a
+// subset of those of Y, DIFFERENT_NONZERO_PATTERN otherwise. Telling PETSc
+// that the pattern is the same or a subset keeps the nonzero structure of Y,
+// and thus allows solvers to reuse their symbolic factorization of Y.
+static MatStructure _getStructure(Mat X, Mat Y)
+{
+  if(X == Y) return SAME_NONZERO_PATTERN;
+  PetscInt mx, nx, my, ny, sx, ex, sy, ey;
+  _try(MatGetSize(X, &mx, &nx));
+  _try(MatGetSize(Y, &my, &ny));
+  _try(MatGetOwnershipRange(X, &sx, &ex));
+  _try(MatGetOwnershipRange(Y, &sy, &ey));
+  int same = 1, subset = 1;
+  if(mx != my || nx != ny || sx != sy || ex != ey) same = subset = 0;
+  for(PetscInt r = sx; r < ex && subset; r++) {
+    PetscInt ncx, ncy;
+    const PetscInt *cx, *cy;
+    _try(MatGetRow(X, r, &ncx, &cx, PETSC_NULL));
+    _try(MatGetRow(Y, r, &ncy, &cy, PETSC_NULL));
+    if(ncx != ncy || memcmp(cx, cy, ncx * sizeof(PetscInt))) {
+      same = 0;
+      // columns are sorted: X's must all appear in Y's
+      PetscInt k = 0;
+      for(PetscInt i = 0; i < ncx && subset; i++) {
+        while(k < ncy && cy[k] < cx[i]) k++;
+        if(k == ncy || cy[k] != cx[i]) subset = 0;
+      }
+    }
+    _try(MatRestoreRow(X, r, &ncx, &cx, PETSC_NULL));
+    _try(MatRestoreRow(Y, r, &ncy, &cy, PETSC_NULL));
+  }
+  int loc[2] = {same, subset}, glob[2];
+  MPI_Allreduce(loc, glob, 2, MPI_INT, MPI_MIN,
+                PetscObjectComm((PetscObject)Y));
+  return glob[0] ? SAME_NONZERO_PATTERN :
+         glob[1] ? SUBSET_NONZERO_PATTERN :
+                   DIFFERENT_NONZERO_PATTERN;
+}
+
 void LinAlg_AddMatrixMatrix(gMatrix *M1, gMatrix *M2, gMatrix *M3)
 {
   PetscScalar tmp = 1.0;
   if(M3 == M1)
-    _try(MatAXPY(M1->M, tmp, M2->M, DIFFERENT_NONZERO_PATTERN));
+    _try(MatAXPY(M1->M, tmp, M2->M, _getStructure(M2->M, M1->M)));
   else if(M3 == M2)
-    _try(MatAXPY(M2->M, tmp, M1->M, DIFFERENT_NONZERO_PATTERN));
+    _try(MatAXPY(M2->M, tmp, M1->M, _getStructure(M1->M, M2->M)));
   else
     Message::Error("Wrong arguments in 'LinAlg_AddMatrixMatrix'");
 }
@@ -1084,13 +1124,13 @@ void LinAlg_AddMatrixProdMatrixDouble(gMatrix *M1, gMatrix *M2, double d,
 {
   PetscScalar tmp = d;
   if(M3 == M1)
-    _try(MatAXPY(M1->M, tmp, M2->M, DIFFERENT_NONZERO_PATTERN));
+    _try(MatAXPY(M1->M, tmp, M2->M, _getStructure(M2->M, M1->M)));
   else if(M3 == M2)
 #if(PETSC_VERSION_MAJOR == 2) && (PETSC_VERSION_MINOR == 3) &&                 \
   (PETSC_VERSION_SUBMINOR < 2)
     _try(MatAYPX(M2->M, tmp, M1->M));
 #else
-    _try(MatAYPX(M2->M, tmp, M1->M, DIFFERENT_NONZERO_PATTERN));
+    _try(MatAYPX(M2->M, tmp, M1->M, _getStructure(M1->M, M2->M)));
 #endif
   else
     Message::Error("Wrong arguments in 'LinAlg_AddMatrixProdMatrixDouble'");
@@ -1120,9 +1160,9 @@ void LinAlg_SubMatrixMatrix(gMatrix *M1, gMatrix *M2, gMatrix *M3)
 {
   PetscScalar tmp = -1.0;
   if(M3 == M1) // M1->M = M1->M - M2->M
-    _try(MatAXPY(M1->M, tmp, M2->M, DIFFERENT_NONZERO_PATTERN));
+    _try(MatAXPY(M1->M, tmp, M2->M, _getStructure(M2->M, M1->M)));
   else if(M3 == M2) // M2->M = M1->M - M2->M
-    _try(MatAYPX(M2->M, tmp, M1->M, DIFFERENT_NONZERO_PATTERN));
+    _try(MatAYPX(M2->M, tmp, M1->M, _getStructure(M1->M, M2->M)));
   else
     Message::Error("Wrong arguments in 'LinAlg_SubMatrixMatrix'");
 }
@@ -1399,6 +1439,32 @@ static PetscErrorCode _myKspMonitor(KSP ksp, PetscInt it, PetscReal rnorm,
   return 0;
 }
 
+#if(PETSC_VERSION_MAJOR == 3) && (PETSC_VERSION_MINOR >= 5)
+// Operator to give to an existing KSP for solving with matrix M. Systems are
+// regenerated in new matrices (see ZeroMatrix in SolvingOperations.cpp), which
+// makes PETSc redo the symbolic factorization (e.g. the ordering and analysis
+// of MUMPS) at each Generate. If the matrix the KSP was set up with is only
+// referenced by the KSP anymore (its gMatrix has been destroyed) and has the
+// same nonzero pattern as M, copy the values of M into it and keep it: only the
+// numerical factorization is then redone.
+static Mat _getOperator(KSP ksp, Mat M)
+{
+  Mat Amat = PETSC_NULL, Pmat = PETSC_NULL;
+  _try(KSPGetOperators(ksp, &Amat, &Pmat));
+  if(!Pmat || Pmat == M || Amat != Pmat) return M;
+  // the PC holds 2 references (Amat and Pmat): any other means the matrix is
+  // still in use elsewhere
+  PetscInt refct;
+  _try(PetscObjectGetReference((PetscObject)Pmat, &refct));
+  int reuse = (refct <= 2) ? 1 : 0, glob;
+  MPI_Allreduce(&reuse, &glob, 1, MPI_INT, MPI_MIN,
+                PetscObjectComm((PetscObject)M));
+  if(!glob || _getStructure(M, Pmat) != SAME_NONZERO_PATTERN) return M;
+  _try(MatCopy(M, Pmat, SAME_NONZERO_PATTERN));
+  return Pmat;
+}
+#endif
+
 static void _solve(gMatrix *A, gVector *B, gSolver *Solver, gVector *X,
                    int precond, int kspIndex)
 {
@@ -1464,7 +1530,8 @@ static void _solve(gMatrix *A, gVector *B, gSolver *Solver, gVector *X,
   else if(precond) {
 #if(PETSC_VERSION_MAJOR == 3) && (PETSC_VERSION_MINOR >= 5)
     _try(KSPSetReusePreconditioner(Solver->ksp[kspIndex], PETSC_FALSE));
-    _try(KSPSetOperators(Solver->ksp[kspIndex], A->M, A->M));
+    Mat op = _getOperator(Solver->ksp[kspIndex], A->M);
+    _try(KSPSetOperators(Solver->ksp[kspIndex], op, op));
 #else
     _try(KSPSetOperators(Solver->ksp[kspIndex], A->M, A->M,
                          DIFFERENT_NONZERO_PATTERN));
@@ -1474,7 +1541,8 @@ static void _solve(gMatrix *A, gVector *B, gSolver *Solver, gVector *X,
   else {
 #if(PETSC_VERSION_MAJOR == 3) && (PETSC_VERSION_MINOR >= 5)
     _try(KSPSetReusePreconditioner(Solver->ksp[kspIndex], PETSC_TRUE));
-    _try(KSPSetOperators(Solver->ksp[kspIndex], A->M, A->M));
+    Mat op = _getOperator(Solver->ksp[kspIndex], A->M);
+    _try(KSPSetOperators(Solver->ksp[kspIndex], op, op));
 #endif
     _try(KSPGetPC(Solver->ksp[kspIndex], &pc));
   }
