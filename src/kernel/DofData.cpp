@@ -9,6 +9,10 @@
 //
 
 #include <map>
+#include <vector>
+#include <algorithm>
+#include <unordered_map>
+#include <stdint.h>
 #include <set>
 #include <complex>
 #include <sstream>
@@ -38,6 +42,117 @@ extern struct CurrentData Current;
 FILE *File_PRE = 0, *File_RES = 0, *File_TMP = 0;
 
 struct DofData *CurrentDofData;
+
+// Hash index of the Dofs of a DofData, i.e. of its DofTree while the Dofs are
+// being defined and of its sorted DofList afterwards: looking Dofs up in the
+// avl tree or by binary search in the list is cache-unfriendly and dominated
+// the pre-processing, assembly and post-processing times on large meshes. The
+// index is rebuilt (lazily) when its container changes, and grown when Dofs are
+// added to the tree with Dof_Add.
+struct DofIndex {
+  const void *container; // DofTree or DofList
+  int n; // number of Dofs in the index
+  std::vector<struct Dof *> slots; // open addressing, linear probing
+};
+
+static inline uint64_t Dof_Hash(const struct Dof *Dof_P)
+{
+  uint64_t h = (uint64_t)(uint32_t)Dof_P->Entity * 0x9E3779B97F4A7C15ULL;
+  h ^= ((uint64_t)(uint32_t)Dof_P->NumType << 32 |
+        (uint64_t)(uint32_t)Dof_P->Harmonic) * 0xC2B2AE3D27D4EB4FULL;
+  return h ^ (h >> 29);
+}
+
+static void DofIndex_Insert(struct DofIndex *I, struct Dof *Dof_P)
+{
+  size_t mask = I->slots.size() - 1, i = Dof_Hash(Dof_P) & mask;
+  while(I->slots[i]) i = (i + 1) & mask;
+  I->slots[i] = Dof_P;
+  I->n++;
+}
+
+static void DofIndex_Reserve(struct DofIndex *I, int n)
+{
+  // keep the load factor below 1/2
+  size_t size = 1024;
+  while(size < 2 * (size_t)n) size *= 2;
+  if(size <= I->slots.size()) return;
+  std::vector<struct Dof *> old;
+  old.swap(I->slots);
+  I->slots.assign(size, (struct Dof *)NULL);
+  I->n = 0;
+  for(auto Dof_P : old)
+    if(Dof_P) DofIndex_Insert(I, Dof_P);
+}
+
+static struct DofIndex *DofIndex_Reset(struct DofData *DofData_P,
+                                       const void *container, int n)
+{
+  if(!DofData_P->DofIndex) DofData_P->DofIndex = new struct DofIndex;
+  struct DofIndex *I = DofData_P->DofIndex;
+  I->container = container;
+  I->n = 0;
+  I->slots.clear();
+  DofIndex_Reserve(I, n);
+  return I;
+}
+
+static struct DofIndex *DofIndex_Tree;
+static void DofIndex_InsertFromTree(void *a, void *b)
+{
+  DofIndex_Insert(DofIndex_Tree, (struct Dof *)a);
+}
+
+// index of the DofTree (if tree is true) or of the DofList of DofData_P, valid
+// as long as the container is not modified other than by Dof_Add
+static struct DofIndex *Dof_GetIndex(struct DofData *DofData_P, bool tree)
+{
+  struct DofIndex *I = DofData_P->DofIndex;
+  if(tree) {
+    if(!DofData_P->DofTree) return NULL;
+    int n = Tree_Nbr(DofData_P->DofTree);
+    if(I && I->container == DofData_P->DofTree && I->n == n) return I;
+    I = DofIndex_Reset(DofData_P, DofData_P->DofTree, n);
+    DofIndex_Tree = I;
+    Tree_Action(DofData_P->DofTree, DofIndex_InsertFromTree);
+  }
+  else {
+    if(!DofData_P->DofList) return NULL;
+    int n = List_Nbr(DofData_P->DofList);
+    if(I && I->container == DofData_P->DofList && I->n == n) return I;
+    I = DofIndex_Reset(DofData_P, DofData_P->DofList, n);
+    for(int i = 0; i < n; i++)
+      DofIndex_Insert(I, (struct Dof *)List_Pointer(DofData_P->DofList, i));
+  }
+  return I;
+}
+
+// replaces Tree_PQuery(DofData_P->DofTree, Dof_P) if tree is true, and
+// List_PQuery(DofData_P->DofList, Dof_P, fcmp_Dof) otherwise
+static struct Dof *Dof_Find(struct DofData *DofData_P, struct Dof *Dof_P,
+                            bool tree)
+{
+  struct DofIndex *I = Dof_GetIndex(DofData_P, tree);
+  if(!I) return NULL;
+  size_t mask = I->slots.size() - 1, i = Dof_Hash(Dof_P) & mask;
+  while(struct Dof *D = I->slots[i]) {
+    if(D->NumType == Dof_P->NumType && D->Entity == Dof_P->Entity &&
+       D->Harmonic == Dof_P->Harmonic)
+      return D;
+    i = (i + 1) & mask;
+  }
+  return NULL;
+}
+
+// replaces Tree_Add(DofData_P->DofTree, Dof_P), keeping the index up to date
+static struct Dof *Dof_Add(struct DofData *DofData_P, struct Dof *Dof_P)
+{
+  struct DofIndex *I = Dof_GetIndex(DofData_P, true);
+  struct Dof *D = (struct Dof *)Tree_Add(DofData_P->DofTree, Dof_P);
+  DofIndex_Reserve(I, I->n + 1);
+  DofIndex_Insert(I, D);
+  return D;
+}
 
 int fcmp_Dof(const void *a, const void *b)
 {
@@ -76,6 +191,7 @@ void Dof_InitDofData(struct DofData *DofData_P, int Num, int ResolutionIndex,
   DofData_P->NbrDof = 0;
   DofData_P->DofTree = Tree_Create(sizeof(struct Dof), fcmp_Dof);
   DofData_P->DofList = NULL;
+  DofData_P->DofIndex = NULL;
 
   DofData_P->SolverDataFileName = Name_SolverDataFile;
   DofData_P->Flag_RHS = 0;
@@ -124,6 +240,8 @@ void Dof_FreeDofData(struct DofData *DofData_P)
   List_Delete(DofData_P->Pulsation);
   Tree_Delete(DofData_P->DofTree);
   List_Delete(DofData_P->DofList);
+  delete DofData_P->DofIndex;
+  DofData_P->DofIndex = NULL;
   Free(DofData_P->DummyDof);
 
   if(DofData_P->Solutions) {
@@ -368,6 +486,120 @@ void Dof_ReadFilePRE0(int *Num_Resolution, int *Nbr_DofData)
   } while(String[0] != '$');
 }
 
+// Binary format of the Dofs in .pre files (written with -bin): for each Dof,
+// the 6 integers {NumType, Entity, Harmonic, Type, a, b}, followed by the
+// doubles d of its type, scalars being always stored as (real, imaginary):
+//   DOF_UNKNOWN:             a = NumDof, b = PartitionOrNonLocal
+//   DOF_FIXEDWITHASSOCIATE:  a = NumDof, b = TimeFunctionIndex, d = Val
+//   DOF_FIXED:               b = TimeFunctionIndex, d = Val
+//   DOF_FIXED_SOLVE:         b = TimeFunctionIndex
+//   DOF_UNKNOWN_INIT:        a = NumDof, b = PartitionOrNonLocal, d = Val, Val2
+//   DOF_LINK, DOF_LINKCPLX:  b = EntityRef, d = Coef, Coef2
+static int Dof_BinaryPRE = 0;
+
+static int Dof_NbrDoublesPRE(int Type)
+{
+  switch(Type) {
+  case DOF_FIXEDWITHASSOCIATE:
+  case DOF_FIXED:
+  case DOF_LINK:
+  case DOF_LINKCPLX: return 2;
+  case DOF_UNKNOWN_INIT: return 4;
+  default: return 0;
+  }
+}
+
+static void Dof_GetScalarPRE(gScalar *S, double *d)
+{
+  d[1] = 0.;
+  if(gSCALAR_SIZE == 2)
+    LinAlg_GetComplexInScalar(&d[0], &d[1], S);
+  else
+    LinAlg_GetDoubleInScalar(&d[0], S);
+}
+
+static void Dof_WriteDofBinaryPRE(struct Dof *Dof_P)
+{
+  int i[6] = {Dof_P->NumType, Dof_P->Entity, Dof_P->Harmonic, Dof_P->Type, 0,
+              0};
+  double d[4] = {0., 0., 0., 0.};
+  switch(Dof_P->Type) {
+  case DOF_UNKNOWN:
+    i[4] = Dof_P->Case.Unknown.NumDof;
+    i[5] = Dof_P->Case.Unknown.PartitionOrNonLocal;
+    break;
+  case DOF_FIXEDWITHASSOCIATE:
+    i[4] = Dof_P->Case.FixedAssociate.NumDof;
+    i[5] = Dof_P->Case.FixedAssociate.TimeFunctionIndex;
+    Dof_GetScalarPRE(&Dof_P->Val, d);
+    break;
+  case DOF_FIXED:
+    i[5] = Dof_P->Case.FixedAssociate.TimeFunctionIndex;
+    Dof_GetScalarPRE(&Dof_P->Val, d);
+    break;
+  case DOF_FIXED_SOLVE:
+    i[5] = Dof_P->Case.FixedAssociate.TimeFunctionIndex;
+    break;
+  case DOF_UNKNOWN_INIT:
+    i[4] = Dof_P->Case.Unknown.NumDof;
+    i[5] = Dof_P->Case.Unknown.PartitionOrNonLocal;
+    Dof_GetScalarPRE(&Dof_P->Val, d);
+    Dof_GetScalarPRE(&Dof_P->Val2, d + 2);
+    break;
+  case DOF_LINK:
+  case DOF_LINKCPLX:
+    i[5] = Dof_P->Case.Link.EntityRef;
+    d[0] = Dof_P->Case.Link.Coef;
+    d[1] = (Dof_P->Type == DOF_LINKCPLX) ? Dof_P->Case.Link.Coef2 : 0.;
+    break;
+  }
+  fwrite(i, sizeof(int), 6, File_PRE);
+  fwrite(d, sizeof(double), Dof_NbrDoublesPRE(Dof_P->Type), File_PRE);
+}
+
+static bool Dof_ReadDofBinaryPRE(struct Dof *Dof_P)
+{
+  int i[6];
+  double d[4];
+  if(fread(i, sizeof(int), 6, File_PRE) != 6) return false;
+  Dof_P->NumType = i[0];
+  Dof_P->Entity = i[1];
+  Dof_P->Harmonic = i[2];
+  Dof_P->Type = i[3];
+  int n = Dof_NbrDoublesPRE(Dof_P->Type);
+  if(n && (int)fread(d, sizeof(double), n, File_PRE) != n) return false;
+  switch(Dof_P->Type) {
+  case DOF_UNKNOWN:
+    Dof_P->Case.Unknown.NumDof = i[4];
+    Dof_P->Case.Unknown.PartitionOrNonLocal = i[5];
+    break;
+  case DOF_FIXEDWITHASSOCIATE:
+    Dof_P->Case.FixedAssociate.NumDof = i[4];
+    Dof_P->Case.FixedAssociate.TimeFunctionIndex = i[5];
+    LinAlg_SetScalar(&Dof_P->Val, d);
+    break;
+  case DOF_FIXED:
+  case DOF_FIXED_SOLVE:
+    Dof_P->Case.FixedAssociate.TimeFunctionIndex = i[5];
+    if(n) LinAlg_SetScalar(&Dof_P->Val, d);
+    break;
+  case DOF_UNKNOWN_INIT:
+    Dof_P->Case.Unknown.NumDof = i[4];
+    Dof_P->Case.Unknown.PartitionOrNonLocal = i[5];
+    LinAlg_SetScalar(&Dof_P->Val, d);
+    LinAlg_SetScalar(&Dof_P->Val2, d + 2);
+    break;
+  case DOF_LINK:
+  case DOF_LINKCPLX:
+    Dof_P->Case.Link.EntityRef = i[5];
+    Dof_P->Case.Link.Coef = d[0];
+    Dof_P->Case.Link.Coef2 = d[1];
+    Dof_P->Case.Link.Dof = NULL;
+    break;
+  }
+  return true;
+}
+
 /* ------------------------------------------------------------------------ */
 /*  D o f _ W r i t e F i l e P R E                                         */
 /* ------------------------------------------------------------------------ */
@@ -402,10 +634,13 @@ void Dof_WriteFilePRE(struct DofData *DofData_P)
   for(i = 0; i < 1; i++) fprintf(File_PRE, " %d", 0);
   fprintf(File_PRE, "\n");
 
-  fprintf(File_PRE, "%d %d\n",
+  // with -bin, the Dofs are written in binary (see Dof_WriteDofPRE)
+  extern int Flag_BIN;
+  Dof_BinaryPRE = Flag_BIN;
+  fprintf(File_PRE, "%d %d%s\n",
           (DofData_P->DofTree) ? Tree_Nbr(DofData_P->DofTree) :
                                  DofData_P->NbrAnyDof,
-          DofData_P->NbrDof);
+          DofData_P->NbrDof, Dof_BinaryPRE ? " binary" : "");
 
   if(DofData_P->DofTree)
     Tree_Action(DofData_P->DofTree, Dof_WriteDofPRE);
@@ -416,6 +651,7 @@ void Dof_WriteFilePRE(struct DofData *DofData_P)
         Dof_WriteDofPRE(Dof_P0 + i, NULL);
     }
   }
+  if(Dof_BinaryPRE) fprintf(File_PRE, "\n");
   fprintf(File_PRE, "$EndDofData\n");
   fflush(File_PRE);
 }
@@ -429,6 +665,11 @@ void Dof_WriteDofPRE(void *a, void *b)
   struct Dof *Dof_P;
 
   Dof_P = (struct Dof *)a;
+
+  if(Dof_BinaryPRE) {
+    Dof_WriteDofBinaryPRE(Dof_P);
+    return;
+  }
 
   fprintf(File_PRE, "%d %d %d %d ", Dof_P->NumType, Dof_P->Entity,
           Dof_P->Harmonic, Dof_P->Type);
@@ -541,13 +782,37 @@ void Dof_ReadFilePRE(struct DofData *DofData_P)
       Message::Error("Could not read number of dofs");
       return;
     }
+    // the rest of the line tells if the Dofs are in binary
+    if(!fgets(String, sizeof(String), File_PRE)) {
+      Message::Error("Could not read number of dofs");
+      return;
+    }
+    bool binary = strstr(String, "binary");
 
     DofData_P->DofList =
       List_Create(DofData_P->NbrAnyDof, 1, sizeof(struct Dof));
     Tree_Delete(DofData_P->DofTree);
     DofData_P->DofTree = NULL;
+    delete DofData_P->DofIndex;
+    DofData_P->DofIndex = NULL;
 
     for(i = 0; i < DofData_P->NbrAnyDof; i++) {
+      if(binary) {
+        if(!Dof_ReadDofBinaryPRE(&Dof)) {
+          Message::Error("Could not read dof");
+          return;
+        }
+        if(Dof.Type == DOF_UNKNOWN || Dof.Type == DOF_UNKNOWN_INIT) {
+          if(Dof.Case.Unknown.PartitionOrNonLocal < 0)
+            DofData_P->NonLocalEquations.push_back(Dof.Case.Unknown.NumDof);
+          else
+            partitions[Dof.Case.Unknown.PartitionOrNonLocal].insert(
+              Dof.Case.Unknown.NumDof);
+        }
+        List_Add(DofData_P->DofList, &Dof);
+        continue;
+      }
+
       if(fscanf(File_PRE, "%d %d %d %d", &Dof.NumType, &Dof.Entity,
                 &Dof.Harmonic, &Dof.Type) != 4) {
         Message::Error("Could not dof");
@@ -1063,6 +1328,8 @@ void Dof_TransferDofTreeToList(struct DofData *DofData_P)
     DofData_P->DofList = Tree2List(DofData_P->DofTree);
     Tree_Delete(DofData_P->DofTree);
     DofData_P->DofTree = NULL;
+    delete DofData_P->DofIndex;
+    DofData_P->DofIndex = NULL;
     DofData_P->NbrAnyDof = List_Nbr(DofData_P->DofList);
   }
 
@@ -1179,12 +1446,12 @@ void Dof_DefineAssignFixedDof(int D1, int D2, int NbrHar, double *Val,
 
   for(k = 0; k < NbrHar; k += gSCALAR_SIZE) {
     Dof.Harmonic = k;
-    if(!(Dof_P = (struct Dof *)Tree_PQuery(CurrentDofData->DofTree, &Dof))) {
+    if(!(Dof_P = (struct Dof *)Dof_Find(CurrentDofData, &Dof, true))) {
       Dof.Type = DOF_FIXED;
       LinAlg_SetScalar(&Dof.Val, &Val[k]);
       Dof.Case.FixedAssociate.TimeFunctionIndex = Index_TimeFunction + 1;
       Dof_AddTimeFunctionIndex(Index_TimeFunction + 1);
-      Tree_Add(CurrentDofData->DofTree, &Dof);
+      Dof_Add(CurrentDofData, &Dof);
     }
     else if(Dof_P->Type == DOF_UNKNOWN) {
       if(Message::GetVerbosity() == 10)
@@ -1212,11 +1479,11 @@ void Dof_DefineAssignSolveDof(int D1, int D2, int NbrHar,
 
   for(k = 0; k < NbrHar; k += gSCALAR_SIZE) {
     Dof.Harmonic = k;
-    if(!Tree_PQuery(CurrentDofData->DofTree, &Dof)) {
+    if(!Dof_Find(CurrentDofData, &Dof, true)) {
       Dof.Type = DOF_FIXED_SOLVE;
       Dof.Case.FixedAssociate.TimeFunctionIndex = Index_TimeFunction + 1;
       Dof_AddTimeFunctionIndex(Index_TimeFunction + 1);
-      Tree_Add(CurrentDofData->DofTree, &Dof);
+      Dof_Add(CurrentDofData, &Dof);
     }
   }
 }
@@ -1236,7 +1503,7 @@ void Dof_DefineInitFixedDof(int D1, int D2, int NbrHar, double *Val,
 
   for(k = 0; k < NbrHar; k += gSCALAR_SIZE) {
     Dof.Harmonic = k;
-    if(!Tree_PQuery(CurrentDofData->DofTree, &Dof)) {
+    if(!Dof_Find(CurrentDofData, &Dof, true)) {
       Dof.Type = DOF_UNKNOWN_INIT;
       LinAlg_SetScalar(&Dof.Val, &Val[k]);
       LinAlg_SetScalar(&Dof.Val2, &Val2[k]);
@@ -1244,7 +1511,7 @@ void Dof_DefineInitFixedDof(int D1, int D2, int NbrHar, double *Val,
       // Dof.Case.Unknown.NumDof = ++(CurrentDofData->NbrDof) ;
       Dof.Case.Unknown.NumDof = -1;
       Dof.Case.Unknown.PartitionOrNonLocal = PartitionOrNonLocal;
-      Tree_Add(CurrentDofData->DofTree, &Dof);
+      Dof_Add(CurrentDofData, &Dof);
     }
   }
 }
@@ -1264,13 +1531,13 @@ void Dof_DefineInitSolveDof(int D1, int D2, int NbrHar,
 
   for(k = 0; k < NbrHar; k += gSCALAR_SIZE) {
     Dof.Harmonic = k;
-    if(!Tree_PQuery(CurrentDofData->DofTree, &Dof)) {
+    if(!Dof_Find(CurrentDofData, &Dof, true)) {
       Dof.Type = DOF_UNKNOWN_INIT;
       // old version: number as we go
       // Dof.Case.Unknown.NumDof = ++(CurrentDofData->NbrDof) ;
       Dof.Case.Unknown.NumDof = -1;
       Dof.Case.Unknown.PartitionOrNonLocal = PartitionOrNonLocal;
-      Tree_Add(CurrentDofData->DofTree, &Dof);
+      Dof_Add(CurrentDofData, &Dof);
     }
   }
 }
@@ -1289,12 +1556,12 @@ void Dof_DefineLinkDof(int D1, int D2, int NbrHar, double Value[], int D2_Link)
 
   for(k = 0; k < NbrHar; k += gSCALAR_SIZE) {
     Dof.Harmonic = k;
-    if(!Tree_PQuery(CurrentDofData->DofTree, &Dof)) {
+    if(!Dof_Find(CurrentDofData, &Dof, true)) {
       Dof.Type = DOF_LINK;
       Dof.Case.Link.Coef = Value[0];
       Dof.Case.Link.EntityRef = D2_Link;
       Dof.Case.Link.Dof = NULL;
-      Tree_Add(CurrentDofData->DofTree, &Dof);
+      Dof_Add(CurrentDofData, &Dof);
     }
   }
 }
@@ -1310,13 +1577,13 @@ void Dof_DefineLinkCplxDof(int D1, int D2, int NbrHar, double Value[],
 
   for(k = 0; k < NbrHar; k += gSCALAR_SIZE) {
     Dof.Harmonic = k;
-    if(!Tree_PQuery(CurrentDofData->DofTree, &Dof)) {
+    if(!Dof_Find(CurrentDofData, &Dof, true)) {
       Dof.Type = DOF_LINKCPLX;
       Dof.Case.Link.Coef = Value[0];
       Dof.Case.Link.Coef2 = Value[1];
       Dof.Case.Link.EntityRef = D2_Link;
       Dof.Case.Link.Dof = NULL;
-      Tree_Add(CurrentDofData->DofTree, &Dof);
+      Dof_Add(CurrentDofData, &Dof);
     }
   }
 }
@@ -1335,13 +1602,13 @@ void Dof_DefineUnknownDof(int D1, int D2, int NbrHar, int PartitionOrNonLocal)
 
   for(k = 0; k < NbrHar; k += gSCALAR_SIZE) {
     Dof.Harmonic = k;
-    if(!Tree_PQuery(CurrentDofData->DofTree, &Dof)) {
+    if(!Dof_Find(CurrentDofData, &Dof, true)) {
       Dof.Type = DOF_UNKNOWN;
       // old version: number as we go
       // Dof.Case.Unknown.NumDof = ++(CurrentDofData->NbrDof) ;
       Dof.Case.Unknown.NumDof = -1;
       Dof.Case.Unknown.PartitionOrNonLocal = PartitionOrNonLocal;
-      Tree_Add(CurrentDofData->DofTree, &Dof);
+      Dof_Add(CurrentDofData, &Dof);
     }
   }
 }
@@ -1443,7 +1710,7 @@ void Dof_DefineAssociateDof(int E1, int E2, int D1, int D2, int NbrHar,
 
   for(k = 0; k < NbrHar; k += gSCALAR_SIZE) {
     Equ.Harmonic = k;
-    if((Equ_P = (struct Dof *)Tree_PQuery(CurrentDofData->DofTree, &Equ))) {
+    if((Equ_P = (struct Dof *)Dof_Find(CurrentDofData, &Equ, true))) {
       switch(Equ_P->Type) {
       case DOF_FIXED:
         Equ_P->Type = DOF_FIXEDWITHASSOCIATE;
@@ -1453,7 +1720,7 @@ void Dof_DefineAssociateDof(int E1, int E2, int D1, int D2, int NbrHar,
         Dof.NumType = D1;
         Dof.Entity = D2;
         Dof.Harmonic = k;
-        if(!Tree_PQuery(CurrentDofData->DofTree, &Dof)) {
+        if(!Dof_Find(CurrentDofData, &Dof, true)) {
           if(!init) { Dof.Type = DOF_UNKNOWN; }
           else {
             Dof.Type = DOF_UNKNOWN_INIT;
@@ -1463,7 +1730,7 @@ void Dof_DefineAssociateDof(int E1, int E2, int D1, int D2, int NbrHar,
           Dof.Case.Unknown.NumDof = CurrentDofData->NbrDof;
           Dof.Case.Unknown.PartitionOrNonLocal = -1;
           CurrentDofData->NonLocalEquations.push_back(Dof.Case.Unknown.NumDof);
-          Tree_Add(CurrentDofData->DofTree, &Dof);
+          Dof_Add(CurrentDofData, &Dof);
         }
         else{
           Message::Warning("Fixed with associate Equ for non-existing Dof!");
@@ -1475,7 +1742,7 @@ void Dof_DefineAssociateDof(int E1, int E2, int D1, int D2, int NbrHar,
         Dof.NumType = D1;
         Dof.Entity = D2;
         Dof.Harmonic = k;
-        if(!Tree_PQuery(CurrentDofData->DofTree, &Dof)) {
+        if(!Dof_Find(CurrentDofData, &Dof, true)) {
           if(!init) { Dof.Type = DOF_UNKNOWN; }
           else {
             Dof.Type = DOF_UNKNOWN_INIT;
@@ -1485,7 +1752,7 @@ void Dof_DefineAssociateDof(int E1, int E2, int D1, int D2, int NbrHar,
           Dof.Case.Unknown.NumDof = CurrentDofData->NbrDof;
           Dof.Case.Unknown.PartitionOrNonLocal = -1;
           CurrentDofData->NonLocalEquations.push_back(Dof.Case.Unknown.NumDof);
-          Tree_Add(CurrentDofData->DofTree, &Dof);
+          Dof_Add(CurrentDofData, &Dof);
         }
         else{
           Message::Warning("Fixed with associate Equ for non-existing Dof!");
@@ -1514,7 +1781,7 @@ struct Dof *Dof_GetDofStruct(struct DofData *DofData_P, int D1, int D2, int D3)
   Dof.Entity = D2;
   Dof.Harmonic = D3;
 
-  return (struct Dof *)List_PQuery(DofData_P->DofList, &Dof, fcmp_Dof);
+  return Dof_Find(DofData_P, &Dof, false);
 }
 
 /* ------------------------------------------------------------------------ */
@@ -1533,10 +1800,10 @@ void Dof_UpdateAssignFixedDof(int D1, int D2, int NbrHar, double *Val,
   for(k = 0; k < NbrHar; k += gSCALAR_SIZE) {
     Dof.Harmonic = k;
     if(CurrentDofData->DofTree)
-      Dof_P = (struct Dof *)Tree_PQuery(CurrentDofData->DofTree, &Dof);
+      Dof_P = (struct Dof *)Dof_Find(CurrentDofData, &Dof, true);
     else
       Dof_P =
-        (struct Dof *)List_PQuery(CurrentDofData->DofList, &Dof, fcmp_Dof);
+        (struct Dof *)Dof_Find(CurrentDofData, &Dof, false);
     LinAlg_SetScalar(&Dof_P->Val, &Val[Dof_P->Harmonic]);
     LinAlg_SetScalar(&Dof_P->Val2, &Val2[Dof_P->Harmonic]);
   }
@@ -1557,10 +1824,10 @@ void Dof_UpdateLinkDof(int D1, int D2, int NbrHar, double Value[], int D2_Link)
   for(k = 0; k < NbrHar; k += gSCALAR_SIZE) {
     Dof.Harmonic = k;
     if(CurrentDofData->DofTree)
-      Dof_P = (struct Dof *)Tree_PQuery(CurrentDofData->DofTree, &Dof);
+      Dof_P = (struct Dof *)Dof_Find(CurrentDofData, &Dof, true);
     else
       Dof_P =
-        (struct Dof *)List_PQuery(CurrentDofData->DofList, &Dof, fcmp_Dof);
+        (struct Dof *)Dof_Find(CurrentDofData, &Dof, false);
 
     if(Dof_P->Type == DOF_LINK || Dof_P->Type == DOF_LINKCPLX) {
       /*
@@ -1573,6 +1840,54 @@ void Dof_UpdateLinkDof(int D1, int D2, int NbrHar, double Value[], int D2_Link)
       Dof_P->Case.Link.Dof = NULL;
     }
   }
+}
+
+// When the Dofs are numbered by mesh partition (-sparsity with a partitioned
+// mesh in parallel), equation n belongs to the rank whose range of the
+// partition split contains it; the non-partitioned (global) equations at the
+// end go to the last rank
+static bool Dof_HasPartitionSplit()
+{
+  return Message::GetCommSize() > 1 &&
+         (int)Current.DofData->PartitionSplit.size() > Message::GetCommSize();
+}
+
+static int Dof_GetRankOfEquation(int n)
+{
+  const std::vector<int> &s = Current.DofData->PartitionSplit;
+  int i = std::upper_bound(s.begin(), s.end(), n) - s.begin();
+  if(i == 0 || i == (int)s.size()) return -1;
+  return std::min(i - 1, Message::GetCommSize() - 1);
+}
+
+// Records that element ele contributes to equation n, i.e. that the rank of n
+// has to assemble it. This is called for every entry of every element matrix:
+// store each (element, rank) pair only once
+static void Dof_AddElementRank(int ele, int n)
+{
+  int rank = Dof_GetRankOfEquation(n);
+  if(rank < 0) return;
+  static int lastEle = -1, lastRank = -1;
+  static std::unordered_multimap<int, int> *lastMap = NULL;
+  std::unordered_multimap<int, int> *m = Current.DofData->ElementRanks;
+  if(m == lastMap && !m->empty() && ele == lastEle && rank == lastRank) return;
+  lastMap = m;
+  lastEle = ele;
+  lastRank = rank;
+  auto range = m->equal_range(ele);
+  for(auto it = range.first; it != range.second; ++it)
+    if(it->second == rank) return;
+  m->insert({ele, rank});
+}
+
+// Records the nonzero (i, j) of the matrices; in parallel, with the Dofs
+// numbered by partition, each rank only needs (and preallocates) its own rows
+static void Dof_AddToSparsityPattern(int i, int j)
+{
+  if(Dof_HasPartitionSplit() &&
+     Dof_GetRankOfEquation(i) != Message::GetCommRank())
+    return;
+  Current.DofData->SparsityPattern->insert(std::make_pair(i, j));
 }
 
 /* ------------------------------------------------------------------------ */
@@ -1590,43 +1905,22 @@ void Dof_AssembleInMat(struct Dof *Equ_P, struct Dof *Dof_P, int NbrHar,
   case DOF_FIXEDWITHASSOCIATE:
 
     if(Current.TypeAssembly == ASSEMBLY_SPARSITY_PATTERN &&
-       Message::GetCommSize() > 1 && Current.Element->GeoElement &&
-       (int)Current.DofData->PartitionSplit.size() > Message::GetCommSize()) {
+       Dof_HasPartitionSplit() && Current.Element->GeoElement) {
       int ele = Current.Element->GeoElement->Num;
-      int n = Equ_P->Case.Unknown.NumDof - 1;
-      for(int i = 1; i < (int)Current.DofData->PartitionSplit.size(); i++){
-        if(n >= Current.DofData->PartitionSplit[i - 1] &&
-           n < Current.DofData->PartitionSplit[i]) {
-          int rank = std::min(i - 1, Message::GetCommSize() - 1);
-          Current.DofData->ElementRanks->insert({ele, rank});
-          break;
-        }
-      }
-      if(NbrHar > 1 && gSCALAR_SIZE == 1) {
-        n = (Equ_P + 1)->Case.Unknown.NumDof - 1;
-        for(int i = 1; i < (int)Current.DofData->PartitionSplit.size(); i++){
-          if(n >= Current.DofData->PartitionSplit[i - 1] &&
-             n < Current.DofData->PartitionSplit[i]) {
-            int rank = std::min(i - 1, Message::GetCommSize() - 1);
-            Current.DofData->ElementRanks->insert({ele, rank});
-            break;
-          }
-        }
-      }
+      Dof_AddElementRank(ele, Equ_P->Case.Unknown.NumDof - 1);
+      if(NbrHar > 1 && gSCALAR_SIZE == 1)
+        Dof_AddElementRank(ele, (Equ_P + 1)->Case.Unknown.NumDof - 1);
     }
 
     switch(Dof_P->Type) {
     case DOF_UNKNOWN:
       if(Current.DofData->Flag_RHS) break;
       if(Current.TypeAssembly == ASSEMBLY_SPARSITY_PATTERN) {
-        Current.DofData->SparsityPattern->insert
-          (std::make_pair(Equ_P->Case.Unknown.NumDof - 1,
-                          Dof_P->Case.Unknown.NumDof - 1));
-        if(NbrHar > 1 && gSCALAR_SIZE == 1) {
-          Current.DofData->SparsityPattern->insert
-            (std::make_pair((Equ_P + 1)->Case.Unknown.NumDof - 1,
-                            (Dof_P + 1)->Case.Unknown.NumDof - 1));
-        }
+        Dof_AddToSparsityPattern(Equ_P->Case.Unknown.NumDof - 1,
+                                 Dof_P->Case.Unknown.NumDof - 1);
+        if(NbrHar > 1 && gSCALAR_SIZE == 1)
+          Dof_AddToSparsityPattern((Equ_P + 1)->Case.Unknown.NumDof - 1,
+                                   (Dof_P + 1)->Case.Unknown.NumDof - 1);
       }
       else {
         if(NbrHar == 1) {
@@ -1778,29 +2072,11 @@ void Dof_AssembleInVec(struct Dof *Equ_P, struct Dof *Dof_P, int NbrHar,
   case DOF_FIXEDWITHASSOCIATE:
 
     if(Current.TypeAssembly == ASSEMBLY_SPARSITY_PATTERN &&
-       Message::GetCommSize() > 1 && Current.Element->GeoElement &&
-       (int)Current.DofData->PartitionSplit.size() > Message::GetCommSize()) {
+       Dof_HasPartitionSplit() && Current.Element->GeoElement) {
       int ele = Current.Element->GeoElement->Num;
-      int n = Equ_P->Case.Unknown.NumDof - 1;
-      for(int i = 1; i < (int)Current.DofData->PartitionSplit.size(); i++){
-        if(n >= Current.DofData->PartitionSplit[i - 1] &&
-           n < Current.DofData->PartitionSplit[i]) {
-          int rank = std::min(i - 1, Message::GetCommSize() - 1);
-          Current.DofData->ElementRanks->insert({ele, rank});
-          break;
-        }
-      }
-      if(NbrHar > 1 && gSCALAR_SIZE == 1) {
-        n = (Equ_P + 1)->Case.Unknown.NumDof - 1;
-        for(int i = 1; i < (int)Current.DofData->PartitionSplit.size(); i++){
-          if(n >= Current.DofData->PartitionSplit[i - 1] &&
-             n < Current.DofData->PartitionSplit[i]) {
-            int rank = std::min(i - 1, Message::GetCommSize() - 1);
-            Current.DofData->ElementRanks->insert({ele, rank});
-            break;
-          }
-        }
-      }
+      Dof_AddElementRank(ele, Equ_P->Case.Unknown.NumDof - 1);
+      if(NbrHar > 1 && gSCALAR_SIZE == 1)
+        Dof_AddElementRank(ele, (Equ_P + 1)->Case.Unknown.NumDof - 1);
     }
 
     // During the -sparsity pattern pass only the matrix structure is being
@@ -2122,7 +2398,7 @@ void Dof_TransferDof(struct DofData *DofData_P1, struct DofData **DofData_P2)
 
   for(i = 0; i < Nbr_AnyDof; i++) {
     Dof = *(struct Dof *)List_Pointer(DofData_P1->DofList, i);
-    if((Dof_P = (struct Dof *)Tree_PQuery((*DofData_P2)->DofTree, &Dof))) {
+    if((Dof_P = (struct Dof *)Dof_Find(*DofData_P2, &Dof, true))) {
       switch(Dof_P->Type) {
       case DOF_FIXED_SOLVE:
         Dof_P->Type = DOF_FIXED;

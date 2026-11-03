@@ -93,6 +93,7 @@ struct DofData {
   int NbrAnyDof, NbrDof;
   Tree_T *DofTree;
   List_T *DofList;
+  struct DofIndex *DofIndex; // hash index of DofTree or DofList, see Dof_Find
 
   int *DummyDof;
 

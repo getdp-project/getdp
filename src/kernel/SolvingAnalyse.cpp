@@ -502,7 +502,7 @@ void SolvingAnalyse()
     }
   }
   else if(Flag_CAL || Flag_POS) {
-    Dof_OpenFile(DOF_PRE, Name_Generic, "r");
+    Dof_OpenFile(DOF_PRE, Name_Generic, "rb");
     Dof_ReadFilePRE0(&Num_Resolution, &Nbr_DefineSystem);
     Nbr_OtherSystem = Nbr_DefineSystem;
   }
@@ -612,7 +612,7 @@ void SolvingAnalyse()
                       Nbr_PreResolution);
     }
 
-    Dof_OpenFile(DOF_PRE, Name_Generic, "w+");
+    Dof_OpenFile(DOF_PRE, Name_Generic, "wb+");
     Dof_WriteFilePRE0(Num_Resolution, Resolution_P->Name, Nbr_DefineSystem);
 
     for(i = 0; i < Nbr_DefineSystem; i++) { Dof_WriteFilePRE(DofData_P0 + i); }

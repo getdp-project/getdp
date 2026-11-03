@@ -459,7 +459,7 @@ void Generate_System(struct DefineSystem *DefineSystem_P,
       Init_DofDataInDefineQuantity(DefineSystem_P, DofData_P0, Formulation_P);
       Treatment_Formulation(Formulation_P);
     }
-    // recreate matrices with exact sparsity pattern - TODO: all matrices
+    // recreate matrices with exact sparsity pattern - TODO: A1, A2, A3
     ZeroMatrix(&Current.DofData->A, &Current.DofData->Solver,
                Current.DofData->NbrDof);
     if(Flag_Jac)
@@ -468,6 +468,35 @@ void Generate_System(struct DefineSystem *DefineSystem_P,
     // cleanup vectors
     LinAlg_AssembleVector(&Current.DofData->b);
     LinAlg_ZeroVector(&Current.DofData->b);
+    if(Flag_Separate) {
+      // same for the separate matrices, which would otherwise keep the
+      // heuristic preallocation, and their vectors, which have received the
+      // contributions of the fixed Dofs during the pass
+      gMatrix *M[8] = {NULL,
+                       &Current.DofData->M1, &Current.DofData->M2,
+                       &Current.DofData->M3, &Current.DofData->M4,
+                       &Current.DofData->M5, &Current.DofData->M6,
+                       &Current.DofData->M7};
+      gVector *m[8] = {NULL,
+                       &Current.DofData->m1, &Current.DofData->m2,
+                       &Current.DofData->m3, &Current.DofData->m4,
+                       &Current.DofData->m5, &Current.DofData->m6,
+                       &Current.DofData->m7};
+      List_T *ms[8] = {NULL,
+                       DofData_P->m1s, DofData_P->m2s, DofData_P->m3s,
+                       DofData_P->m4s, DofData_P->m5s, DofData_P->m6s,
+                       DofData_P->m7s};
+      for(int i = 1; i < 8; i++) {
+        if(!Current.DofData->Flag_Init[i]) continue;
+        ZeroMatrix(M[i], &Current.DofData->Solver, Current.DofData->NbrDof);
+        LinAlg_AssembleVector(m[i]);
+        LinAlg_ZeroVector(m[i]);
+        for(int j = 0; j < List_Nbr(ms[i]); j++) {
+          LinAlg_AssembleVector((gVector *)List_Pointer(ms[i], j));
+          LinAlg_ZeroVector((gVector *)List_Pointer(ms[i], j));
+        }
+      }
+    }
     Current.TypeAssembly = old;
   }
 
