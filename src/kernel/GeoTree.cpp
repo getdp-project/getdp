@@ -5,7 +5,8 @@
 
 #include <math.h>
 #include <stdlib.h>
-#include <map>
+#include <algorithm>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 #include "GeoData.h"
@@ -67,7 +68,7 @@ static bool testEdgeAlignedWith(double *x, double *y, double *z, int *Entity_P,
 // Keep component labels separate from disjoint-set roots: a label removed by
 // a merge can be used again by a later element or StartingOn pass.
 struct Geo_TreeComponents {
-  std::map<int, int> indices;
+  std::unordered_map<int, int> indices;
   std::vector<int> parents, labels;
 
   int root(int i)
@@ -84,7 +85,7 @@ struct Geo_TreeComponents {
 
   int index(int label)
   {
-    std::map<int, int>::iterator it = indices.find(label);
+    std::unordered_map<int, int>::iterator it = indices.find(label);
     if(it != indices.end()) return root(it->second);
     int i = parents.size();
     indices[label] = i;
@@ -157,17 +158,52 @@ static void Geo_GenerateTreeOnSlidingSurface(List_T *InitialList,
   List_Copy(Tree2List(EdgesInTree_T), ExtendedList);
 }
 
+// Nodes already in the tree, with the index of their component: in the AVL tree
+// shared with the sliding surface pass, which can add a node more than once
+struct Geo_TreeNodesInTree {
+  Tree_T *tree;
+  int *find(int num)
+  {
+    struct EntityInTree *e = (struct EntityInTree *)Tree_PQuery(tree, &num);
+    return e ? &e->Index : NULL;
+  }
+  int *add(int num, int index)
+  {
+    struct EntityInTree e = {num, index};
+    return &((struct EntityInTree *)Tree_Add(tree, &e))->Index;
+  }
+};
+
+// ... or, without a sliding surface, in an array indexed by node number
+struct Geo_TreeNodesInArray {
+  std::vector<int> index;
+  Geo_TreeNodesInArray()
+  {
+    int max = 0;
+    for(int i = 0; i < Geo_GetNbrGeoNodes(); i++)
+      max = std::max(max, Geo_GetGeoNode(i)->Num);
+    index.resize(max + 1, -1);
+  }
+  int *find(int num) { return index[num] < 0 ? NULL : &index[num]; }
+  int *add(int num, int i)
+  {
+    index[num] = i;
+    return &index[num];
+  }
+};
+
+template <class Nodes>
 static void Geo_GenerateEdgesOfTreeByDimension(int dim, List_T *List,
                                                bool isElementList,
                                                List_T *ExtendedList,
-                                               Tree_T *EntitiesInTree_T,
+                                               Nodes &EntitiesInTree,
                                                Geo_TreeComponents &components)
 {
   int Nbr_Element, Num_Element, i_Element, Nbr_Entities2, i, Num_Entity1,
     Dim_Element;
   struct Geo_Element *Geo_Element;
   int i_Entity2, Num_Entity2, *D_Element, *Entity_P, Entity, Flag_Change;
-  struct EntityInTree *EntitiesInTree_P[NBR_MAX_ENTITIES_IN_ELEMENT];
+  int *EntitiesInTree_P[NBR_MAX_ENTITIES_IN_ELEMENT];
   struct EntityInTree EntityInTree_S;
 
   Nbr_Element = isElementList ? List_Nbr(List) : Geo_GetNbrGeoElements();
@@ -189,8 +225,7 @@ static void Geo_GenerateEdgesOfTreeByDimension(int dim, List_T *List,
 
       for(i = 0; i < Geo_Element->NbrNodes; i++) {
         Num_Entity1 = abs(Geo_Element->NumNodes[i]);
-        EntitiesInTree_P[i] =
-          (struct EntityInTree *)Tree_PQuery(EntitiesInTree_T, &Num_Entity1);
+        EntitiesInTree_P[i] = EntitiesInTree.find(Num_Entity1);
       }
 
       for(i_Entity2 = 0; i_Entity2 < Geo_Element->NbrEdges; i_Entity2++) {
@@ -200,7 +235,7 @@ static void Geo_GenerateEdgesOfTreeByDimension(int dim, List_T *List,
         EntityInTree_S.Index = -1;
         while((Entity = abs(Entity_P[i++])) && (EntityInTree_S.Index < 0))
           if(EntitiesInTree_P[Entity - 1] != NULL)
-            EntityInTree_S.Index = EntitiesInTree_P[Entity - 1]->Index;
+            EntityInTree_S.Index = *EntitiesInTree_P[Entity - 1];
         if(EntityInTree_S.Index < 0)
           EntityInTree_S.Index = components.index(Geo_Element->Num);
 
@@ -209,13 +244,13 @@ static void Geo_GenerateEdgesOfTreeByDimension(int dim, List_T *List,
         while((Entity = abs(*(Entity_P++)))) {
           if(EntitiesInTree_P[--Entity] != NULL) {
             if(components.merge(EntityInTree_S.Index,
-                                EntitiesInTree_P[Entity]->Index))
+                                *EntitiesInTree_P[Entity]))
               Flag_Change = 1;
           }
           else {
             EntityInTree_S.Num = abs(Geo_Element->NumNodes[Entity]);
-            EntitiesInTree_P[Entity] = (struct EntityInTree *)Tree_Add(
-              EntitiesInTree_T, &EntityInTree_S);
+            EntitiesInTree_P[Entity] =
+              EntitiesInTree.add(EntityInTree_S.Num, EntityInTree_S.Index);
             Flag_Change = 1;
           }
         }
@@ -229,34 +264,50 @@ static void Geo_GenerateEdgesOfTreeByDimension(int dim, List_T *List,
   } /* for i_Element ... */
 }
 
+template <class Nodes>
+static void Geo_GenerateEdgesOfTreeInRegions(
+  List_T *InitialList, bool isInitialListEL, List_T *InitialSuppList,
+  bool isInitialSuppListEL, List_T *ExtendedList, Nodes &nodes,
+  Geo_TreeComponents &components)
+{
+  if(InitialSuppList != NULL) { // SubRegion
+    Geo_GenerateEdgesOfTreeByDimension(1, InitialSuppList, isInitialSuppListEL,
+                                       ExtendedList, nodes, components);
+    Geo_GenerateEdgesOfTreeByDimension(2, InitialSuppList, isInitialSuppListEL,
+                                       ExtendedList, nodes, components);
+  }
+  if(InitialList != NULL) { // Region
+    Geo_GenerateEdgesOfTreeByDimension(-1, InitialList, isInitialListEL,
+                                       ExtendedList, nodes, components);
+  }
+}
+
 void Geo_GenerateEdgesOfTree(List_T *InitialList, bool isInitialListEL,
                              List_T *InitialSuppList, bool isInitialSuppListEL,
                              List_T *InitialSuppList2,
                              bool isInitialSuppList2EL, int SuppListType2,
                              List_T **ExtendedList)
 {
-  Tree_T *EntitiesInTree_T;
   Geo_TreeComponents components;
 
   *ExtendedList = List_Create(2000, 2000, sizeof(int));
 
-  EntitiesInTree_T = Tree_Create(2 * sizeof(int), fcmp_int);
-
-  if(InitialSuppList2 != NULL) // SubRegion2
-    Geo_GenerateTreeOnSlidingSurface(InitialSuppList2, *ExtendedList,
-                                     EntitiesInTree_T, components, SuppListType2);
-  if(InitialSuppList != NULL) { // SubRegion
-    Geo_GenerateEdgesOfTreeByDimension(1, InitialSuppList, isInitialSuppListEL,
-                                       *ExtendedList, EntitiesInTree_T, components);
-    Geo_GenerateEdgesOfTreeByDimension(2, InitialSuppList, isInitialSuppListEL,
-                                       *ExtendedList, EntitiesInTree_T, components);
+  if(InitialSuppList2 != NULL) { // SubRegion2
+    Geo_TreeNodesInTree nodes = {Tree_Create(2 * sizeof(int), fcmp_int)};
+    Geo_GenerateTreeOnSlidingSurface(InitialSuppList2, *ExtendedList, nodes.tree,
+                                     components, SuppListType2);
+    Geo_GenerateEdgesOfTreeInRegions(InitialList, isInitialListEL,
+                                     InitialSuppList, isInitialSuppListEL,
+                                     *ExtendedList, nodes, components);
+    Tree_Delete(nodes.tree);
   }
-  if(InitialList != NULL) { // Region
-    Geo_GenerateEdgesOfTreeByDimension(-1, InitialList, isInitialListEL,
-                                       *ExtendedList, EntitiesInTree_T, components);
+  else {
+    Geo_TreeNodesInArray nodes;
+    Geo_GenerateEdgesOfTreeInRegions(InitialList, isInitialListEL,
+                                     InitialSuppList, isInitialSuppListEL,
+                                     *ExtendedList, nodes, components);
   }
 
-  Tree_Delete(EntitiesInTree_T);
   List_Sort(*ExtendedList, fcmp_int);
 }
 
