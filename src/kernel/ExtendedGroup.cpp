@@ -7,6 +7,9 @@
 #include <set>
 #include <map>
 #include <list>
+#include <vector>
+#include <algorithm>
+#include <unordered_map>
 #include "ProData.h"
 #include "ProDefine.h"
 #include "ExtendedGroup.h"
@@ -33,6 +36,47 @@ int fcmp_absint2(const void *a, const void *b)
   return abs(((struct TwoInt *)a)->Int2) - abs(((struct TwoInt *)b)->Int2);
 }
 
+// Membership test in the sorted lists of integers of groups (List_Search with
+// fcmp_int), done for every Dof of every element when treating constraints:
+// large lists get a bitmap, cached until the list changes or groups are
+// (re)generated
+struct EntityBitmap {
+  const void *array = nullptr;
+  int n = 0, min = 0;
+  bool use = false; // false if the entity range is too sparse for a bitmap
+  std::vector<bool> bits;
+};
+static std::unordered_map<const List_T *, EntityBitmap> EntityBitmaps;
+
+static void ClearEntityBitmaps() { EntityBitmaps.clear(); }
+
+static bool IsIntInList(List_T *List, int Entity)
+{
+  int n = List_Nbr(List);
+  if(n < 64) return List_Search(List, &Entity, fcmp_int);
+  int *a = (int *)List_Pointer(List, 0);
+  EntityBitmap &b = EntityBitmaps[List];
+  if(b.array != (const void *)a || b.n != n) {
+    b.array = a;
+    b.n = n;
+    int min = a[0], max = a[0];
+    for(int i = 1; i < n; i++) {
+      min = std::min(min, a[i]);
+      max = std::max(max, a[i]);
+    }
+    b.min = min;
+    b.use = ((double)max - (double)min < 64. * n + 1e6);
+    b.bits.clear();
+    if(b.use) {
+      b.bits.assign((size_t)(max - min) + 1, false);
+      for(int i = 0; i < n; i++) b.bits[a[i] - min] = true;
+    }
+  }
+  if(!b.use) return List_Search(List, &Entity, fcmp_int);
+  return Entity >= b.min && (size_t)(Entity - b.min) < b.bits.size() &&
+         b.bits[Entity - b.min];
+}
+
 /* ------------------------------------------------------------------------ */
 /*  C h e c k _ I s E n t i t y I n E x t e n d e d G r o u p               */
 /* ------------------------------------------------------------------------ */
@@ -49,17 +93,17 @@ int Check_IsEntityInExtendedGroup(struct Group *Group_P, int Entity, int Flag)
       Generate_ExtendedGroup(Group_P);
     return (
       (!Group_P->InitialList ||
-       (List_Search(Group_P->ExtendedList, &Entity, fcmp_int))) &&
+       (IsIntInList(Group_P->ExtendedList, Entity))) &&
       (!Group_P->InitialSuppList ||
        ((Group_P->SuppListType == SUPPLIST_CONNECTEDTO) ||
         // anything remaining in ExtendedSuppList is checked as an exclusion
-        !List_Search(Group_P->ExtendedSuppList, &Entity, fcmp_int))));
+        !IsIntInList(Group_P->ExtendedSuppList, Entity))));
 
   case ELEMENTSOF:
   case EDGESOFTREEIN:
   case FACETSOFTREEIN:
     if(!Group_P->ExtendedList) Generate_ExtendedGroup(Group_P);
-    return (List_Search(Group_P->ExtendedList, &Entity, fcmp_int));
+    return (IsIntInList(Group_P->ExtendedList, Entity));
 
   case GROUPSOFNODESOF:
   case GROUPSOFEDGESOF:
@@ -67,11 +111,11 @@ int Check_IsEntityInExtendedGroup(struct Group *Group_P, int Entity, int Flag)
   case REGION:
   case GROUPOFREGIONSOF:
   case GLOBAL:
-    return ((Flag) ? List_Search(Group_P->InitialList, &Entity, fcmp_int) : 1);
+    return ((Flag) ? IsIntInList(Group_P->InitialList, Entity) : 1);
 
   case GROUPSOFEDGESONNODESOF:
     if(!Group_P->InitialSuppList) { return (1); }
-    return (!List_Search(Group_P->ExtendedSuppList, &Entity, fcmp_int));
+    return (!IsIntInList(Group_P->ExtendedSuppList, Entity));
 
   default:
     Message::Error("Unknown function type for Group '%s'", Group_P->Name);
@@ -85,6 +129,8 @@ int Check_IsEntityInExtendedGroup(struct Group *Group_P, int Entity, int Flag)
 
 void Generate_ExtendedGroup(struct Group *Group_P)
 {
+  ClearEntityBitmaps();
+
   // struct Group * RegionGroup_P = NULL;
   // bool isInitialListEL = false;
   // bool isInitialSuppListEL = false;
@@ -206,13 +252,12 @@ void Generate_ExtendedGroup(struct Group *Group_P)
 void Generate_ElementaryEntities(List_T *InitialList, List_T **ExtendedList,
                                  int Type_Entity)
 {
-  Tree_T *Entity_Tr;
   struct Geo_Element *GeoElement;
   int Nbr_Element, i_Element, Num_Entity;
   int Nbr_Entity = 0, i_Entity, *Num_Entities = NULL;
 
   if(InitialList != NULL) {
-    Entity_Tr = Tree_Create(sizeof(int), fcmp_int);
+    std::vector<int> Entities;
 
     Nbr_Element = Geo_GetNbrGeoElements();
     for(i_Element = 0; i_Element < Nbr_Element; i_Element++) {
@@ -243,14 +288,17 @@ void Generate_ElementaryEntities(List_T *InitialList, List_T **ExtendedList,
         }
         for(i_Entity = 0; i_Entity < Nbr_Entity; i_Entity++) {
           Num_Entity = abs(Num_Entities[i_Entity]);
-          if(!Tree_Search(Entity_Tr, &Num_Entity))
-            Tree_Add(Entity_Tr, &Num_Entity);
+          Entities.push_back(Num_Entity);
         }
       }
     }
 
-    *ExtendedList = Tree2List(Entity_Tr);
-    Tree_Delete(Entity_Tr);
+    std::sort(Entities.begin(), Entities.end());
+    Entities.erase(std::unique(Entities.begin(), Entities.end()),
+                   Entities.end());
+    *ExtendedList = List_Create(std::max(1, (int)Entities.size()), 1,
+                                sizeof(int));
+    for(auto e : Entities) List_Add(*ExtendedList, &e);
   }
 }
 
