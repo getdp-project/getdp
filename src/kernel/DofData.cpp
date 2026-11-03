@@ -1533,6 +1533,10 @@ void Dof_DefineInitSolveDof(int D1, int D2, int NbrHar,
     Dof.Harmonic = k;
     if(!Dof_Find(CurrentDofData, &Dof, true)) {
       Dof.Type = DOF_UNKNOWN_INIT;
+      // the values are set by the resolution that computes them; zero them
+      // until then, so that the .pre file does not contain uninitialized data
+      LinAlg_ZeroScalar(&Dof.Val);
+      LinAlg_ZeroScalar(&Dof.Val2);
       // old version: number as we go
       // Dof.Case.Unknown.NumDof = ++(CurrentDofData->NbrDof) ;
       Dof.Case.Unknown.NumDof = -1;
