@@ -9,6 +9,7 @@
 //   Jose Geraldo A. Brito Neto
 //
 
+#include <map>
 #include <vector>
 #include <algorithm>
 #include <complex>
@@ -199,6 +200,11 @@ static int _getLocalSize(int n = -1)
   return s;
 }
 
+// sequential copies of the distributed vectors (see _fillseq below)
+static long _seqCount = 0;
+static std::map<Vec, long> _seqNum; // Vseq -> creation number
+static std::map<long, std::pair<Vec, Vec> > _seqStale; // number -> (V, Vseq)
+
 void LinAlg_CreateVector(gVector *V, gSolver *Solver, int n, bool sequential)
 {
   if(sequential) {
@@ -226,6 +232,7 @@ void LinAlg_CreateVector(gVector *V, gSolver *Solver, int n, bool sequential)
   if(Message::GetCommSize() > 1 && MyComm != PETSC_COMM_SELF) {
     _try(VecCreateSeq(PETSC_COMM_SELF, n, &V->Vseq));
     V->haveSeq = 1;
+    _seqNum[V->Vseq] = _seqCount++;
   }
   else {
     V->haveSeq = 0;
@@ -254,9 +261,50 @@ void _fillseq(Vec &V, Vec &Vseq)
 #endif
 }
 
+// The sequential copy Vseq of a distributed vector is gathered at once after
+// an assembly or a solve, but only marked as out of date after the arithmetic
+// operations: LinAlg_UpdateSequentialVectors(), called by all ranks at the
+// start of each resolution operation, then gathers all the stale copies. (The
+// gathering cannot be done when Vseq is read, as the reading functions need
+// not be called on all ranks.) gVectors are copied by value, so the copies are
+// identified by their Vseq, and gathered in the order of their creation, which
+// is the same on all ranks.
 static void _fillseq(gVector *V)
 {
-  if(V->haveSeq) _fillseq(V->V, V->Vseq);
+  if(!V->haveSeq) return;
+  _fillseq(V->V, V->Vseq);
+  auto it = _seqNum.find(V->Vseq);
+  if(it != _seqNum.end()) _seqStale.erase(it->second);
+}
+
+static bool _isStaleSeq(gVector *V)
+{
+  auto it = _seqNum.find(V->Vseq);
+  return it != _seqNum.end() && _seqStale.count(it->second);
+}
+
+static void _setStaleSeq(gVector *V, bool stale)
+{
+  auto it = _seqNum.find(V->Vseq);
+  if(it == _seqNum.end()) {
+    if(stale) _fillseq(V->V, V->Vseq); // not registered: gather now
+    return;
+  }
+  if(stale)
+    _seqStale[it->second] = std::make_pair(V->V, V->Vseq);
+  else
+    _seqStale.erase(it->second);
+}
+
+static void _markseq(gVector *V)
+{
+  if(V->haveSeq) _setStaleSeq(V, true);
+}
+
+void LinAlg_UpdateSequentialVectors()
+{
+  for(auto &s : _seqStale) _fillseq(s.second.first, s.second.second);
+  _seqStale.clear();
 }
 
 void LinAlg_CreateMatrix(gMatrix *M, gSolver *Solver, int n, int m, bool silent)
@@ -413,6 +461,13 @@ void LinAlg_DestroySolver(gSolver *Solver)
 
 void LinAlg_DestroyVector(gVector *V)
 {
+  if(V->haveSeq) {
+    auto it = _seqNum.find(V->Vseq);
+    if(it != _seqNum.end()) {
+      _seqStale.erase(it->second);
+      _seqNum.erase(it);
+    }
+  }
 #if(PETSC_VERSION_MAJOR == 3) && (PETSC_VERSION_MINOR >= 2)
   _try(VecDestroy(&V->V));
   if(V->haveSeq) _try(VecDestroy(&V->Vseq));
@@ -436,13 +491,25 @@ void LinAlg_CopyScalar(gScalar *S1, gScalar *S2) { S1->s = S2->s; }
 void LinAlg_CopyVector(gVector *V1, gVector *V2)
 {
   _try(VecCopy(V1->V, V2->V));
-  if(V1->haveSeq) _try(VecCopy(V1->Vseq, V2->Vseq));
+  if(V1->haveSeq) {
+    if(_isStaleSeq(V1))
+      _setStaleSeq(V2, true);
+    else {
+      _try(VecCopy(V1->Vseq, V2->Vseq));
+      _setStaleSeq(V2, false);
+    }
+  }
 }
 
 void LinAlg_SwapVector(gVector *V1, gVector *V2)
 {
   _try(VecSwap(V1->V, V2->V));
-  if(V1->haveSeq) _try(VecSwap(V1->Vseq, V2->Vseq));
+  if(V1->haveSeq) {
+    _try(VecSwap(V1->Vseq, V2->Vseq));
+    bool stale1 = _isStaleSeq(V1), stale2 = _isStaleSeq(V2);
+    _setStaleSeq(V1, stale2);
+    _setStaleSeq(V2, stale1);
+  }
 }
 
 void LinAlg_CopyMatrix(gMatrix *M1, gMatrix *M2)
@@ -457,7 +524,10 @@ void LinAlg_ZeroVector(gVector *V)
   PetscScalar zero = 0.0;
 
   _try(VecSet(V->V, zero));
-  if(V->haveSeq) _try(VecSet(V->Vseq, zero));
+  if(V->haveSeq) {
+    _try(VecSet(V->Vseq, zero));
+    _setStaleSeq(V, false);
+  }
 }
 
 void LinAlg_ZeroMatrix(gMatrix *M) { _try(MatZeroEntries(M->M)); }
@@ -811,7 +881,10 @@ void LinAlg_SetVector(gVector *V, double *v)
 {
   PetscScalar tmp = *v;
   _try(VecSet(V->V, tmp));
-  if(V->haveSeq) _try(VecSet(V->Vseq, tmp));
+  if(V->haveSeq) {
+    _try(VecSet(V->Vseq, tmp));
+    _setStaleSeq(V, false);
+  }
 }
 
 void LinAlg_SetScalarInVector(gScalar *S, gVector *V, int i)
@@ -1033,11 +1106,11 @@ void LinAlg_AddVectorVector(gVector *V1, gVector *V2, gVector *V3)
   PetscScalar tmp = 1.0;
   if(V3 == V1) {
     _try(VecAXPY(V1->V, tmp, V2->V));
-    _fillseq(V1);
+    _markseq(V1);
   }
   else if(V3 == V2) {
     _try(VecAXPY(V2->V, tmp, V1->V));
-    _fillseq(V2);
+    _markseq(V2);
   }
   else
     Message::Error("Wrong arguments in 'LinAlg_AddVectorVector'");
@@ -1049,11 +1122,11 @@ void LinAlg_AddVectorProdVectorDouble(gVector *V1, gVector *V2, double d,
   PetscScalar tmp = d;
   if(V3 == V1) {
     _try(VecAXPY(V1->V, tmp, V2->V));
-    _fillseq(V1);
+    _markseq(V1);
   }
   else if(V3 == V2) {
     _try(VecAYPX(V2->V, tmp, V1->V));
-    _fillseq(V2);
+    _markseq(V2);
   }
   else
     Message::Error("Wrong arguments in 'LinAlg_AddVectorProdVectorDouble'");
@@ -1146,11 +1219,11 @@ void LinAlg_SubVectorVector(gVector *V1, gVector *V2, gVector *V3)
   PetscScalar tmp = -1.0;
   if(V3 == V1) {
     _try(VecAXPY(V1->V, tmp, V2->V)); // V1->V = V1->V - V2->V
-    _fillseq(V1);
+    _markseq(V1);
   }
   else if(V3 == V2) {
     _try(VecAYPX(V2->V, tmp, V1->V)); // V2->V = V1->V - V2->V
-    _fillseq(V2);
+    _markseq(V2);
   }
   else
     Message::Error("Wrong arguments in 'LinAlg_SubVectorVector'");
@@ -1198,7 +1271,7 @@ void LinAlg_ProdVectorScalar(gVector *V1, gScalar *S, gVector *V2)
 {
   if(V2 == V1) {
     _try(VecScale(V1->V, S->s));
-    _fillseq(V1);
+    _markseq(V1);
   }
   else
     Message::Error("Wrong arguments in 'LinAlg_ProdVectorScalar'");
@@ -1209,7 +1282,7 @@ void LinAlg_ProdVectorDouble(gVector *V1, double d, gVector *V2)
   PetscScalar tmp = d;
   if(V2 == V1) {
     _try(VecScale(V1->V, tmp));
-    _fillseq(V1);
+    _markseq(V1);
   }
   else
     Message::Error("Wrong arguments in 'LinAlg_ProdVectorDouble'");
@@ -1237,7 +1310,7 @@ void LinAlg_ProdMatrixVector(gMatrix *M, gVector *V1, gVector *V2)
     Message::Error("Wrong arguments in 'LinAlg_ProdMatrixVector'");
   else {
     _try(MatMult(M->M, V1->V, V2->V));
-    _fillseq(V2);
+    _markseq(V2);
   }
 }
 

@@ -872,6 +872,10 @@ void Treatment_Operation(struct Resolution *Resolution_P, List_T *Operation_L,
 
     if(Message::GetOnelabAction() == "stop" || Message::GetErrorCount()) break;
 
+    // all ranks are here: gather the values of the distributed vectors that
+    // the previous operations changed, before this one reads any of them
+    LinAlg_UpdateSequentialVectors();
+
     switch(Operation_P->Type) {
       /*  -->  S y s t e m C o m m a n d              */
       /*  ------------------------------------------  */
@@ -3795,6 +3799,9 @@ void Treatment_Operation(struct Resolution *Resolution_P, List_T *Operation_L,
     default: Message::Warning("Operation: ? ? ?"); break;
     }
   }
+
+  // for the post-processing that follows the resolution
+  LinAlg_UpdateSequentialVectors();
 
   Message::Barrier();
 }

@@ -569,6 +569,8 @@ void LinAlg_AssembleMatrix(gMatrix *M) {}
 
 void LinAlg_AssembleVector(gVector *V) {}
 
+void LinAlg_UpdateSequentialVectors() {}
+
 void LinAlg_Solve(gMatrix *A, gVector *B, gSolver *Solver, gVector *X,
                   int solverIndex)
 {
