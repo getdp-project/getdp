@@ -9,7 +9,10 @@
 //   Jose Geraldo A. Brito Neto
 //
 
+#include <climits>
 #include <map>
+#include <set>
+#include <unordered_map>
 #include <vector>
 #include <algorithm>
 #include <complex>
@@ -30,6 +33,11 @@
 // FIXME: this dependency should be removed
 #include "ProData.h"
 #include "DofData.h"
+#include "GeoData.h"
+#include "TreeUtils.h"
+#include "ExtendedGroup.h"
+extern struct GeoData *CurrentGeoData;
+extern struct Problem Problem_S;
 extern struct CurrentData Current;
 
 #if defined(HAVE_PETSC)
@@ -1538,6 +1546,318 @@ static Mat _getOperator(KSP ksp, Mat M)
 }
 #endif
 
+#if defined(PETSC_HAVE_HYPRE)
+// Give hypre's AMS (Hiptmair-Xu) preconditioner, selected with -pc_type hypre
+// -pc_hypre_type ams, the discrete gradient and the node coordinates of the
+// current system, whose unknowns must all be edge unknowns of one basis
+// function. G has one row per edge unknown and one column per node whose edges
+// are all unknowns (the gradient of the other nodes is not in the space, e.g.
+// on Dirichlet boundaries). Every rank holds the whole mesh and Dof list, so
+// all ranks number the nodes the same way; each sets its own rows. Options read
+// here: -getdp_ams_zero_beta for a matrix without mass term, -getdp_ams_check to
+// print |A G x| / (|A| |G x|), which is round-off for a correct G.
+// The mesh edges of the current system, with their row (-1 if not an
+// unknown), and their nodes; a node is outside the space spanned by G when one
+// of its edges is not an unknown.
+struct AMSEdges {
+  struct Edge {
+    int num, row, n[2], s[2];
+  };
+  std::vector<Edge> edges;
+  std::unordered_map<int, int> nodeIndex; // node number -> index in nodes
+  std::vector<int> nodes, minRow;
+  std::vector<char> outside;
+};
+
+static bool _getAMSEdges(AMSEdges &a)
+{
+  struct DofData *DofData_P = Current.DofData;
+  int NumType = 0;
+  for(int i = 0; i < List_Nbr(DofData_P->DofList); i++) {
+    struct Dof *Dof_P = (struct Dof *)List_Pointer(DofData_P->DofList, i);
+    if(!i) NumType = Dof_P->NumType;
+    else if(Dof_P->NumType != NumType) {
+      Message::Error("AMS needs a system with the edge unknowns of a single "
+                     "basis function");
+      return false;
+    }
+  }
+  List_T *E = Tree2List(CurrentGeoData->EdgesXNodes);
+  for(int i = 0; i < List_Nbr(E); i++) {
+    struct Entity2XEntity1 *e = (struct Entity2XEntity1 *)List_Pointer(E, i);
+    if(e->NbrEntities != 2) continue;
+    struct Dof *Dof_P = Dof_GetDofStruct(DofData_P, NumType, e->Num, 0);
+    AMSEdges::Edge ed;
+    ed.num = e->Num;
+    ed.row = (Dof_P && (Dof_P->Type == DOF_UNKNOWN ||
+                        Dof_P->Type == DOF_UNKNOWN_INIT)) ?
+               Dof_P->Case.Unknown.NumDof - 1 :
+               -1;
+    for(int j = 0; j < 2; j++) {
+      int num = abs(e->NumEntities[j]);
+      ed.s[j] = e->NumEntities[j] > 0 ? 1 : -1;
+      auto it = a.nodeIndex.find(num);
+      if(it == a.nodeIndex.end()) {
+        it = a.nodeIndex.insert(std::make_pair(num, (int)a.nodes.size())).first;
+        a.nodes.push_back(num);
+        a.minRow.push_back(INT_MAX);
+        a.outside.push_back(0);
+      }
+      ed.n[j] = it->second;
+      if(ed.row < 0)
+        a.outside[it->second] = 1;
+      else
+        a.minRow[it->second] = std::min(a.minRow[it->second], ed.row);
+    }
+    a.edges.push_back(ed);
+  }
+  List_Delete(E);
+  return true;
+}
+
+static void _setupAMS(PC pc, Mat A)
+{
+  AMSEdges a;
+  if(!_getAMSEdges(a)) return;
+  std::vector<AMSEdges::Edge> &edges = a.edges;
+  std::unordered_map<int, int> &nodeIndex = a.nodeIndex;
+  std::vector<int> &nodes = a.nodes, &minRow = a.minRow;
+  std::vector<char> &outside = a.outside;
+
+  // columns of G: the nodes in the space, owned by the rank of their first
+  // edge unknown and numbered by rank, then by node number
+  PetscMPIInt size, rank;
+  MPI_Comm comm = PetscObjectComm((PetscObject)A);
+  MPI_Comm_size(comm, &size);
+  MPI_Comm_rank(comm, &rank);
+  const PetscInt *ranges;
+  _try(MatGetOwnershipRanges(A, &ranges));
+  std::vector<std::pair<int, int> > cols; // (owner, node number) -> index
+  for(std::size_t i = 0; i < nodes.size(); i++) {
+    if(outside[i] || minRow[i] == INT_MAX) continue;
+    int owner = std::upper_bound(ranges, ranges + size + 1, minRow[i]) - ranges - 1;
+    cols.push_back(std::make_pair(owner, nodes[i]));
+  }
+  std::sort(cols.begin(), cols.end());
+  std::vector<int> col(nodes.size(), -1);
+  PetscInt nloc = 0, cstart = -1;
+  for(std::size_t i = 0; i < cols.size(); i++) {
+    col[nodeIndex[cols[i].second]] = i;
+    if(cols[i].first == rank) {
+      if(cstart < 0) cstart = i;
+      nloc++;
+    }
+  }
+
+  PetscInt rstart, rend;
+  _try(MatGetOwnershipRange(A, &rstart, &rend));
+  Mat G;
+  _try(MatCreateAIJ(comm, rend - rstart, nloc, PETSC_DETERMINE, cols.size(), 2,
+                    PETSC_NULL, 2, PETSC_NULL, &G));
+  for(auto &ed : edges) {
+    if(ed.row < rstart || ed.row >= rend) continue;
+    for(int j = 0; j < 2; j++) {
+      PetscInt c = col[ed.n[j]];
+      PetscScalar v = ed.s[j];
+      if(c >= 0) _try(MatSetValues(G, 1, &ed.row, 1, &c, &v, INSERT_VALUES));
+    }
+  }
+  _try(MatAssemblyBegin(G, MAT_FINAL_ASSEMBLY));
+  _try(MatAssemblyEnd(G, MAT_FINAL_ASSEMBLY));
+
+  std::vector<PetscReal> xyz(3 * nloc);
+  for(PetscInt i = 0; i < nloc; i++) {
+    struct Geo_Node *Geo_Node = Geo_GetGeoNodeOfNum(cols[cstart + i].second);
+    xyz[3 * i] = Geo_Node->x;
+    xyz[3 * i + 1] = Geo_Node->y;
+    xyz[3 * i + 2] = Geo_Node->z;
+  }
+  _try(PCHYPRESetDiscreteGradient(pc, G));
+  _try(PCSetCoordinates(pc, 3, nloc, xyz.data()));
+  PetscBool zeroBeta = PETSC_FALSE, check = PETSC_FALSE;
+  _try(PetscOptionsGetBool(PETSC_NULL, PETSC_NULL, "-getdp_ams_zero_beta",
+                           &zeroBeta, PETSC_NULL));
+  _try(PetscOptionsGetBool(PETSC_NULL, PETSC_NULL, "-getdp_ams_check", &check,
+                           PETSC_NULL));
+  if(zeroBeta) _try(PCHYPRESetBetaPoissonMatrix(pc, PETSC_NULL));
+  Message::Info("AMS: discrete gradient with %d edge unknowns and %d nodes%s",
+                (int)(ranges[size]), (int)cols.size(),
+                zeroBeta ? ", no mass term" : "");
+
+  if(check) {
+    Vec x, Gx, AGx;
+    _try(MatCreateVecs(G, &x, &Gx));
+    _try(VecDuplicate(Gx, &AGx));
+    _try(VecSetRandom(x, PETSC_NULL));
+    _try(MatMult(G, x, Gx));
+    _try(MatMult(A, Gx, AGx));
+    PetscReal nA, nGx, nAGx;
+    _try(MatNorm(A, NORM_INFINITY, &nA));
+    _try(VecNorm(Gx, NORM_INFINITY, &nGx));
+    _try(VecNorm(AGx, NORM_INFINITY, &nAGx));
+    Message::Info("AMS check: |A G x| / (|A| |G x|) = %g", nAGx / (nA * nGx));
+    _try(VecDestroy(&x));
+    _try(VecDestroy(&Gx));
+    _try(VecDestroy(&AGx));
+  }
+  _try(PetscObjectCompose((PetscObject)pc, "getdp_ams_G", (PetscObject)G));
+  _try(MatDestroy(&G)); // referenced by the preconditioner
+}
+
+// With -getdp_ams_tree_group <group> (a Group defined with EdgesOfTreeIn),
+// bring the solution of the ungauged problem back to the gauge of that tree:
+// a <- a - G psi, with psi such that a - G psi vanishes on the tree edges,
+// computed by walking the tree from the nodes outside G (psi = 0 there, e.g.
+// on Dirichlet boundaries). The curl is unchanged, and the result is the
+// solution of the problem gauged by the tree. Every rank has the whole
+// solution in Vseq after the solve, so all compute the same psi.
+static void _gaugeOnTreeForAMS(PC pc, gVector *X)
+{
+  char name[256];
+  PetscBool set = PETSC_FALSE;
+  _try(PetscOptionsGetString(PETSC_NULL, PETSC_NULL, "-getdp_ams_tree_group",
+                             name, sizeof(name), &set));
+  PetscObject obj = PETSC_NULL;
+  _try(PetscObjectQuery((PetscObject)pc, "getdp_ams_G", &obj));
+  if(!set || !obj) return;
+  int i = List_ISearchSeq(Problem_S.Group, name, fcmp_Group_Name);
+  if(i < 0) {
+    Message::Error("Unknown group '%s' for -getdp_ams_tree_group", name);
+    return;
+  }
+  struct Group *Group_P = (struct Group *)List_Pointer(Problem_S.Group, i);
+  if(Group_P->FunctionType != EDGESOFTREEIN) {
+    Message::Error("Group '%s' is not defined with EdgesOfTreeIn", name);
+    return;
+  }
+  if(!Group_P->ExtendedList) Generate_ExtendedGroup(Group_P);
+  std::set<int> tree;
+  for(int j = 0; j < List_Nbr(Group_P->ExtendedList); j++) {
+    int num;
+    List_Read(Group_P->ExtendedList, j, &num);
+    tree.insert(abs(num));
+  }
+
+  AMSEdges a;
+  if(!_getAMSEdges(a)) return;
+  Vec VV = X->haveSeq ? X->Vseq : X->V;
+  const PetscScalar *x;
+  _try(VecGetArrayRead(VV, &x));
+  // tree adjacency, then psi by breadth-first walks from the nodes outside G
+  std::vector<std::vector<int> > adj(a.nodes.size());
+  for(std::size_t e = 0; e < a.edges.size(); e++) {
+    if(!tree.count(a.edges[e].num)) continue;
+    adj[a.edges[e].n[0]].push_back(e);
+    adj[a.edges[e].n[1]].push_back(e);
+  }
+  std::vector<double> psi(a.nodes.size(), 0.);
+  std::vector<char> done(a.nodes.size(), 0);
+  std::vector<int> queue;
+  for(int pass = 0; pass < 2; pass++) {
+    // first from the nodes outside G, then from any node left (a tree of its
+    // own, with psi = 0 at its first node)
+    for(std::size_t n = 0; n < a.nodes.size(); n++) {
+      if(done[n] || (!pass && !a.outside[n])) continue;
+      done[n] = 1;
+      queue.assign(1, n);
+      for(std::size_t q = 0; q < queue.size(); q++) {
+        int k = queue[q];
+        for(int e : adj[k]) {
+          const AMSEdges::Edge &ed = a.edges[e];
+          int j = (ed.n[0] == k) ? 1 : 0, u = ed.n[j];
+          if(done[u]) continue;
+          done[u] = 1;
+          // (G psi)_e = s_k psi_k + s_u psi_u must equal a_e (0 if fixed),
+          // and psi = 0 at nodes outside G
+          if(!a.outside[u]) {
+            double ae = (ed.row >= 0) ? PetscRealPart(x[ed.row]) : 0.;
+            double pk = a.outside[k] ? 0. : psi[k];
+            psi[u] = (ae - ed.s[1 - j] * pk) / ed.s[j];
+          }
+          queue.push_back(u);
+        }
+      }
+    }
+  }
+  // a <- a - G psi on the local rows
+  PetscInt rstart, rend;
+  _try(VecGetOwnershipRange(X->V, &rstart, &rend));
+  std::vector<PetscInt> rows;
+  std::vector<PetscScalar> vals;
+  double treeMax = 0.;
+  for(auto &ed : a.edges) {
+    if(ed.row < rstart || ed.row >= rend) continue;
+    double g = 0.;
+    for(int j = 0; j < 2; j++)
+      if(!a.outside[ed.n[j]]) g += ed.s[j] * psi[ed.n[j]];
+    double v = PetscRealPart(x[ed.row]) - g;
+    if(tree.count(ed.num)) treeMax = std::max(treeMax, fabs(v));
+    rows.push_back(ed.row);
+    vals.push_back(v);
+  }
+  _try(VecRestoreArrayRead(VV, &x));
+  _try(VecSetValues(X->V, rows.size(), rows.data(), vals.data(), INSERT_VALUES));
+  _try(VecAssemblyBegin(X->V));
+  _try(VecAssemblyEnd(X->V));
+  _fillseq(X);
+  double glob;
+  MPI_Allreduce(&treeMax, &glob, 1, MPI_DOUBLE, MPI_MAX,
+                PetscObjectComm((PetscObject)X->V));
+  Message::Info("AMS: solution gauged on tree '%s' (%d edges), max |a| on the "
+                "tree %g", name, (int)tree.size(), glob);
+}
+
+// Without a gauge the curl-curl matrix is singular, its kernel being the
+// gradients G x, and CG needs a compatible right-hand side, G^T b = 0. With
+// -getdp_ams_clean_rhs, remove the incompatible part of b (e.g. from a source
+// current density that is not exactly divergence-free):
+// b <- b - G (G^T G)^-1 G^T b, with CG + BoomerAMG on the nodal Laplacian G^T G
+// (options prefix -getdp_ams_clean_)
+static void _cleanRHSForAMS(PC pc, Vec b)
+{
+  PetscBool clean = PETSC_FALSE;
+  _try(PetscOptionsGetBool(PETSC_NULL, PETSC_NULL, "-getdp_ams_clean_rhs",
+                           &clean, PETSC_NULL));
+  PetscObject obj = PETSC_NULL;
+  _try(PetscObjectQuery((PetscObject)pc, "getdp_ams_G", &obj));
+  if(!clean || !obj) return;
+  Mat G = (Mat)obj, L;
+  Vec r, phi, Gphi;
+  _try(MatCreateVecs(G, &r, &Gphi));
+  _try(VecDuplicate(r, &phi));
+  _try(MatMultTranspose(G, b, r));
+  PetscReal nb, nr0, nr1;
+  _try(VecNorm(b, NORM_2, &nb));
+  _try(VecNorm(r, NORM_2, &nr0));
+  _try(MatTransposeMatMult(G, G, MAT_INITIAL_MATRIX, PETSC_DETERMINE, &L));
+  KSP ksp;
+  PC lpc;
+  _try(KSPCreate(PetscObjectComm((PetscObject)G), &ksp));
+  _try(KSPSetOperators(ksp, L, L));
+  _try(KSPSetType(ksp, KSPCG));
+  _try(KSPGetPC(ksp, &lpc));
+  _try(PCSetType(lpc, PCHYPRE));
+  _try(PCHYPRESetType(lpc, "boomeramg"));
+  _try(KSPSetTolerances(ksp, 1e-12, PETSC_DEFAULT, PETSC_DEFAULT, 1000));
+  _try(KSPSetOptionsPrefix(ksp, "getdp_ams_clean_"));
+  _try(KSPSetFromOptions(ksp));
+  _try(KSPSolve(ksp, r, phi));
+  PetscInt its;
+  _try(KSPGetIterationNumber(ksp, &its));
+  _try(MatMult(G, phi, Gphi));
+  _try(VecAXPY(b, -1., Gphi));
+  _try(MatMultTranspose(G, b, r));
+  _try(VecNorm(r, NORM_2, &nr1));
+  Message::Info("AMS: |G^T b| / |b| = %g -> %g (%d iterations)", nr0 / nb,
+                nr1 / nb, (int)its);
+  _try(KSPDestroy(&ksp));
+  _try(MatDestroy(&L));
+  _try(VecDestroy(&r));
+  _try(VecDestroy(&phi));
+  _try(VecDestroy(&Gphi));
+}
+#endif
+
 static void _solve(gMatrix *A, gVector *B, gSolver *Solver, gVector *X,
                    int precond, int kspIndex)
 {
@@ -1624,6 +1944,21 @@ static void _solve(gMatrix *A, gVector *B, gSolver *Solver, gVector *X,
   // any)
   _try(KSPSetFromOptions(Solver->ksp[kspIndex]));
 
+#if defined(PETSC_HAVE_HYPRE)
+  {
+    // set up AMS once per preconditioner (_setupAMS attaches G to it)
+    PetscBool isHypre;
+    PetscObject G = PETSC_NULL;
+    _try(PetscObjectTypeCompare((PetscObject)pc, PCHYPRE, &isHypre));
+    if(isHypre) _try(PetscObjectQuery((PetscObject)pc, "getdp_ams_G", &G));
+    if(isHypre && !G) {
+      const char *hypreType = "";
+      _try(PCHYPREGetType(pc, &hypreType));
+      if(!strcmp(hypreType, "ams")) _setupAMS(pc, A->M);
+    }
+  }
+#endif
+
 #if(PETSC_VERSION_MAJOR == 3) && (PETSC_VERSION_MINOR >= 4)
   const char *ksptype = "";
   _try(KSPGetType(Solver->ksp[kspIndex], &ksptype));
@@ -1648,6 +1983,12 @@ static void _solve(gMatrix *A, gVector *B, gSolver *Solver, gVector *X,
 
   Message::Info("N: %ld - %s %s %s", long(i), ksptype, pctype, stype);
 
+#if defined(PETSC_HAVE_HYPRE)
+  if(!strcmp(pctype, PCHYPRE)) {
+    _cleanRHSForAMS(pc, B->V);
+    _markseq(B);
+  }
+#endif
   _try(KSPSolve(Solver->ksp[kspIndex], B->V, X->V));
 
   if(stype && !strcmp(stype, "mumps")) {
@@ -1678,6 +2019,10 @@ static void _solve(gMatrix *A, gVector *B, gSolver *Solver, gVector *X,
 
   // copy result on all procs
   _fillseq(X);
+
+#if defined(PETSC_HAVE_HYPRE)
+  if(!strcmp(pctype, PCHYPRE)) _gaugeOnTreeForAMS(pc, X);
+#endif
 
   if(Message::GetVerbosity() > 5) {
     _try(KSPView(Solver->ksp[kspIndex], MyPetscViewer));
