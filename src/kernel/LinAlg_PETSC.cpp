@@ -130,9 +130,20 @@ void LinAlg_InitializeSolver(int *argc, char ***argv)
   }
 }
 
+#if(PETSC_VERSION_MAJOR == 3) && (PETSC_VERSION_MINOR >= 2)
+// The scatter contexts that gather the distributed vectors, by layout (global
+// size and local range): creating one allocates (and zeroes) a sequential
+// vector of the global size, which costs as much as the gather itself
+static std::map<std::vector<PetscInt>, VecScatter> _toAll;
+#endif
+
 void LinAlg_FinalizeSolver()
 {
   if(SolverInitialized) {
+#if(PETSC_VERSION_MAJOR == 3) && (PETSC_VERSION_MINOR >= 2)
+    for(auto &s : _toAll) VecScatterDestroy(&s.second);
+    _toAll.clear();
+#endif
 #if defined(HAVE_SLEPC)
     SlepcFinalize();
 #endif
@@ -247,10 +258,36 @@ void LinAlg_CreateVector(gVector *V, gSolver *Solver, int n, bool sequential)
   }
 }
 
+#if(PETSC_VERSION_MAJOR == 3) && (PETSC_VERSION_MINOR >= 2)
+
+static VecScatter _getToAll(Vec &V)
+{
+  PetscInt n, lo, hi;
+  _try(VecGetSize(V, &n));
+  _try(VecGetOwnershipRange(V, &lo, &hi));
+  std::vector<PetscInt> key = {n, lo, hi};
+  auto it = _toAll.find(key);
+  // the creation is collective: create a context unless all ranks have one
+  int have = (it != _toAll.end()), all = have;
+  MPI_Allreduce(&have, &all, 1, MPI_INT, MPI_MIN, PetscObjectComm((PetscObject)V));
+  if(all) return it->second;
+  if(have) _try(VecScatterDestroy(&it->second));
+  VecScatter ctx;
+  _try(VecScatterCreateToAll(V, &ctx, NULL));
+  _toAll[key] = ctx;
+  return ctx;
+}
+#endif
+
 void _fillseq(Vec &V, Vec &Vseq)
 {
   // collect all the values from the parallel petsc vector into a sequential
   // vector on each processor
+#if(PETSC_VERSION_MAJOR == 3) && (PETSC_VERSION_MINOR >= 2)
+  VecScatter ctx = _getToAll(V);
+  _try(VecScatterBegin(ctx, V, Vseq, INSERT_VALUES, SCATTER_FORWARD));
+  _try(VecScatterEnd(ctx, V, Vseq, INSERT_VALUES, SCATTER_FORWARD));
+#else
   VecScatter ctx;
   VecScatterCreateToAll(V, &ctx, NULL);
 #if(PETSC_VERSION_MAJOR == 2) && (PETSC_VERSION_MINOR == 3) &&                 \
@@ -261,10 +298,6 @@ void _fillseq(Vec &V, Vec &Vseq)
   VecScatterBegin(ctx, V, Vseq, INSERT_VALUES, SCATTER_FORWARD);
   VecScatterEnd(ctx, V, Vseq, INSERT_VALUES, SCATTER_FORWARD);
 #endif
-
-#if(PETSC_VERSION_MAJOR == 3) && (PETSC_VERSION_MINOR >= 2)
-  VecScatterDestroy(&ctx);
-#else
   VecScatterDestroy(ctx);
 #endif
 }
