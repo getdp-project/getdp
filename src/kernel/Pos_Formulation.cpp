@@ -534,7 +534,29 @@ void Pos_Formulation(struct Formulation *Formulation_P,
     }
   }
 
-  switch(Formulation_P->Type) {
+  // With -local-dofs only rank 0 has the Dofs of the whole mesh: it alone
+  // evaluates what it prints on the mesh, without help from the other ranks,
+  // and the others have nothing to do since only rank 0 prints. The quantities
+  // on regions are integrated by all the ranks on their own elements.
+  bool rootOnly = Dof_UseLocalDofs() && PostSubOperation_P->Type == POP_PRINT &&
+                  PostSubOperation_P->SubType != PRINT_ONREGION;
+  if(rootOnly &&
+     (PostSubOperation_P->Distributed || PostSubOperation_P->StoreInField >= 0 ||
+      PostSubOperation_P->StoreInMeshBasedField >= 0 ||
+      PostSubOperation_P->StoreInRegister >= 0 ||
+      PostSubOperation_P->StoreInVariable))
+    Message::Error("-local-dofs does not handle distributed or stored Print "
+                   "other than OnRegion yet");
+  Dof_SetPostOnRootOnly(rootOnly);
+
+  // the messages of the evaluation are only reached by rank 0
+  const bool previousLocalCpu = Message::GetLocalCpu();
+  if(rootOnly) Message::SetLocalCpu(true);
+
+  if(rootOnly && Message::GetCommRank()) {
+    // nothing to evaluate
+  }
+  else switch(Formulation_P->Type) {
   case FEMEQUATION:
     Pos_FemFormulation(Formulation_P, NCPQ_P, CPQ_P, Order, PostSubOperation_P);
     break;
@@ -545,6 +567,8 @@ void Pos_Formulation(struct Formulation *Formulation_P,
     Message::Error("Unknown Type for Formulation (%s)", Formulation_P->Name);
     break;
   }
+
+  Message::SetLocalCpu(previousLocalCpu);
 
   Flag_GMSH_VERSION = oldVersion;
 

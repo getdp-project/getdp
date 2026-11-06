@@ -152,6 +152,7 @@ void LinAlg_GetColumnInMatrix(gMatrix *M, int col, gVector *V1);
 void LinAlg_SetScalar(gScalar *S, double *d);
 void LinAlg_SetVector(gVector *V, double *v);
 void LinAlg_SetScalarInVector(gScalar *S, gVector *V, int i);
+void LinAlg_SetScalarInVectorOffProcess(gScalar *S, gVector *V, int i);
 void LinAlg_SetDoubleInVector(double d, gVector *V, int i);
 void LinAlg_SetComplexInVector(double d1, double d2, gVector *V, int i, int j);
 void LinAlg_SetScalarInMatrix(gScalar *S, gMatrix *M, int i, int j);

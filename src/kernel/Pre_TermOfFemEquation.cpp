@@ -141,6 +141,12 @@ void Pre_TermOfFemEquation(struct Element *Element,
   if(QuantityStorageEqu_P->NumLastElementForEquDefinition != Element->Num) {
     QuantityStorageEqu_P->NumLastElementForEquDefinition = Element->Num;
 
+    if(QuantityStorageEqu_P->TypeQuantity == INTEGRALQUANTITY &&
+       Dof_UseLocalDofs()) {
+      Message::Error("-local-dofs does not handle integral quantities yet");
+      return;
+    }
+
     for(i = 0; i < QuantityStorageEqu_P->NbrElementaryBasisFunction; i++) {
       bool NonLocal = (QuantityStorageEqu_P->TypeQuantity == INTEGRALQUANTITY) ||
                  IsEquationNonLocal(

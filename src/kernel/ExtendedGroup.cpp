@@ -16,6 +16,7 @@
 #include "GeoData.h"
 #include "Get_Geometry.h"
 #include "Message.h"
+#include "DofData.h"
 
 extern struct Problem Problem_S;
 
@@ -129,6 +130,9 @@ int Check_IsEntityInExtendedGroup(struct Group *Group_P, int Entity, int Flag)
 
 void Generate_ExtendedGroup(struct Group *Group_P)
 {
+  // with -local-dofs only the ranks having an element that needs it get here
+  MessageLocalCpu localCpu(Dof_UseLocalDofs());
+
   ClearEntityBitmaps();
 
   // struct Group * RegionGroup_P = NULL;

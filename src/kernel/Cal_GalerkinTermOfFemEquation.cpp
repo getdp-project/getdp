@@ -713,7 +713,7 @@ void Cal_GalerkinTermOfFemEquation(struct Element *Element,
 
     // TODO: this could (should?) be remove once -sparsity has been validated
 #if 1
-    if(Message::GetCommSize() > 1) {
+    if(Message::GetCommSize() > 1 && Current.NonLocalRows != 2) {
       // if all the equations lead to matrix entries and they are all outside
       // the range owned by the current process, skip the assembly altogether:
       int skip = 0, low, high;

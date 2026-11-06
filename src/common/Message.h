@@ -24,6 +24,7 @@ class Message {
 private:
   // current cpu number and total number of cpus
   static int _commRank, _commSize, _isCommWorld;
+  static bool _localCpu;
   // error count
   static int _warningCount, _errorCount;
   // last PETSc error code
@@ -67,6 +68,10 @@ public:
   static void Barrier();
   static int GetIsCommWorld() { return _isCommWorld; }
   static void SetIsCommWorld(int val) { _isCommWorld = val; }
+  // when true, Cpu() (hence Info() with _infoCpu) doesn't reduce its values over
+  // the ranks, for messages that not all the ranks reach
+  static bool GetLocalCpu() { return _localCpu; }
+  static void SetLocalCpu(bool val) { _localCpu = val; }
   static int GetNumThreads();
   static void SetNumThreads(int num);
   static int GetMaxThreads();
@@ -148,6 +153,19 @@ public:
   typedef std::map<std::string, std::vector<std::string> > cmap;
   static void ExchangeOnelabParameter(Constant *c, fmap &fopt, cmap &copt);
   static void UndefineOnelabParameter(const std::string &name);
+};
+
+// in this scope, messages may be reached by only some of the ranks
+class MessageLocalCpu {
+private:
+  bool _previous;
+
+public:
+  MessageLocalCpu(bool on = true) : _previous(Message::GetLocalCpu())
+  {
+    if(on) Message::SetLocalCpu(true);
+  }
+  ~MessageLocalCpu() { Message::SetLocalCpu(_previous); }
 };
 
 #endif

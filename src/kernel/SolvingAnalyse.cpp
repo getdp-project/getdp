@@ -7,6 +7,7 @@
 //   Johan Gyselinck
 //   Ruth Sabariego
 
+#include <algorithm>
 #include <string.h>
 #include "ProData.h"
 #include "GeoData.h"
@@ -25,7 +26,7 @@
 extern struct Problem Problem_S;
 extern struct CurrentData Current;
 
-extern int Flag_PRE, Flag_CAL, Flag_POS;
+extern int Flag_PRE, Flag_CAL, Flag_POS, Flag_SPARSITY_PATTERN;
 extern int Flag_RESTART;
 
 extern char *Name_Generic;
@@ -117,6 +118,46 @@ void Treatment_Preprocessing(int Nbr_DefineSystem, struct DofData *DofData_P0,
 
     Current.NbrHar = Current.DofData->NbrHar;
 
+    if(Dof_UseLocalDofs()) {
+      // the mesh partitions decide everything: one for each rank, and no
+      // element changing partition during the computation
+      int maxPartition = 0;
+      for(int e = 0; e < Geo_GetNbrGeoElements(); e++)
+        maxPartition = std::max(maxPartition, Geo_GetGeoElement(e)->Partition);
+      if(maxPartition != Message::GetCommSize() || !Flag_SPARSITY_PATTERN ||
+         Current.GeoData->HasMovingBand) {
+        Message::Error("-local-dofs needs -sparsity, a mesh with one partition "
+                       "for each of the %d ranks (it has %d) and no moving band",
+                       Message::GetCommSize(), maxPartition);
+        return;
+      }
+      // The edges and facets are numbered when they are first met, and these
+      // numbers identify their Dofs: all the ranks must number them all in the
+      // same order, before they only treat the elements of their partition.
+      bool edges = false, facets = false;
+      for(int g = 0; g < List_Nbr(Problem_S.Group); g++) {
+        switch(((struct Group *)List_Pointer(Problem_S.Group, g))->FunctionType) {
+        case EDGESOF:
+        case EDGESOFTREEIN:
+        case DUALEDGESOF:
+        case BOUNDARYOFDUALEDGESOF:
+        case GROUPSOFEDGESOF:
+        case GROUPSOFEDGESONNODESOF: edges = true; break;
+        case FACETSOF:
+        case FACETSOFTREEIN:
+        case DUALFACETSOF:
+        case BOUNDARYOFDUALFACETSOF:
+        case GROUPSOFFACETSOF: edges = facets = true; break;
+        default: break;
+        }
+      }
+      for(int e = 0; edges && e < Geo_GetNbrGeoElements(); e++) {
+        struct Geo_Element *ge = Geo_GetGeoElement(e);
+        if(ge->NbrEdges == 0) Geo_CreateEdgesOfElement(ge);
+        if(facets && ge->NbrFacets == 0) Geo_CreateFacetsOfElement(ge);
+      }
+    }
+
     Nbr_Formulation = List_Nbr(DefineSystem_P->FormulationIndex);
 
     for(k = 0; k < Nbr_Formulation; k++) {
@@ -131,8 +172,13 @@ void Treatment_Preprocessing(int Nbr_DefineSystem, struct DofData *DofData_P0,
 
     Dof_NumberUnknownDof();
 
-    Message::Info(-3, "System %d/%d: %d Dofs", i + 1, Nbr_DefineSystem,
-                  DofData_P->NbrDof);
+    if(Dof_UseLocalDofs())
+      Message::Info(-3, "System %d/%d: %d Dofs, %d defined on this rank", i + 1,
+                    Nbr_DefineSystem, DofData_P->NbrDof,
+                    Tree_Nbr(DofData_P->DofTree));
+    else
+      Message::Info(-3, "System %d/%d: %d Dofs", i + 1, Nbr_DefineSystem,
+                    DofData_P->NbrDof);
   }
 }
 
@@ -537,6 +583,8 @@ void SolvingAnalyse()
                             GeoData_P0);
     if(Message::GetInfoCpu()) Message::MarkOperationCpu("");
 
+    if(Dof_UseLocalDofs()) Dof_SyncPreResolutions(PreResolutionIndex_L);
+
     Nbr_PreResolution = List_Nbr(PreResolutionIndex_L);
 
     for(i = 0; i < Nbr_PreResolution; i++) {
@@ -611,6 +659,11 @@ void SolvingAnalyse()
       Message::Direct("E n d   P r e - R e s o l u t i o n  (%d/%d)", i + 1,
                       Nbr_PreResolution);
     }
+
+    // with -local-dofs rank 0 only has all the Dofs after this
+    if(Dof_UseLocalDofs())
+      for(i = 0; i < Nbr_DefineSystem; i++)
+        Dof_TransferDofTreeToList(DofData_P0 + i);
 
     Dof_OpenFile(DOF_PRE, Name_Generic, "wb+");
     Dof_WriteFilePRE0(Num_Resolution, Resolution_P->Name, Nbr_DefineSystem);

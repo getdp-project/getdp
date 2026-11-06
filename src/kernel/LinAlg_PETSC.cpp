@@ -315,6 +315,7 @@ static void _flushNonLocalRows(Mat M)
 // Current.NonLocalRows); otherwise each rank adds its own rows
 static bool _addsRow(bool local, int i)
 {
+  if(Current.NonLocalRows == 2) return true; // -local-dofs: all the rows
   if(!Current.NonLocalRows || !Dof_IsNonLocalEquation(i)) return local;
   return Current.NonLocalRows > 0;
 }
@@ -1050,6 +1051,12 @@ void LinAlg_SetScalarInVector(gScalar *S, gVector *V, int i)
   _try(VecSetValues(V->V, 1, &ti, &S->s, INSERT_VALUES));
 }
 
+void LinAlg_SetScalarInVectorOffProcess(gScalar *S, gVector *V, int i)
+{
+  PetscInt ti = i;
+  _try(VecSetValues(V->V, 1, &ti, &S->s, INSERT_VALUES));
+}
+
 void LinAlg_SetDoubleInVector(double d, gVector *V, int i)
 {
   if(!_isInLocalRange(V, i)) return;
@@ -1720,17 +1727,49 @@ static bool _getAMSEdges(AMSEdges &a)
       return false;
     }
   }
+  // with -local-dofs the rows of the other ranks' edges are not known here
+  std::unordered_map<int, int> rows;
+  const bool localDofs = Dof_UseLocalDofs();
+  if(localDofs) {
+    std::vector<int> mine;
+    for(int i = 0; i < List_Nbr(DofData_P->DofList); i++) {
+      struct Dof *Dof_P = (struct Dof *)List_Pointer(DofData_P->DofList, i);
+      if(Dof_P->Type == DOF_UNKNOWN || Dof_P->Type == DOF_UNKNOWN_INIT) {
+        mine.push_back(Dof_P->Entity);
+        mine.push_back(Dof_P->Case.Unknown.NumDof - 1);
+      }
+    }
+    int np = Message::GetCommSize(), nb = (int)mine.size();
+    std::vector<int> nbs(np), displs(np, 0);
+    MPI_Allgather(&nb, 1, MPI_INT, &nbs[0], 1, MPI_INT, MPI_COMM_WORLD);
+    long long total = nbs[0];
+    for(int i = 1; i < np; i++) {
+      displs[i] = displs[i - 1] + nbs[i - 1];
+      total += nbs[i];
+    }
+    std::vector<int> all(total + 1);
+    MPI_Allgatherv(mine.empty() ? NULL : &mine[0], nb, MPI_INT, &all[0], &nbs[0],
+                   &displs[0], MPI_INT, MPI_COMM_WORLD);
+    rows.reserve(total / 2);
+    for(long long i = 0; i + 1 < total; i += 2) rows[all[i]] = all[i + 1];
+  }
   List_T *E = Tree2List(CurrentGeoData->EdgesXNodes);
   for(int i = 0; i < List_Nbr(E); i++) {
     struct Entity2XEntity1 *e = (struct Entity2XEntity1 *)List_Pointer(E, i);
     if(e->NbrEntities != 2) continue;
-    struct Dof *Dof_P = Dof_GetDofStruct(DofData_P, NumType, e->Num, 0);
     AMSEdges::Edge ed;
     ed.num = e->Num;
-    ed.row = (Dof_P && (Dof_P->Type == DOF_UNKNOWN ||
-                        Dof_P->Type == DOF_UNKNOWN_INIT)) ?
-               Dof_P->Case.Unknown.NumDof - 1 :
-               -1;
+    if(localDofs) {
+      auto it = rows.find(e->Num);
+      ed.row = (it == rows.end()) ? -1 : it->second;
+    }
+    else {
+      struct Dof *Dof_P = Dof_GetDofStruct(DofData_P, NumType, e->Num, 0);
+      ed.row = (Dof_P && (Dof_P->Type == DOF_UNKNOWN ||
+                          Dof_P->Type == DOF_UNKNOWN_INIT)) ?
+                 Dof_P->Case.Unknown.NumDof - 1 :
+                 -1;
+    }
     for(int j = 0; j < 2; j++) {
       int num = abs(e->NumEntities[j]);
       ed.s[j] = e->NumEntities[j] > 0 ? 1 : -1;

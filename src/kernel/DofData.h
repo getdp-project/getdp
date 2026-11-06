@@ -211,6 +211,12 @@ void Dof_DefineLinkCplxDof(int D1, int D2, int NbrHar, double Value[],
                            int D2_Link);
 void Dof_DefineUnknownDof(int D1, int D2, int NbrHar, int PartitionOrNonLocal = 0);
 bool Dof_IsNonLocalEquation(int n);
+bool Dof_UseLocalDofs();
+void Dof_SyncPreResolutions(List_T *PreResolutionInfo_L);
+bool Dof_IsPartitionOfThisRank(int partition);
+void Dof_ExchangeSparsityPattern();
+bool Dof_GetPostOnRootOnly();
+void Dof_SetPostOnRootOnly(bool rootOnly);
 void Dof_DefineAssociateDof(int E1, int E2, int D1, int D2, int NbrHar,
                             int init, double *Val);
 void Dof_DefineUnknownDofFromSolveOrInitDof(struct DofData **DofData_P);

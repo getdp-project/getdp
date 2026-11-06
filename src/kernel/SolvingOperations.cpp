@@ -459,6 +459,7 @@ void Generate_System(struct DefineSystem *DefineSystem_P,
       Init_DofDataInDefineQuantity(DefineSystem_P, DofData_P0, Formulation_P);
       Treatment_Formulation(Formulation_P);
     }
+    Dof_ExchangeSparsityPattern();
     // recreate matrices with exact sparsity pattern - TODO: A1, A2, A3
     ZeroMatrix(&Current.DofData->A, &Current.DofData->Solver,
                Current.DofData->NbrDof);
@@ -1326,6 +1327,9 @@ void Treatment_Operation(struct Resolution *Resolution_P, List_T *Operation_L,
                              &DofData_P, Resolution2_P);
       if(!Operation_P->Case.Copy.useList || !Operation_P->Case.Copy.to) {
         Message::Error("Degrees of freedom can only be copied to a list");
+      }
+      else if(Dof_UseLocalDofs()) {
+        Message::Error("-local-dofs does not handle CopyDegreesOfFreedom");
       }
       else {
         std::vector<double> v;
@@ -2239,6 +2243,9 @@ void Treatment_Operation(struct Resolution *Resolution_P, List_T *Operation_L,
             Treatment_Formulation(Formulation_P);
           }
 
+          if(Dof_UseLocalDofs())
+            Message::Error("-local-dofs does not handle multi-harmonic moving "
+                           "problems");
           DofList_MH_moving = Tree2List(DofTree_MH_moving);
           Tree_Delete(DofTree_MH_moving);
 
@@ -2707,7 +2714,11 @@ void Treatment_Operation(struct Resolution *Resolution_P, List_T *Operation_L,
            espace fonctionnel. */
         DofData2_P = DofData_P0 + DefineSystem_P->DestinationSystemIndex;
 
-        if(DofData_P->NbrAnyDof != DofData2_P->NbrAnyDof) {
+        // with -local-dofs only rank 0 has all the Dofs of the two systems,
+        // and it sets the values of all the ranks
+        const bool localDofs = Dof_UseLocalDofs();
+        const bool transferHere = !localDofs || !Message::GetCommRank();
+        if(transferHere && DofData_P->NbrAnyDof != DofData2_P->NbrAnyDof) {
           Message::Error("Dimensions do not match for TransferSolution");
           break;
         }
@@ -2732,11 +2743,17 @@ void Treatment_Operation(struct Resolution *Resolution_P, List_T *Operation_L,
 
               if((Dof_P = (struct Dof *)List_PQuery(DofData2_P->DofList, &Dof,
                                                     fcmp_Dof))) {
-                LinAlg_SetScalarInVector(&tmp, &Solution_S.x,
-                                         Dof_P->Case.Unknown.NumDof - 1);
+                if(localDofs) {
+                  if(transferHere)
+                    LinAlg_SetScalarInVectorOffProcess(
+                      &tmp, &Solution_S.x, Dof_P->Case.Unknown.NumDof - 1);
+                }
+                else
+                  LinAlg_SetScalarInVector(&tmp, &Solution_S.x,
+                                           Dof_P->Case.Unknown.NumDof - 1);
                 Dof_P->Type = DOF_UNKNOWN;
               }
-              else {
+              else if(transferHere) {
                 Message::Warning("Unknown Dof in TransferSolution");
               }
             }
@@ -3205,6 +3222,10 @@ void Treatment_Operation(struct Resolution *Resolution_P, List_T *Operation_L,
       DofData2_P =
         DofData_P0 + Operation_P->Case.FourierTransform2.DefineSystemIndex[1];
 
+      if(Dof_UseLocalDofs()) {
+        Message::Error("-local-dofs does not handle FourierTransform");
+        break;
+      }
       NbrHar1 = DofData_P->NbrHar;
       NbrDof1 = List_Nbr(DofData_P->DofList);
       NbrHar2 = DofData2_P->NbrHar;

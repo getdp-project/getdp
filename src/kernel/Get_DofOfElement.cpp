@@ -593,6 +593,17 @@ void Get_CodesOfElement(struct FunctionSpace *FunctionSpace_P,
         ((Dof_P = Dof_GetDofStruct(FunctionSpace_P->DofData, Code_BasisFunction,
                                    abs(Num_Entity[i_Entity]), 0)) != NULL);
 
+      // with -local-dofs a missing Dof must not be mistaken for a Dof that does
+      // not exist, which would silently give a wrong value
+      if(!CodeExist && TreatmentStatus == STATUS_POS && Dof_UseLocalDofs() &&
+         Message::GetCommRank() && Current.Element && Current.Element->GeoElement &&
+         !Dof_IsPartitionOfThisRank(Current.Element->GeoElement->Partition)) {
+        Message::Error("-local-dofs: rank %d evaluates a quantity on element %d "
+                       "of another rank", Message::GetCommRank(),
+                       Current.Element->GeoElement->Num);
+        return;
+      }
+
       if(Flag_SubSpace && CodeExist && TreatmentStatus != STATUS_POS)
         CodeExist = Check_IsEntityInExtendedGroup(GroupEntity_P,
                                                   abs(Num_Entity[i_Entity]), 0);

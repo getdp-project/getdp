@@ -64,6 +64,7 @@ int Message::_commRank = 0;
 int Message::_commSize = 1;
 int Message::_isCommWorld =
   1; // is the communicator set to WORLD (==1) or SELF (!=1)
+bool Message::_localCpu = false;
 int Message::_errorCount = 0;
 int Message::_lastPETScError = 0;
 int Message::_exitOnError = 0;
@@ -528,7 +529,7 @@ void Message::Cpu(int level, bool printDate, bool printWallTime, bool printCpu,
   double sum[2] = {val[0], val[1]};
 
 #if defined(HAVE_PETSC)
-  if(_commSize > 1 && _isCommWorld) {
+  if(_commSize > 1 && _isCommWorld && !_localCpu) {
     MPI_Reduce(val, min, 2, MPI_DOUBLE, MPI_MIN, 0, MPI_COMM_WORLD);
     MPI_Reduce(val, max, 2, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
     MPI_Reduce(val, sum, 2, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);

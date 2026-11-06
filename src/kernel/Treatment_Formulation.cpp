@@ -7,6 +7,7 @@
 //   Louis Denis
 //
 
+#include <unordered_set>
 #include "ProData.h"
 #include "GeoData.h"
 #include "DofData.h"
@@ -438,6 +439,10 @@ void Treatment_FemFormulation_LocalTerm(
 
 void Treatment_FemFormulation(struct Formulation *Formulation_P)
 {
+  // with -local-dofs the messages of the element loop (e.g. the addition of a
+  // pre-resolution) are only printed by the ranks having the relevant elements
+  MessageLocalCpu localCpu(Dof_UseLocalDofs());
+
   struct QuantityStorage *QuantityStorage_P0;
   struct QuantityStorage *QuantityStorage_P = nullptr;
   struct QuantityStorage QuantityStorage_S, QuantityStorage_GlobalEqu_S;
@@ -557,6 +562,9 @@ void Treatment_FemFormulation(struct Formulation *Formulation_P)
 
   Message::ResetProgressMeter();
 
+  const bool localDofs = Dof_UseLocalDofs();
+  const bool rootTreatsAll =
+    localDofs && TreatmentStatus == STATUS_CST && !Message::GetCommRank();
   bool partitioned = false;
   if(Message::GetCommSize() > 1 && Current.DofData->ElementRanks->size() &&
      Current.TypeAssembly != ASSEMBLY_SPARSITY_PATTERN) {
@@ -586,6 +594,11 @@ void Treatment_FemFormulation(struct Formulation *Formulation_P)
       Formulation_P->ElementListEquationTermIDsIsInit = 0;
     }
   }
+
+  std::unordered_set<int> regionsOfEquationTerms;
+  if(Formulation_P->RegionToEquationTermIDsIsInit == 0)
+    Formulation_P->RegionToEquationTermIDs =
+      new std::unordered_map<int, std::vector<int> >();
 
   for(int i_Element = 0; i_Element < Nbr_Element; i_Element++) {
     if(Generate_Group) {
@@ -652,13 +665,10 @@ void Treatment_FemFormulation(struct Formulation *Formulation_P)
     // when there are more equation terms than elements (!) - yes that can
     // happen e.g. in CERN's use of thin shell formulations ;-)
 
-    if(Formulation_P->RegionToEquationTermIDsIsInit == 0) {
-      if(i_Element == 0) {
-        Formulation_P->RegionToEquationTermIDs =
-          new std::unordered_map<int, std::vector<int> >();
-      }
+    if(Formulation_P->RegionToEquationTermIDsIsInit == 0 &&
+       regionsOfEquationTerms.insert(Element.Region).second) {
       // trick is to perform one dummy assembly path here to detect which
-      // equation terms are relevant
+      // equation terms are relevant (this only depends on the region)
       for(int i_EquTerm = 0; i_EquTerm < Nbr_EquationTerm; i_EquTerm++) {
         EquationTerm_P = EquationTerm_P0 + i_EquTerm;
 
@@ -687,6 +697,18 @@ void Treatment_FemFormulation(struct Formulation *Formulation_P)
       // this element list is independent of Element.Region, so we only need to
       // init it once
       Formulation_P->ElementListEquationTermIDsIsInit = 1;
+    }
+
+    if(localDofs) {
+      // with -local-dofs each element is treated by the rank of its partition,
+      // the only one to have all its Dofs (rank 0 has them all and updates the
+      // constraints of all the Dofs); it adds all its rows, whoever owns them.
+      // This is after the setup above, which must see all the regions: all the
+      // elements are not treated in all the passes.
+      if(!rootTreatsAll &&
+         !Dof_IsPartitionOfThisRank(Element.GeoElement->Partition))
+        continue;
+      Current.NonLocalRows = 2;
     }
 
     // first Loop for all equation terms with GroupIn_P->TYPE != ELEMENTLIST it

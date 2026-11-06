@@ -353,9 +353,15 @@ void Pos_GlobalQuantity(struct PostQuantity *PostQuantity_P,
       // if partitioned, the elements of the support are split over the ranks
       // in a round-robin fashion, so that they are evenly distributed even
       // when the support is unevenly distributed over the mesh partitions
-      if(partitioned &&
-         (int)(i % Message::GetCommSize()) != Message::GetCommRank())
-        continue;
+      // (with -local-dofs each rank only has the Dofs of its mesh partition)
+      if(partitioned) {
+        if(Dof_UseLocalDofs()) {
+          if(!Dof_IsPartitionOfThisRank(Geo_GetGeoElement(i_Element)->Partition))
+            continue;
+        }
+        else if((int)(i % Message::GetCommSize()) != Message::GetCommRank())
+          continue;
+      }
 
       Element.GeoElement = Geo_GetGeoElement(i_Element);
       Element.Num = Element.GeoElement->Num;
@@ -464,6 +470,10 @@ void Cal_PostQuantity(struct PostQuantity *PostQuantity_P,
                       Message::GetCommSize());
     }
   }
+#if !defined(HAVE_MPI)
+  partitioned = false;
+#endif
+  if(Dof_UseLocalDofs()) partitioned = !Dof_GetPostOnRootOnly();
 #if !defined(HAVE_MPI)
   partitioned = false;
 #endif

@@ -302,6 +302,7 @@ void LinAlg_SetVector(gVector *V, double *v)
 }
 
 void LinAlg_SetScalarInVector(gScalar *S, gVector *V, int i) { V->V[i] = S->s; }
+void LinAlg_SetScalarInVectorOffProcess(gScalar *S, gVector *V, int i) { V->V[i] = S->s; }
 
 void LinAlg_SetDoubleInVector(double d, gVector *V, int i) { V->V[i] = d; }
 
