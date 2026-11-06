@@ -82,9 +82,6 @@ double Message::_cpuOpLastCpu = 0.;
 double Message::_cpuOpLastWall = 0.;
 GmshClient *Message::_client = 0;
 onelab::client *Message::_onelabClient = 0;
-#if !defined(HAVE_GMSH) // the Gmsh library defines it (with ONELAB enabled)
-onelab::server *onelab::server::_server = 0;
-#endif
 
 #if defined(HAVE_NO_VSNPRINTF)
 static int vsnprintf(char *str, size_t size, const char *fmt, va_list ap)
