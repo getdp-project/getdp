@@ -210,6 +210,7 @@ void Dof_DefineLinkDof(int D1, int D2, int NbrHar, double Value[], int D2_Link);
 void Dof_DefineLinkCplxDof(int D1, int D2, int NbrHar, double Value[],
                            int D2_Link);
 void Dof_DefineUnknownDof(int D1, int D2, int NbrHar, int PartitionOrNonLocal = 0);
+bool Dof_IsNonLocalEquation(int n);
 void Dof_DefineAssociateDof(int E1, int E2, int D1, int D2, int NbrHar,
                             int init, double *Val);
 void Dof_DefineUnknownDofFromSolveOrInitDof(struct DofData **DofData_P);

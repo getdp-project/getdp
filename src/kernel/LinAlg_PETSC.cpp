@@ -13,6 +13,7 @@
 #include <map>
 #include <set>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 #include <algorithm>
 #include <complex>
@@ -217,6 +218,115 @@ static int _getLocalSize(int n = -1)
     Message::Debug("localsize = %d", s);
   }
   return s;
+}
+
+// The rows of the non-local equations (global quantities, e.g. circuit
+// unknowns coupled to all the edges of a conductor) can have millions of
+// entries, which the element loop adds a few at a time in mesh order. Inserted
+// directly, each new column shifts the rest of the row in the AIJ storage, so
+// filling such a row costs its length squared. Their contributions are thus
+// accumulated here, sorted by column, and inserted in one call per row when the
+// matrix is assembled.
+static std::map<Mat, std::unordered_map<int, std::map<int, PetscScalar> > >
+  _nonLocalRows;
+
+// Collective: the rows are first gathered on their owner, since the pieces of a
+// row sent through the PETSc stash would be inserted one after the other, each
+// new column again shifting the rest of the row
+static void _flushNonLocalRows(Mat M)
+{
+  MPI_Comm comm = PetscObjectComm((PetscObject)M);
+  int size, rank;
+  MPI_Comm_size(comm, &size);
+  MPI_Comm_rank(comm, &rank);
+  auto &rows = _nonLocalRows[M];
+  if(size > 1) {
+    const PetscInt *ranges;
+    _try(MatGetOwnershipRanges(M, &ranges));
+    std::vector<std::vector<PetscInt> > idx(size);
+    std::vector<std::vector<PetscScalar> > val(size);
+    for(auto it = rows.begin(); it != rows.end();) {
+      int owner = std::upper_bound(ranges, ranges + size + 1, it->first) -
+                  ranges - 1;
+      if(owner == rank) {
+        ++it;
+        continue;
+      }
+      for(auto &c : it->second) {
+        idx[owner].push_back(it->first);
+        idx[owner].push_back(c.first);
+        val[owner].push_back(c.second);
+      }
+      it = rows.erase(it);
+    }
+    std::vector<int> nsend(size), nrecv(size), sdispl(size), rdispl(size);
+    for(int i = 0; i < size; i++) nsend[i] = (int)val[i].size();
+    MPI_Alltoall(nsend.data(), 1, MPI_INT, nrecv.data(), 1, MPI_INT, comm);
+    int ns = 0, nr = 0;
+    std::vector<PetscInt> sidx, ridx;
+    std::vector<PetscScalar> sval, rval;
+    for(int i = 0; i < size; i++) {
+      sdispl[i] = ns;
+      rdispl[i] = nr;
+      ns += nsend[i];
+      nr += nrecv[i];
+    }
+    sidx.reserve(2 * (std::size_t)ns);
+    sval.reserve(ns);
+    for(int i = 0; i < size; i++) {
+      sidx.insert(sidx.end(), idx[i].begin(), idx[i].end());
+      sval.insert(sval.end(), val[i].begin(), val[i].end());
+      std::vector<PetscInt>().swap(idx[i]);
+      std::vector<PetscScalar>().swap(val[i]);
+    }
+    ridx.resize(2 * (std::size_t)nr);
+    rval.resize(nr);
+    MPI_Alltoallv(sval.data(), nsend.data(), sdispl.data(), MPIU_SCALAR,
+                  rval.data(), nrecv.data(), rdispl.data(), MPIU_SCALAR, comm);
+    // the indices come in pairs
+    for(int i = 0; i < size; i++) {
+      nsend[i] *= 2;
+      nrecv[i] *= 2;
+      sdispl[i] *= 2;
+      rdispl[i] *= 2;
+    }
+    MPI_Alltoallv(sidx.data(), nsend.data(), sdispl.data(), MPIU_INT,
+                  ridx.data(), nrecv.data(), rdispl.data(), MPIU_INT, comm);
+    for(int i = 0; i < nr; i++) rows[ridx[2 * i]][ridx[2 * i + 1]] += rval[i];
+  }
+  std::vector<PetscInt> cols;
+  std::vector<PetscScalar> vals;
+  for(auto &row : rows) {
+    cols.clear();
+    vals.clear();
+    for(auto &c : row.second) {
+      cols.push_back(c.first);
+      vals.push_back(c.second);
+    }
+    PetscInt ti = row.first;
+    _try(MatSetValues(M, 1, &ti, (PetscInt)cols.size(), cols.data(),
+                      vals.data(), ADD_VALUES));
+  }
+  _nonLocalRows.erase(M);
+}
+
+// In a partitioned assembly, only one rank adds the contributions of an element
+// to the non-local rows, which can thus belong to another rank (see
+// Current.NonLocalRows); otherwise each rank adds its own rows
+static bool _addsRow(bool local, int i)
+{
+  if(!Current.NonLocalRows || !Dof_IsNonLocalEquation(i)) return local;
+  return Current.NonLocalRows > 0;
+}
+
+static void _addInMatrix(gMatrix *M, int i, int j, PetscScalar v)
+{
+  if(Dof_IsNonLocalEquation(i)) {
+    _nonLocalRows[M->M][i][j] += v;
+    return;
+  }
+  PetscInt ti = i, tj = j;
+  _try(MatSetValues(M->M, 1, &ti, 1, &tj, &v, ADD_VALUES));
 }
 
 // sequential copies of the distributed vectors (see _fillseq below)
@@ -520,6 +630,7 @@ void LinAlg_DestroyVector(gVector *V)
 
 void LinAlg_DestroyMatrix(gMatrix *M)
 {
+  _nonLocalRows.erase(M->M);
 #if(PETSC_VERSION_MAJOR == 3) && (PETSC_VERSION_MINOR >= 2)
   _try(MatDestroy(&M->M));
 #else
@@ -571,7 +682,11 @@ void LinAlg_ZeroVector(gVector *V)
   }
 }
 
-void LinAlg_ZeroMatrix(gMatrix *M) { _try(MatZeroEntries(M->M)); }
+void LinAlg_ZeroMatrix(gMatrix *M)
+{
+  _nonLocalRows.erase(M->M);
+  _try(MatZeroEntries(M->M));
+}
 
 void LinAlg_ScanScalar(FILE *file, gScalar *S)
 {
@@ -1031,7 +1146,7 @@ void LinAlg_DummyVector(gVector *V)
 
 void LinAlg_AddScalarInVector(gScalar *S, gVector *V, int i)
 {
-  if(!_isInLocalRange(V, i)) return;
+  if(!_addsRow(_isInLocalRange(V, i), i)) return;
 
   if(Current.DofData->DummyDof)
     if(Current.DofData->DummyDof[i] == 1) return;
@@ -1042,7 +1157,7 @@ void LinAlg_AddScalarInVector(gScalar *S, gVector *V, int i)
 
 void LinAlg_AddDoubleInVector(double d, gVector *V, int i)
 {
-  if(!_isInLocalRange(V, i)) return;
+  if(!_addsRow(_isInLocalRange(V, i), i)) return;
 
   if(Current.DofData->DummyDof)
     if(Current.DofData->DummyDof[i] == 1) return;
@@ -1063,18 +1178,18 @@ void LinAlg_AddComplexInVector(double d1, double d2, gVector *V, int i, int j)
   }
 
 #if defined(PETSC_USE_COMPLEX)
-  if(_isInLocalRange(V, i) && iok && jok) {
+  if(_addsRow(_isInLocalRange(V, i), i) && iok && jok) {
     PetscInt ti = i;
     tmp = d1 + PETSC_i * d2;
     _try(VecSetValues(V->V, 1, &ti, &tmp, ADD_VALUES));
   }
 #else
   PetscInt ti = i, tj = j;
-  if(_isInLocalRange(V, i) && iok) {
+  if(_addsRow(_isInLocalRange(V, i), i) && iok) {
     tmp = d1;
     _try(VecSetValues(V->V, 1, &ti, &tmp, ADD_VALUES));
   }
-  if(_isInLocalRange(V, j) && jok) {
+  if(_addsRow(_isInLocalRange(V, j), j) && jok) {
     tmp = d2;
     _try(VecSetValues(V->V, 1, &tj, &tmp, ADD_VALUES));
   }
@@ -1083,7 +1198,7 @@ void LinAlg_AddComplexInVector(double d1, double d2, gVector *V, int i, int j)
 
 void LinAlg_AddScalarInMatrix(gScalar *S, gMatrix *M, int i, int j)
 {
-  if(!_isInLocalRange(M, i)) return;
+  if(!_addsRow(_isInLocalRange(M, i), i)) return;
 
   if(Current.DofData->DummyDof)
     if((Current.DofData->DummyDof[i] == 1 ||
@@ -1091,13 +1206,12 @@ void LinAlg_AddScalarInMatrix(gScalar *S, gMatrix *M, int i, int j)
        (i != j))
       return;
 
-  PetscInt ti = i, tj = j;
-  _try(MatSetValues(M->M, 1, &ti, 1, &tj, &S->s, ADD_VALUES));
+  _addInMatrix(M, i, j, S->s);
 }
 
 void LinAlg_AddDoubleInMatrix(double d, gMatrix *M, int i, int j)
 {
-  if(!_isInLocalRange(M, i)) return;
+  if(!_addsRow(_isInLocalRange(M, i), i)) return;
 
   if(Current.DofData->DummyDof)
     if((Current.DofData->DummyDof[i] == 1 ||
@@ -1105,9 +1219,7 @@ void LinAlg_AddDoubleInMatrix(double d, gMatrix *M, int i, int j)
        (i != j))
       return;
 
-  PetscScalar tmp = d;
-  PetscInt ti = i, tj = j;
-  _try(MatSetValues(M->M, 1, &ti, 1, &tj, &tmp, ADD_VALUES));
+  _addInMatrix(M, i, j, d);
 }
 
 void LinAlg_AddComplexInMatrix(double d1, double d2, gMatrix *M, int i, int j,
@@ -1115,29 +1227,21 @@ void LinAlg_AddComplexInMatrix(double d1, double d2, gMatrix *M, int i, int j,
 {
   PetscScalar tmp;
 #if defined(PETSC_USE_COMPLEX)
-  PetscInt ti = i, tj = j;
-  if(_isInLocalRange(M, i)) {
+  if(_addsRow(_isInLocalRange(M, i), i)) {
     tmp = d1 + PETSC_i * d2;
-    _try(MatSetValues(M->M, 1, &ti, 1, &tj, &tmp, ADD_VALUES));
+    _addInMatrix(M, i, j, tmp);
   }
 #else
-  PetscInt ti = i, tj = j, tk = k, tl = l;
+  bool iok = _addsRow(_isInLocalRange(M, i), i);
+  bool kok = _addsRow(_isInLocalRange(M, k), k);
   if(d1) {
     tmp = d1;
-    if(_isInLocalRange(M, i))
-      _try(MatSetValues(M->M, 1, &ti, 1, &tj, &tmp, ADD_VALUES));
-    if(_isInLocalRange(M, k))
-      _try(MatSetValues(M->M, 1, &tk, 1, &tl, &tmp, ADD_VALUES));
+    if(iok) _addInMatrix(M, i, j, tmp);
+    if(kok) _addInMatrix(M, k, l, tmp);
   }
   if(d2) {
-    if(_isInLocalRange(M, i)) {
-      tmp = -d2;
-      _try(MatSetValues(M->M, 1, &ti, 1, &tl, &tmp, ADD_VALUES));
-    }
-    if(_isInLocalRange(M, k)) {
-      tmp = d2;
-      _try(MatSetValues(M->M, 1, &tk, 1, &tj, &tmp, ADD_VALUES));
-    }
+    if(iok) _addInMatrix(M, i, l, -d2);
+    if(kok) _addInMatrix(M, k, j, d2);
   }
 #endif
 }
@@ -1412,6 +1516,7 @@ void LinAlg_VectorNormInf(gVector *V1, double *norm)
 
 void LinAlg_AssembleMatrix(gMatrix *M)
 {
+  _flushNonLocalRows(M->M);
   Message::Barrier();
   _try(MatAssemblyBegin(M->M, MAT_FINAL_ASSEMBLY));
   _try(MatAssemblyEnd(M->M, MAT_FINAL_ASSEMBLY));

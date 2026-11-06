@@ -1709,6 +1709,11 @@ struct CurrentData {
   int SourceIntegrationSupportIndex;
 
   int TypeTime, TypeAssembly;
+  // in a partitioned parallel assembly, whether the current element adds its
+  // contributions to the rows of the non-local equations: 0 if only their
+  // owner does (default), 1 if this rank does (even if it does not own them),
+  // -1 if it does not (even if it owns them)
+  int NonLocalRows;
   int SubTimeStep;
 
   int flagAssDiag;

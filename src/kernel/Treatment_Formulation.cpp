@@ -606,15 +606,25 @@ void Treatment_FemFormulation(struct Formulation *Formulation_P)
     Current.Region = Element.Region = Element.GeoElement->Region;
 
     if(partitioned) {
+      // the element is assembled by the ranks of its equations. Its
+      // contributions to the non-local equations (recorded as rank -1 by all
+      // ranks) are added by the rank of its mesh partition, which assembles it
+      // in any case, instead of by the owner of these equations: all the ranks
+      // agree on this rank, whereas each one only knows its own equations.
       auto range = Current.DofData->ElementRanks->equal_range(Element.Num);
-      bool skip = true;
+      int me = Message::GetCommRank(), np = Message::GetCommSize();
+      bool mine = false, nonLocal = false;
       for(auto it = range.first; it != range.second; ++it) {
-        if(it->second == Message::GetCommRank()) {
-          skip = false;
-          break;
-        }
+        if(it->second < 0)
+          nonLocal = true;
+        else if(it->second == me)
+          mine = true;
       }
-      if(skip) continue;
+      int part = Element.GeoElement->Partition;
+      int adder = (part > 0) ? (part - 1) % np : np - 1;
+      if(nonLocal && me == adder) mine = true;
+      if(!mine) continue;
+      Current.NonLocalRows = nonLocal ? (me == adder ? 1 : -1) : 0;
     }
 
     /* ---------------------------- */
@@ -735,6 +745,7 @@ void Treatment_FemFormulation(struct Formulation *Formulation_P)
                              "Processing (Generate)");
     if(Message::GetErrorCount()) break;
   } // for i_Element ...
+  Current.NonLocalRows = 0;
 
   // mark as initialized for next assembly:
   Formulation_P->RegionToEquationTermIDsIsInit = 1;

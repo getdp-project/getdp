@@ -12,7 +12,9 @@
 #include <vector>
 #include <algorithm>
 #include <unordered_map>
+#include <unordered_set>
 #include <stdint.h>
+#include <stdlib.h>
 #include <set>
 #include <complex>
 #include <sstream>
@@ -1864,13 +1866,36 @@ static int Dof_GetRankOfEquation(int n)
   return std::min(i - 1, Message::GetCommSize() - 1);
 }
 
+// Whether equation n (starting at 0) is non-local, i.e. a global quantity
+// coupled to many entities, whose equation belongs to the last rank
+bool Dof_IsNonLocalEquation(int n)
+{
+  static const DofData *dd = NULL;
+  static std::size_t nb = 0;
+  static std::unordered_set<int> equ;
+  if(!Current.DofData) return false;
+  const std::vector<int> &nl = Current.DofData->NonLocalEquations;
+  if(nl.empty()) return false;
+  if(dd != Current.DofData || nb != nl.size()) {
+    dd = Current.DofData;
+    nb = nl.size();
+    equ.clear();
+    for(int e : nl) equ.insert(e - 1); // equation numbers start at 1
+  }
+  return equ.count(n) > 0;
+}
+
 // Records that element ele contributes to equation n, i.e. that the rank of n
 // has to assemble it. This is called for every entry of every element matrix:
-// store each (element, rank) pair only once
+// store each (element, rank) pair only once. A non-local equation is recorded
+// as rank -1: such an element (e.g. of a conductor coupled to its circuit
+// unknowns) is not assembled by the last rank because of this equation, which
+// would then assemble all such elements (see Treatment_Formulation).
 static void Dof_AddElementRank(int ele, int n)
 {
   int rank = Dof_GetRankOfEquation(n);
   if(rank < 0) return;
+  if(Dof_IsNonLocalEquation(n)) rank = -1;
   static int lastEle = -1, lastRank = -1;
   static std::unordered_multimap<int, int> *lastMap = NULL;
   std::unordered_multimap<int, int> *m = Current.DofData->ElementRanks;

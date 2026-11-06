@@ -721,9 +721,19 @@ void Cal_GalerkinTermOfFemEquation(struct Element *Element,
       for(i = 0; i < Nbr_Equ; i++) {
         struct Dof *Equ_P = QuantityStorageEqu_P->BasisFunction[i].Dof;
         if(Equ_P->Type == DOF_UNKNOWN) {
-          if(Equ_P->Case.Unknown.NumDof - 1 < low ||
-             Equ_P->Case.Unknown.NumDof - 1 > high)
-            skip++;
+          int n = Equ_P->Case.Unknown.NumDof - 1;
+          bool outside = (n < low || n > high);
+          // all the ranks must see the non-local equations of the elements in
+          // the sparsity pattern pass, and the rank that adds them for this
+          // element is not necessarily their owner (see Current.NonLocalRows)
+          if(Dof_IsNonLocalEquation(n)) {
+            if(Current.TypeAssembly == ASSEMBLY_SPARSITY_PATTERN ||
+               Current.NonLocalRows > 0)
+              outside = false;
+            else if(Current.NonLocalRows < 0)
+              outside = true;
+          }
+          if(outside) skip++;
         }
       }
       if(skip == Nbr_Equ) return;
