@@ -4,6 +4,7 @@
 // issues on https://gitlab.onelab.info/getdp/getdp/issues.
 
 #include <math.h>
+#include <map>
 #include <unordered_set>
 #include <vector>
 #include "ProData.h"
@@ -315,38 +316,53 @@ void Pos_GlobalQuantity(struct PostQuantity *PostQuantity_P,
     Nbr_Element = Geo_GetNbrGeoElements();
     Get_InitDofOfElement(&Element);
 
+    // The elements in both InRegion_L and Support_L, computed once per mesh
+    // and pair of groups: an integral evaluated at each time step over a small
+    // part of a large mesh would otherwise test every element of the mesh, on
+    // every rank, at every evaluation.
+    std::vector<int> cacheKey;
+    cacheKey.push_back(Nbr_Element);
+    cacheKey.push_back(Type_InRegion);
+    cacheKey.push_back(InRegion_L ? List_Nbr(InRegion_L) : -1);
+    for(int i = 0; i < List_Nbr(InRegion_L); i++)
+      cacheKey.push_back(*(int *)List_Pointer(InRegion_L, i));
+    cacheKey.push_back(Support_L ? List_Nbr(Support_L) : -1);
+    for(int i = 0; i < List_Nbr(Support_L); i++)
+      cacheKey.push_back(*(int *)List_Pointer(Support_L, i));
+    static std::map<std::pair<void *, std::vector<int> >, std::vector<int> >
+      elementsInSupport;
+    std::vector<int> &elements = elementsInSupport[std::make_pair(
+      (void *)Current.GeoData, cacheKey)];
+    if(elements.empty()) {
+      for(i_Element = 0; i_Element < Nbr_Element; i_Element++) {
+        struct Geo_Element *ge = Geo_GetGeoElement(i_Element);
+        int key = (Type_InRegion == ELEMENTSOF) ? ge->Num : ge->Region;
+        if((!InRegion_L || InRegion_S.find(key) != InRegion_S.end()) &&
+           (!Support_L || Support_S.find(ge->Region) != Support_S.end()))
+          elements.push_back(i_Element);
+      }
+      if(elements.empty()) elements.push_back(-1); // no element: cached too
+    }
+
     Type_Quantity = LOCALQUANTITY; /* Attention... il faut se comprendre: */
     /* il s'agit de grandeurs locales qui seront integrees */
-    for(i_Element = 0; i_Element < Nbr_Element; i_Element++) {
+    for(std::size_t i = 0; i < elements.size(); i++) {
+      i_Element = elements[i];
+      if(i_Element < 0) break;
+
+      // if partitioned, the elements of the support are split over the ranks
+      // in a round-robin fashion, so that they are evenly distributed even
+      // when the support is unevenly distributed over the mesh partitions
+      if(partitioned &&
+         (int)(i % Message::GetCommSize()) != Message::GetCommRank())
+        continue;
+
       Element.GeoElement = Geo_GetGeoElement(i_Element);
       Element.Num = Element.GeoElement->Num;
       Element.Type = Element.GeoElement->Type;
       Current.Region = Element.Region = Element.GeoElement->Region;
 
-      if(partitioned) {
-        // splitting elements over ranks
-        // strategy 1: only processing elements that belong to the current rank,
-        // according to mesh partitioning. 
-        /*bool skip = true;
-        if(Element.GeoElement->Partition == Message::GetCommRank() + 1) {
-          skip = false;
-        }*/
-        // strategy 2: splitting elements over ranks in a round-robin fashion, regardless of mesh partitioning.
-        // This is straightforward and more efficient: elements are distributed evenly over ranks, even when
-        // integration is performed on a subregion of the mesh (which may be unevenly distributed over partitions).
-        bool skip = false;
-        int myRank = Message::GetCommRank();
-        int nbRanks = Message::GetCommSize();
-        if(i_Element % nbRanks != myRank) {
-          skip = true;
-        }
-        if(skip) continue;
-      }
-
-      int key = (Type_InRegion == ELEMENTSOF) ? Element.Num : Element.Region;
-      /* Filter: consider only elements in both InRegion_L and Support_L */
-      if((!InRegion_L || InRegion_S.find(key) != InRegion_S.end()) &&
-         (!Support_L || Support_S.find(Element.Region) != Support_S.end())) {
+      {
         Get_NodesCoordinatesOfElement(&Element);
         Current.x = Element.x[0];
         Current.y = Element.y[0];
