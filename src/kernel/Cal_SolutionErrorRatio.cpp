@@ -22,6 +22,12 @@ void Cal_SolutionErrorRatio(gVector *dx, gVector *x, double reltol,
   double *ErrorRatioVec;
   bool Is_NaN_or_Inf;
 
+  // dx is usually the result of arithmetic vector operations done just before
+  // this call (e.g. xCurrent - xPrevious), which only mark the sequential copy
+  // of a distributed vector as out of date: gather it before reading the
+  // values (all ranks are here)
+  LinAlg_UpdateSequentialVectors();
+
   LinAlg_GetVectorSize(dx, &xLength);
   ErrorRatioVec = new double[xLength];
 
@@ -108,6 +114,9 @@ void Cal_SolutionError(gVector *dx, gVector *x, int diff, double *MeanError)
   double valx, valdx, valxi = 0., valdxi = 0., errsqr = 0., xmoy = 0.,
                       dxmoy = 0.;
   double tol, nvalx, nvaldx;
+
+  // see Cal_SolutionErrorRatio (dx may just have been scaled)
+  LinAlg_UpdateSequentialVectors();
 
   LinAlg_GetVectorSize(dx, &n);
 
