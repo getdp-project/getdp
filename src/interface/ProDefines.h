@@ -670,7 +670,7 @@ struct StringX3Function3Nbr BF_Function[] = {
   {"BF_Edge_3V", (CAST)BF_Edge_3V, (CAST)BF_CurlEdge_3V, (CAST)BF_Zero, 1.5,
    LIN | TRI | TET, 0},
   {"BF_Edge_4E", (CAST)BF_Edge_4E, (CAST)BF_CurlEdge_4E, (CAST)BF_Zero, 2., ALL,
-   0},
+   1},
   {"BF_Edge_4F", (CAST)BF_Edge_4F, (CAST)BF_CurlEdge_4F, (CAST)BF_Zero, 2.,
    LIN | TRI | TET, 0},
   {"BF_Edge_4V", (CAST)BF_Edge_4V, (CAST)BF_CurlEdge_4V, (CAST)BF_Zero, 2.,
