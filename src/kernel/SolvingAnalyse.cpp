@@ -271,6 +271,26 @@ void Treatment_PostOperation(struct Resolution *Resolution_P,
   }
 
   Nbr_PostSubOperation = List_Nbr(PostOperation_P->PostSubOperation);
+
+  // With -local-dofs a rank only has the Dofs of its own partition (rank 0 has
+  // them all): a Print on the mesh is evaluated by rank 0, and a quantity on a
+  // region is integrated by each rank on its partition and summed. Handing a
+  // whole sub-operation to one rank (Distributed) fits neither, so the
+  // post-operation runs as without Distributed.
+  if(Dof_UseLocalDofs()) {
+    bool wasDistributed = PostOperation_P->Distributed;
+    PostOperation_P->Distributed = false;
+    for(i_POP = 0; i_POP < Nbr_PostSubOperation; i_POP++) {
+      PostSubOperation_P = (struct PostSubOperation *)List_Pointer(
+        PostOperation_P->PostSubOperation, i_POP);
+      wasDistributed = wasDistributed || PostSubOperation_P->Distributed;
+      PostSubOperation_P->Distributed = false;
+    }
+    if(wasDistributed)
+      Message::Info("-local-dofs: PostOperation '%s' runs as without "
+                    "Distributed", PostOperation_P->Name);
+  }
+
   bool anyDistributed = false;
   for(i_POP = 0; i_POP < Nbr_PostSubOperation; i_POP++) {
     PostSubOperation_P = (struct PostSubOperation *)List_Pointer(
