@@ -182,6 +182,48 @@ void Treatment_Preprocessing(int Nbr_DefineSystem, struct DofData *DofData_P0,
   }
 }
 
+// A Distributed sub-operation is run by rank i_POP % size alone: what it stores
+// in a variable or a register is sent from there to the other ranks
+static void Broadcast_StoredValues(struct PostSubOperation *PostSubOperation_P,
+                                   int i_POP)
+{
+#if defined(HAVE_MPI)
+  if(Message::GetCommSize() < 2) return;
+  int rootRank = i_POP % Message::GetCommSize();
+  if(PostSubOperation_P->StoreInVariable)
+    Cal_BroadcastValueInVariable(PostSubOperation_P->StoreInVariable, rootRank);
+  int register_ID = -1;
+  if(PostSubOperation_P->StoreInRegister >= 0) {
+    register_ID = PostSubOperation_P->StoreInRegister;
+  }
+  else if(PostSubOperation_P->StoreMinInRegister >= 0) {
+    register_ID = PostSubOperation_P->StoreMinInRegister;
+  }
+  else if(PostSubOperation_P->StoreMaxInRegister >= 0) {
+    register_ID = PostSubOperation_P->StoreMaxInRegister;
+  }
+  else if(PostSubOperation_P->StoreMinXinRegister >= 0) {
+    register_ID = PostSubOperation_P->StoreMinXinRegister;
+  }
+  else if(PostSubOperation_P->StoreMinYinRegister >= 0) {
+    register_ID = PostSubOperation_P->StoreMinYinRegister;
+  }
+  else if(PostSubOperation_P->StoreMinZinRegister >= 0) {
+    register_ID = PostSubOperation_P->StoreMinZinRegister;
+  }
+  else if(PostSubOperation_P->StoreMaxXinRegister >= 0) {
+    register_ID = PostSubOperation_P->StoreMaxXinRegister;
+  }
+  else if(PostSubOperation_P->StoreMaxYinRegister >= 0) {
+    register_ID = PostSubOperation_P->StoreMaxYinRegister;
+  }
+  else if(PostSubOperation_P->StoreMaxZinRegister >= 0) {
+    register_ID = PostSubOperation_P->StoreMaxZinRegister;
+  }
+  if(register_ID >= 0) Cal_BroadcastValueInRegister(register_ID, rootRank);
+#endif
+}
+
 /* ------------------------------------------------------------------------ */
 /*  T r e a t m e n t _ P o s t O p e r a t i o n                           */
 /* ------------------------------------------------------------------------ */
@@ -325,60 +367,16 @@ void Treatment_PostOperation(struct Resolution *Resolution_P,
       if(!skip) {
         Pos_Formulation(Formulation_P, PostProcessing_P, PostSubOperation_P);
       }
+      // a later sub-operation, run on another rank, may read what this one
+      // stored: it goes to all the ranks now, not after the PostOperation
+      if(PostSubOperation_P->Distributed)
+        Broadcast_StoredValues(PostSubOperation_P, i_POP);
     }
   }
 
-  // Synchronizing all ranks after distributed post-operations:
-  // variables and registers computed from distributed post-operations must be broadcasted to all ranks
-  if(PostOperation_P->Distributed && anyDistributed) {
-    Message::Barrier();
-    for(i_POP = 0; i_POP < Nbr_PostSubOperation; i_POP++) {
-      PostSubOperation_P = (struct PostSubOperation *)List_Pointer(PostOperation_P->PostSubOperation, i_POP);
-      if(PostSubOperation_P->Distributed) {
-#if defined(HAVE_MPI)
-        if(PostSubOperation_P->StoreInVariable && Message::GetCommSize() > 1) {
-          int rootRank = i_POP % Message::GetCommSize();
-          Cal_BroadcastValueInVariable(PostSubOperation_P->StoreInVariable, rootRank);
-        }
-        int register_ID = -1;
-        if(PostSubOperation_P->StoreInRegister >= 0) {
-          register_ID = PostSubOperation_P->StoreInRegister;
-        }
-        else if(PostSubOperation_P->StoreMinInRegister >= 0) {
-          register_ID = PostSubOperation_P->StoreMinInRegister;
-        }
-        else if(PostSubOperation_P->StoreMaxInRegister >= 0) {
-          register_ID = PostSubOperation_P->StoreMaxInRegister;
-        }
-        else if(PostSubOperation_P->StoreMinXinRegister >= 0) {
-          register_ID = PostSubOperation_P->StoreMinXinRegister;
-        }
-        else if(PostSubOperation_P->StoreMinYinRegister >= 0) {
-          register_ID = PostSubOperation_P->StoreMinYinRegister;
-        }
-        else if(PostSubOperation_P->StoreMinZinRegister >= 0) {
-          register_ID = PostSubOperation_P->StoreMinZinRegister;
-        }
-        else if(PostSubOperation_P->StoreMaxXinRegister >= 0) {
-          register_ID = PostSubOperation_P->StoreMaxXinRegister;
-        }
-        else if(PostSubOperation_P->StoreMaxYinRegister >= 0) {
-          register_ID = PostSubOperation_P->StoreMaxYinRegister;
-        }
-        else if(PostSubOperation_P->StoreMaxZinRegister >= 0) {
-          register_ID = PostSubOperation_P->StoreMaxZinRegister;
-        }
-        if(register_ID >= 0 && Message::GetCommSize() > 1) {
-          int rootRank = i_POP % Message::GetCommSize();
-          Cal_BroadcastValueInRegister(register_ID, rootRank);
-        }
-#else
-        Message::Info("Please compile with MPI to enable distributed post-operations. Running in serial mode.");
-#endif
-      }
-    }
-    Message::Barrier();
-  }
+  // Synchronizing all ranks after distributed post-operations (what they
+  // stored is already on all the ranks, see Broadcast_StoredValues)
+  if(PostOperation_P->Distributed && anyDistributed) Message::Barrier();
 
   if(PostOperation_P->ResampleTime) {
     for(int i = 0; i < List_Nbr(Current.DofData->Solutions); i++) {
