@@ -65,24 +65,26 @@ void BF_Edge_2E(struct Element *Element, int NumEntity, double u, double v,
   case QUADRANGLE_2_8N:
   case QUADRANGLE_3:
   case QUADRANGLE_4:
+    // scaled so that the tangential trace on each edge is the line function
+    // (-0.5 * u on the reference line [-1, 1])
     switch(NumEntity) {
     case 1:
-      s[0] = 0.75 * (1.0 - v) * u;
+      s[0] = -0.25 * (1.0 - v) * u;
       s[1] = 0.;
       s[2] = 0.;
       break;
     case 2:
       s[0] = 0.;
-      s[1] = 0.75 * (1.0 - u) * v;
+      s[1] = -0.25 * (1.0 - u) * v;
       s[2] = 0.;
       break;
     case 3:
       s[0] = 0.;
-      s[1] = 0.75 * (1.0 + u) * v;
+      s[1] = -0.25 * (1.0 + u) * v;
       s[2] = 0.;
       break;
     case 4:
-      s[0] = 0.75 * (1.0 + v) * u;
+      s[0] = -0.25 * (1.0 + v) * u;
       s[1] = 0.;
       s[2] = 0.;
       break;
@@ -211,22 +213,22 @@ void BF_CurlEdge_2E(struct Element *Element, int NumEntity, double u, double v,
     case 1:
       s[0] = 0.;
       s[1] = 0.;
-      s[2] = 0.75 * u;
+      s[2] = -0.25 * u;
       break;
     case 2:
       s[0] = 0.;
       s[1] = 0.;
-      s[2] = - 0.75 * v;
+      s[2] = 0.25 * v;
       break;
     case 3:
       s[0] = 0.;
       s[1] = 0.;
-      s[2] = 0.75 * v;
+      s[2] = -0.25 * v;
       break;
     case 4:
       s[0] = 0.;
       s[1] = 0.;
-      s[2] = - 0.75 * u;
+      s[2] = 0.25 * u;
       break;
     default: WrongNumEntity;
     }
