@@ -82,18 +82,51 @@ you set it via ``set(VAR a b c)'' (a CMake list, semicolon-joined), the
 expansion will pass each token as a separate argument and only the first
 will be picked up by ``--gmsh-options''.
 
+Regression checks:
+
+With ``--reference FILE'' the numerical results of the run are compared with
+the reference values stored in FILE (JSON), and the test fails if they
+differ. The results are all the ``.txt'', ``.dat'' and ``.pos'' files that
+getdp wrote in the run directory:
+
+  * tables (``.txt'', ``.dat''): every number in the file;
+  * field maps (``.pos'', written in ASCII): the number of values, their
+    minimum, maximum and mean absolute value.
+
+The reference records the Gmsh version and the platform it was generated
+with. Meshes are only reproducible for a given Gmsh version and platform,
+so two tolerances are used:
+
+  * same Gmsh version and platform as the reference: everything is compared
+    with ``--rtol'' (default 1e-6), relative to the largest reference value
+    of each file;
+  * otherwise the mesh may differ: only the tables (global quantities, which
+    depend weakly on the mesh) are compared, with ``--mesh-rtol'' (default
+    1e-2); the field maps are only checked to exist and to be finite. (The
+    statistics of the field maps change too much with the mesh to be
+    compared: the mean of a gauge-dependent potential can change by tens of
+    percent on a slightly different mesh, whereas the tables of the tutorials
+    change by less than 0.2% on a 10% finer mesh.)
+
+Whatever the mode, a result that is NaN or infinite fails the test.
+
+To (re)generate a reference, pass ``--update-reference'' or set the
+environment variable ``GETDP_UPDATE_REFERENCES=1'', e.g. for all the tests:
+
+    GETDP_UPDATE_REFERENCES=1 ctest
+
+If the reference file does not exist the test only checks that gmsh and
+getdp succeed, as without ``--reference''.
+
 Future extensions:
-  * Output-quantity checks (e.g. compare values from a ``Format Table''
-    PostOperation against expected ranges). Add a ``--check'' option that
-    accepts a spec like ``file:column:expected:tolerance'' and validate it
-    after the getdp step.
   * Per-step timeouts via ``subprocess.run(..., timeout=...)''.
-  * Comparison against reference solutions (``.pos'' files), e.g. via a
-    Gmsh-based diff script invoked after getdp.
 """
 
 import argparse
+import json
+import math
 import os
+import platform
 import re
 import shlex
 import shutil
@@ -214,6 +247,186 @@ def run_step(label, executable, args, workdir):
     return rc
 
 
+_NUMBER = re.compile(
+    r'[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?'
+    r'|[-+]?(?<![A-Za-z])(?:nan|inf)(?![A-Za-z])',
+    re.IGNORECASE)
+_POS_VALUES = re.compile(r'\{([^{}]*)\}')
+_RESULT_EXTENSIONS = ('.txt', '.dat', '.pos')
+
+
+def _numbers(text):
+    """Return all the numbers (including nan and inf) found in ``text''."""
+    return [float(x) for x in _NUMBER.findall(text)]
+
+
+def get_gmsh_version(gmsh):
+    """Return the version printed by ``gmsh --version'' ('' on error)."""
+    try:
+        proc = subprocess.run([gmsh, '--version'], stdout=subprocess.PIPE,
+                              stderr=subprocess.STDOUT, check=False)
+        lines = proc.stdout.decode('utf-8', 'replace').split()
+        return lines[-1] if lines else ''
+    except OSError:
+        return ''
+
+
+def get_platform():
+    """Return a string identifying the operating system and architecture."""
+    return '{}-{}'.format(platform.system(), platform.machine())
+
+
+def digest_results(run_dir):
+    """Summarize the result files that getdp wrote below ``run_dir''.
+
+    Returns a dictionary mapping each result file (path relative to
+    ``run_dir'', with forward slashes) to either ``{'values': [...]}'' for a
+    table, or ``{'n': ..., 'min': ..., 'max': ..., 'meanabs': ...}'' for a
+    field map. Binary or unreadable files are reported with ``{'n': -1}''.
+    """
+    digest = {}
+    for root, _, files in os.walk(run_dir):
+        for name in sorted(files):
+            if not name.lower().endswith(_RESULT_EXTENSIONS):
+                continue
+            path = os.path.join(root, name)
+            key = os.path.relpath(path, run_dir).replace(os.sep, '/')
+            try:
+                with open(path, 'r', encoding='ascii') as f:
+                    text = f.read()
+            except (OSError, UnicodeDecodeError):
+                digest[key] = {'n': -1}
+                continue
+            if name.lower().endswith('.pos'):
+                # parsed Gmsh views: 'SP(x,y,z){v,...};' -- the coordinates
+                # are in parentheses, the values in braces
+                n, lo, hi, total = 0, float('inf'), float('-inf'), 0.
+                for block in _POS_VALUES.findall(text):
+                    for v in _numbers(block):
+                        n += 1
+                        total += abs(v)
+                        lo = min(lo, v)
+                        hi = max(hi, v)
+                        if v != v:
+                            lo = hi = v
+                if n:
+                    digest[key] = {'n': n, 'min': lo, 'max': hi,
+                                   'meanabs': total / n}
+                else:
+                    digest[key] = {'n': 0}
+            else:
+                digest[key] = {'values': _numbers(text)}
+    return digest
+
+
+def _all_finite(entry):
+    values = entry.get('values')
+    if values is None:
+        values = [entry.get(k, 0.) for k in ('min', 'max', 'meanabs')]
+    return all(math.isfinite(v) for v in values)
+
+
+def compare_results(reference, digest, same_mesh, rtol, mesh_rtol):
+    """Compare ``digest'' with the files of ``reference''.
+
+    Returns a list of human-readable differences (empty if the results
+    match). With ``same_mesh'' everything is compared with ``rtol'';
+    otherwise only the tables are compared, with ``mesh_rtol''.
+    """
+    problems = []
+    for key, entry in sorted(digest.items()):
+        if not _all_finite(entry):
+            problems.append('{}: contains NaN or infinite values'.format(key))
+    for key, ref in sorted(reference.items()):
+        cur = digest.get(key)
+        if cur is None:
+            problems.append('{}: file was not written'.format(key))
+            continue
+        if 'values' in ref:
+            a, b = ref['values'], cur.get('values', [])
+            if len(a) != len(b):
+                problems.append('{}: {} numbers instead of {}'.format(
+                    key, len(b), len(a)))
+                continue
+            tol = rtol if same_mesh else mesh_rtol
+            scale = max([abs(x) for x in a] + [0.])
+            worst = max([abs(x - y) for x, y in zip(a, b)] + [0.])
+            if worst > tol * scale:
+                problems.append(
+                    '{}: largest difference {:.3e} for values up to {:.3e} '
+                    '(relative {:.3e}, tolerance {:.1e})'.format(
+                        key, worst, scale, worst / scale if scale else 0.,
+                        tol))
+        elif same_mesh:
+            if cur.get('n') != ref.get('n'):
+                problems.append('{}: {} values instead of {}'.format(
+                    key, cur.get('n'), ref.get('n')))
+                continue
+            scale = max(abs(ref.get('min', 0.)), abs(ref.get('max', 0.)))
+            for stat in ('min', 'max', 'meanabs'):
+                if stat not in ref:
+                    continue
+                diff = abs(cur.get(stat, float('nan')) - ref[stat])
+                if not diff <= rtol * scale:
+                    problems.append(
+                        '{}: {} is {:.9e} instead of {:.9e} (tolerance '
+                        '{:.1e} of {:.3e})'.format(
+                            key, stat, cur.get(stat, float('nan')), ref[stat],
+                            rtol, scale))
+    if same_mesh:
+        for key in sorted(set(digest) - set(reference)):
+            problems.append('{}: not in the reference'.format(key))
+    return problems
+
+
+def check_reference(path, update, gmsh, run_dir, rtol, mesh_rtol):
+    """Compare the results in ``run_dir'' with the reference file ``path'',
+    or (re)write it if ``update'' is set. Returns 0 on success, 1 if the
+    results differ from the reference."""
+    version, system = get_gmsh_version(gmsh), get_platform()
+    digest = digest_results(run_dir)
+    if update:
+        bad = [k for k, e in sorted(digest.items()) if not _all_finite(e)]
+        if bad:
+            print('[check] ERROR: not writing a reference with NaN or '
+                  'infinite values ({})'.format(', '.join(bad)), flush=True)
+            return 1
+        os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+        with open(path, 'w') as f:
+            json.dump({'gmsh': version, 'platform': system, 'files': digest},
+                      f, indent=1, sort_keys=True)
+            f.write('\n')
+        print('[check] wrote reference {} ({} files)'.format(
+            path, len(digest)), flush=True)
+        return 0
+    if not os.path.exists(path):
+        print('[check] no reference file {}: results not checked'.format(
+            path), flush=True)
+        return 0
+    with open(path, 'r') as f:
+        ref = json.load(f)
+    same_mesh = (ref.get('gmsh') == version and ref.get('platform') == system)
+    if same_mesh:
+        print('[check] same Gmsh ({}) and platform ({}) as the reference: '
+              'comparing all results, rtol {:g}'.format(version, system, rtol),
+              flush=True)
+    else:
+        print('[check] reference generated with Gmsh {} on {}, running Gmsh '
+              '{} on {}: the mesh may differ, comparing tables only, rtol '
+              '{:g}'.format(ref.get('gmsh'), ref.get('platform'), version,
+                            system, mesh_rtol), flush=True)
+    problems = compare_results(ref.get('files', {}), digest, same_mesh, rtol,
+                               mesh_rtol)
+    for problem in problems:
+        print('[check] DIFFERENT {}'.format(problem), flush=True)
+    if problems:
+        return 1
+    print('[check] OK: {} result files match the reference'.format(
+        len(ref.get('files', {}))), flush=True)
+    return 0
+
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(
         description='Run a GetDP tutorial (gmsh + getdp) as a CTest test.',
@@ -250,6 +463,25 @@ def main(argv=None):
              'interpreted relative to --workdir and copied to the same '
              'position relative to the temp run directory, so includes like '
              '"../Lib.pro" resolve correctly. May be given multiple times.')
+    parser.add_argument(
+        '--reference', metavar='FILE', default=None,
+        help='JSON file of reference results to compare the results of the '
+             'run with (see "Regression checks" above). Without it, or if '
+             'the file does not exist, only the exit codes are checked.')
+    parser.add_argument(
+        '--update-reference', action='store_true',
+        default=os.environ.get('GETDP_UPDATE_REFERENCES', '') not in ('', '0'),
+        help='Write the results of the run to the --reference file instead '
+             'of comparing with it (also enabled by setting the environment '
+             'variable GETDP_UPDATE_REFERENCES=1).')
+    parser.add_argument(
+        '--rtol', metavar='TOL', type=float, default=1e-6,
+        help='Relative tolerance when the mesh is the same as for the '
+             'reference (default: 1e-6).')
+    parser.add_argument(
+        '--mesh-rtol', metavar='TOL', type=float, default=1e-2,
+        help='Relative tolerance on the tables when the mesh may differ '
+             'from the one of the reference (default: 1e-2).')
     args = parser.parse_args(argv)
 
     source_workdir = args.workdir or os.getcwd()
@@ -292,6 +524,13 @@ def main(argv=None):
             rc = run_step('getdp', args.getdp, getdp_args, run_dir)
             if rc != 0:
                 failing_step = 'getdp'
+
+        if rc == 0 and args.reference:
+            rc = check_reference(args.reference, args.update_reference,
+                                 args.gmsh, run_dir, args.rtol,
+                                 args.mesh_rtol)
+            if rc != 0:
+                failing_step = 'check'
     finally:
         if rc == 0:
             shutil.rmtree(temp_root, ignore_errors=True)

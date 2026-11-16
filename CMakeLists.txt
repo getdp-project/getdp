@@ -1209,6 +1209,9 @@ find_package(Python3 COMPONENTS Interpreter)
 find_program(GMSH gmsh)
 
 if(${Python3_FOUND} AND GMSH)
+  # Each test runs a tutorial and compares its numerical results with the
+  # reference values in tests/tutorials (see utils/misc/run_test.py). To
+  # regenerate the references: GETDP_UPDATE_REFERENCES=1 ctest
   function(test_tuto name dir file opts)
     add_test(NAME tutorial_${name}
              COMMAND ${Python3_EXECUTABLE}
@@ -1218,7 +1221,8 @@ if(${Python3_FOUND} AND GMSH)
              --workdir ${CMAKE_SOURCE_DIR}/tutorials/${dir}
              --name "${name}"
              --gmsh-options "${file}.geo -3 ${opts} -bin"
-             --getdp-options "${file}.pro -solve \#1 -pos \#1 -bin ${opts}")
+             --getdp-options "${file}.pro -solve \#1 -pos \#1 ${opts}"
+             --reference ${CMAKE_SOURCE_DIR}/tests/tutorials/${name}.json)
   endfunction()
   test_tuto(01a 01-Electrostatics "microstrip" "")
   test_tuto(02a 02-Thermal "radiator" "")
