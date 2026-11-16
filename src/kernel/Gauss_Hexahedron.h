@@ -5,11 +5,12 @@
 
 /* 6 integration points (DHATT ET TOUZOT, page 299) */
 
-#define a1 0.40824826
-#define a2 0.81649658
-#define b1 0.70710678
-#define c1 0.57735027
-#define w1 1.3333333333
+// degree 3 rule: sqrt(1/6), sqrt(2/3), sqrt(1/2), sqrt(1/3) and 4/3
+#define a1 0.408248290463863
+#define a2 0.816496580927726
+#define b1 0.707106781186548
+#define c1 0.577350269189626
+#define w1 1.333333333333333
 
 static double xhex6[6] = {a1, a1, -a1, -a1, -a2, a2};
 static double yhex6[6] = {b1, -b1, b1, -b1, 0., 0.};
