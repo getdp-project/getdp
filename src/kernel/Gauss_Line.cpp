@@ -163,7 +163,10 @@ void Gauss_Line(int Nbr_Points, int Num, double *u, double *v, double *w,
   }
 }
 
-#define EPS 3.0e-11
+// tolerance on the Newton correction of the roots: the weights are computed
+// with the derivative at the previous iterate, so their error is of the order
+// of the last correction
+#define EPS 1.0e-15
 
 void GaussLegendre(double x1, double x2, double x[], double w[], int n)
 {
@@ -174,7 +177,8 @@ void GaussLegendre(double x1, double x2, double x[], double w[], int n)
   xm = 0.5 * (x2 + x1);
   xl = 0.5 * (x2 - x1);
   for(i = 1; i <= m; i++) {
-    z = cos(3.141592654 * (i - 0.25) / (n + 0.5));
+    z = cos(M_PI * (i - 0.25) / (n + 0.5));
+    int iter = 0;
     do {
       p1 = 1.0;
       p2 = 0.0;
@@ -186,7 +190,7 @@ void GaussLegendre(double x1, double x2, double x[], double w[], int n)
       pp = n * (z * p1 - p2) / (z * z - 1.0);
       z1 = z;
       z = z1 - p1 / pp;
-    } while(fabs(z - z1) > EPS);
+    } while(fabs(z - z1) > EPS && ++iter < 100);
     x[i - 1] = xm - xl * z;
     x[n - i] = xm + xl * z;
     w[i - 1] = 2.0 * xl / ((1.0 - z * z) * pp * pp);
