@@ -61,7 +61,7 @@ int Get_FacetFunctionIndex(struct Element *Element, int NumEntity, int NumIndex)
       // - the original tag, for the remaining ties (inside the cell).
       int n = 0, loc[8];
       FacetNodeKey key[8];
-      while(NumNodes[n] && n < 8) {
+      while(n < 8 && NumNodes[n]) {
         loc[n] = NumNodes[n];
         FacetNodeKey &k = key[n];
         k.orig = k.tag = Element->GeoElement->NumNodes[NumNodes[n] - 1];
