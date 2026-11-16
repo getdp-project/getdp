@@ -1679,10 +1679,15 @@ static Mat _getOperator(KSP ksp, Mat M)
   _try(KSPGetOperators(ksp, &Amat, &Pmat));
   if(!Pmat || Pmat == M || Amat != Pmat) return M;
   // the PC holds 2 references (Amat and Pmat): any other means the matrix is
-  // still in use elsewhere
+  // still in use elsewhere. Both matrices must also be assembled to compare
+  // their structures: e.g. the line search of SolveJac_AdaptRelax regenerates
+  // the system without reassembling the Jacobian matrix the KSP was set up with
   PetscInt refct;
+  PetscBool assembledP, assembledM;
   _try(PetscObjectGetReference((PetscObject)Pmat, &refct));
-  int reuse = (refct <= 2) ? 1 : 0, glob;
+  _try(MatAssembled(Pmat, &assembledP));
+  _try(MatAssembled(M, &assembledM));
+  int reuse = (refct <= 2 && assembledP && assembledM) ? 1 : 0, glob;
   MPI_Allreduce(&reuse, &glob, 1, MPI_INT, MPI_MIN,
                 PetscObjectComm((PetscObject)M));
   if(!glob || _getStructure(M, Pmat) != SAME_NONZERO_PATTERN) return M;
@@ -1834,9 +1839,9 @@ static void _setupAMS(PC pc, Mat A)
   for(auto &ed : edges) {
     if(ed.row < rstart || ed.row >= rend) continue;
     for(int j = 0; j < 2; j++) {
-      PetscInt c = col[ed.n[j]];
+      PetscInt r = ed.row, c = col[ed.n[j]];
       PetscScalar v = ed.s[j];
-      if(c >= 0) _try(MatSetValues(G, 1, &ed.row, 1, &c, &v, INSERT_VALUES));
+      if(c >= 0) _try(MatSetValues(G, 1, &r, 1, &c, &v, INSERT_VALUES));
     }
   }
   _try(MatAssemblyBegin(G, MAT_FINAL_ASSEMBLY));
