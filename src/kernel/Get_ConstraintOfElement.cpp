@@ -1374,11 +1374,12 @@ void Generate_Link(struct ConstraintInFS *Constraint_P, int Flag_New)
         Constraint_P->ConstraintPerRegion->Case.Link.ToleranceFactor,
         CouplesOfNodes_L);
       if(!Current.GeoData->PeriodicNodes)
-        Current.GeoData->PeriodicNodes = new std::map<int, int>;
+        Current.GeoData->PeriodicNodes = new std::map<int, std::pair<int, int> >;
       for(int i = 0; i < List_Nbr(CouplesOfNodes_L); i++) {
         struct TwoIntOneDouble t;
         List_Read(CouplesOfNodes_L, i, &t);
-        (*Current.GeoData->PeriodicNodes)[t.Int1] = t.Int2;
+        (*Current.GeoData->PeriodicNodes)[t.Int1] =
+          std::make_pair(t.Int2, Constraint_P->EntityIndex);
         Message::Debug("Keeping track of periodic node slave %d -> master %d",
                        t.Int1, t.Int2);
       }
