@@ -26,7 +26,9 @@ void BF_Edge_2E(struct Element *Element, int NumEntity, double u, double v,
   case LINE_4:
     switch(NumEntity) {
     case 1:
-      s[0] = u;
+      // trace of the triangle and tetrahedron functions grad(l_i l_j) on the
+      // reference line [-1, 1], as BF_GradNode_2E
+      s[0] = -0.5 * u;
       s[1] = 0.;
       s[2] = 0.;
       break;
