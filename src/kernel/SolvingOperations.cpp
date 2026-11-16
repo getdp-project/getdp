@@ -279,6 +279,13 @@ void Generate_System(struct DefineSystem *DefineSystem_P,
                      struct DofData *DofData_P, struct DofData *DofData_P0,
                      int Flag_Jac, int Flag_Separate, int Flag_Cumulative = 0)
 {
+  // the solution may have been changed by arithmetic vector operations since
+  // the start of the current operation (e.g. the trial solutions of a line
+  // search or the stages of a Runge-Kutta scheme): gather the sequential
+  // copies of the distributed vectors before the assembly reads them (all
+  // ranks are here)
+  LinAlg_UpdateSequentialVectors();
+
   int Nbr_Formulation, Index_Formulation, i_TimeStep, iMat;
   struct Solution *Solution_P, Solution_S;
   struct Formulation *Formulation_P;
@@ -601,6 +608,13 @@ void ReGenerate_System(struct DefineSystem *DefineSystem_P,
                        struct DofData *DofData_P, struct DofData *DofData_P0,
                        int Flag_Jac = 0)
 {
+  // the solution may have been changed by arithmetic vector operations since
+  // the start of the current operation (e.g. the trial solutions of a line
+  // search or the stages of a Runge-Kutta scheme): gather the sequential
+  // copies of the distributed vectors before the assembly reads them (all
+  // ranks are here)
+  LinAlg_UpdateSequentialVectors();
+
   int Nbr_Formulation, Index_Formulation;
   struct Formulation *Formulation_P;
 
