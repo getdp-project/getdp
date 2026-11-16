@@ -693,6 +693,7 @@ struct FemLocalTermActive {
   int Type_FormEqu, Type_FormDof, Type_ValueDof;
   int Type_DefineQuantityDof;
   int SymmetricalMatrix;
+  int ScalarCoefficient; // the term is (constants) * Dof{}
 
   List_T *IntegrationCase_L, *JacobianCase_L;
   int CriterionIndex;
