@@ -9,6 +9,7 @@
 #include <algorithm>
 #include "GetDPConfig.h"
 #include "GeoData.h"
+#include "GeoEntityTable.h"
 #include "ProData.h"
 #include "ProDefine.h"
 #include "Pos_Search.h"
@@ -182,10 +183,8 @@ void Geo_InitGeoData(struct GeoData *GeoData_P, int Num, char *Name)
 
   GeoData_P->NbrElementsWithEdges = GeoData_P->NbrElementsWithFacets = 0;
   GeoData_P->NumCurrentEdge = GeoData_P->NumCurrentFacet = 0;
-  GeoData_P->EdgesXNodes =
-    Tree_Create(sizeof(struct Entity2XEntity1), fcmp_E2XE1);
-  GeoData_P->FacetsXEdges =
-    Tree_Create(sizeof(struct Entity2XEntity1), fcmp_E2XE1);
+  GeoData_P->EdgesXNodes = new GeoEntityTable;
+  GeoData_P->FacetsXEdges = new GeoEntityTable;
 
   GeoData_P->NodesXElements = NULL;
   GeoData_P->Normals = Tree_Create(sizeof(struct EntityXVector), fcmp_EXVector);
@@ -218,14 +217,8 @@ void Geo_FreeGeoData(struct GeoData *GeoData_P)
     }
     List_Delete(GeoData_P->Elements);
   }
-  if(GeoData_P->EdgesXNodes) {
-    Tree_Action(GeoData_P->EdgesXNodes, free_E2XE1);
-    Tree_Delete(GeoData_P->EdgesXNodes);
-  }
-  if(GeoData_P->FacetsXEdges) {
-    Tree_Action(GeoData_P->FacetsXEdges, free_E2XE1);
-    Tree_Delete(GeoData_P->FacetsXEdges);
-  }
+  delete GeoData_P->EdgesXNodes;
+  delete GeoData_P->FacetsXEdges;
   if(GeoData_P->NodesXElements) {
     Tree_Action(GeoData_P->NodesXElements, free_E2XE1);
     Tree_Delete(GeoData_P->NodesXElements);

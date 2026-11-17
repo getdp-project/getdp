@@ -23,7 +23,7 @@ struct GeoData {
   List_T *Nodes, *Elements;
   int NbrElementsWithEdges, NbrElementsWithFacets;
   int NumCurrentEdge, NumCurrentFacet;
-  Tree_T *EdgesXNodes, *FacetsXEdges;
+  class GeoEntityTable *EdgesXNodes, *FacetsXEdges;
 
   Tree_T *NodesXElements;
   Tree_T *Normals;
@@ -100,7 +100,7 @@ void Geo_CreateEntitiesOfElement(
   int Nbr_Entities2, int *D_Element, int Geo_Element_NbrEntities1,
   int *Geo_Element_NumEntities1, int *Geo_Element_NbrEntities2,
   int **Geo_Element_NumEntities2, int *Geo_NbrElementsWithEntities2,
-  int *Geo_NumCurrentEntity2, Tree_T *Geo_Entities2XEntities1);
+  int *Geo_NumCurrentEntity2, class GeoEntityTable *Geo_Entities2XEntities1);
 
 void Geo_GenerateEdgesOfTree(List_T *InitialList, bool isInitialListEL,
                              List_T *InitialSuppList, bool isInitialSuppListEL,

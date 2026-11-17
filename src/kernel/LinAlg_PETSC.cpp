@@ -36,6 +36,7 @@
 #include "ProData.h"
 #include "DofData.h"
 #include "GeoData.h"
+#include "GeoEntityTable.h"
 #include "TreeUtils.h"
 #include "ExtendedGroup.h"
 extern struct GeoData *CurrentGeoData;
@@ -1897,9 +1898,7 @@ static bool _getAMSEdges(AMSEdges &a)
     rows.reserve(total / 2);
     for(long long i = 0; i + 1 < total; i += 2) rows[all[i]] = all[i + 1];
   }
-  List_T *E = Tree2List(CurrentGeoData->EdgesXNodes);
-  for(int i = 0; i < List_Nbr(E); i++) {
-    struct Entity2XEntity1 *e = (struct Entity2XEntity1 *)List_Pointer(E, i);
+  for(struct Entity2XEntity1 *e : CurrentGeoData->EdgesXNodes->sorted()) {
     if(e->NbrEntities != 2) continue;
     AMSEdges::Edge ed;
     ed.num = e->Num;
@@ -1932,7 +1931,6 @@ static bool _getAMSEdges(AMSEdges &a)
     }
     a.edges.push_back(ed);
   }
-  List_Delete(E);
   return true;
 }
 

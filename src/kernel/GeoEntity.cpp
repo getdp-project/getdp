@@ -7,6 +7,7 @@
 #include "GeoData.h"
 #include "ProData.h"
 #include "GeoEntity.h"
+#include "GeoEntityTable.h"
 #include "MallocUtils.h"
 #include "Message.h"
 
@@ -438,12 +439,11 @@ void Geo_CreateEntitiesOfElement(
   int Nbr_Entities2, int *D_Element, int Geo_Element_NbrEntities1,
   int *Geo_Element_NumEntities1, int *Geo_Element_NbrEntities2,
   int **Geo_Element_NumEntities2, int *Geo_NbrElementsWithEntities2,
-  int *Geo_NumCurrentEntity2, Tree_T *Geo_Entities2XEntities1)
+  int *Geo_NumCurrentEntity2, GeoEntityTable *Geo_Entities2XEntities1)
 {
   int i, j, Nbr_Entities1, Num_Entities1[NBR_MAX_SUBENTITIES_IN_ELEMENT],
     Sign_Entity2;
   int *Entity_P, Entity;
-  struct Entity2XEntity1 Entity2XEntities1, *Entity2XEntities1_P;
 
   *Geo_Element_NbrEntities2 = Nbr_Entities2;
   *Geo_Element_NumEntities2 = (int *)Malloc(Nbr_Entities2 * sizeof(int));
@@ -466,22 +466,11 @@ void Geo_CreateEntitiesOfElement(
     else
       Sign_Entity2 = 1;
 
-    Entity2XEntities1.NbrEntities = Nbr_Entities1;
-    Entity2XEntities1.NumEntities = Num_Entities1;
-
-    if((Entity2XEntities1_P = (struct Entity2XEntity1 *)Tree_PQuery(
-          Geo_Entities2XEntities1, &Entity2XEntities1)) == NULL) {
-      Entity2XEntities1.Num = ++(*Geo_NumCurrentEntity2);
-      Entity2XEntities1.NumEntities =
-        (int *)Malloc(Nbr_Entities1 * sizeof(int));
-      for(j = 0; j < Nbr_Entities1; j++)
-        Entity2XEntities1.NumEntities[j] = Num_Entities1[j];
-
-      Tree_Add(Geo_Entities2XEntities1, &Entity2XEntities1);
-      (*Geo_Element_NumEntities2)[i] = Entity2XEntities1.Num * Sign_Entity2;
-    }
-    else
-      (*Geo_Element_NumEntities2)[i] = Entity2XEntities1_P->Num * Sign_Entity2;
+    bool created;
+    struct Entity2XEntity1 &Entity2 =
+      Geo_Entities2XEntities1->get(Nbr_Entities1, Num_Entities1, created);
+    if(created) Entity2.Num = ++(*Geo_NumCurrentEntity2);
+    (*Geo_Element_NumEntities2)[i] = Entity2.Num * Sign_Entity2;
   }
 }
 
@@ -554,8 +543,9 @@ void Geo_WriteFilePRE(struct GeoData *GeoData_P, List_T *Group_L)
     if(Flag_XDATA) {
       fprintf(File_PRE, "$EdgesXNodes  /* Never used, only for test */\n");
       fprintf(File_PRE, "%d %d\n", GeoData_P->Num,
-              Tree_Nbr(GeoData_P->EdgesXNodes));
-      Tree_Action(GeoData_P->EdgesXNodes, Geo_WriteEntities2XEntities1);
+              (int)GeoData_P->EdgesXNodes->size());
+      for(auto e : GeoData_P->EdgesXNodes->sorted())
+        Geo_WriteEntities2XEntities1(e, NULL);
       fprintf(File_PRE, "$EndEdgesXNodes\n");
     }
   }
@@ -581,8 +571,9 @@ void Geo_WriteFilePRE(struct GeoData *GeoData_P, List_T *Group_L)
     if(Flag_XDATA) {
       fprintf(File_PRE, "$FacetsXEdges  /* Never used, only for test */\n");
       fprintf(File_PRE, "%d %d\n", GeoData_P->Num,
-              Tree_Nbr(GeoData_P->FacetsXEdges));
-      Tree_Action(GeoData_P->FacetsXEdges, Geo_WriteEntities2XEntities1);
+              (int)GeoData_P->FacetsXEdges->size());
+      for(auto e : GeoData_P->FacetsXEdges->sorted())
+        Geo_WriteEntities2XEntities1(e, NULL);
       fprintf(File_PRE, "$EndFacetsXEdges\n");
     }
   }
