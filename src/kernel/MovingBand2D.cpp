@@ -379,6 +379,10 @@ void Mesh_MovingBand2D(struct Group *Group_P)
 
   Geo_Element.NbrEdges = Geo_Element.NbrFacets = 0;
   Geo_Element.NumEdges = Geo_Element.NumFacets = NULL;
+  // the elements of the moving band have no mesh partition: in parallel they
+  // are assembled by the last rank (see Dof_IsPartitionOfThisRank)
+  Geo_Element.Partition = 0;
+  Geo_Element.ElementaryRegion = 0;
   Geo_Element.Region = MB->PhysNum;
   Geo_Element.NbrNodes = 3;
   Geo_Element.Type = TRIANGLE;
