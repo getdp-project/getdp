@@ -433,7 +433,7 @@ if(ENABLE_MPI)
   if(MPI_FOUND)
     set_config_option(HAVE_MPI "MPI")
     list(APPEND EXTERNAL_INCLUDES ${MPI_CXX_INCLUDE_PATH})
-    list(APPEND EXTERNAL_LIBRARIES ${MPI_CXX_LIBRARIES})
+    # the MPI libraries are added after PETSc (see below)
     set(CMAKE_C_COMPILER ${MPI_C_COMPILER})
     set(CMAKE_CXX_COMPILER ${MPI_CXX_COMPILER})
     set(CMAKE_Fortran_COMPILER ${MPI_Fortran_COMPILER})
@@ -584,6 +584,16 @@ if(ENABLE_PETSC)
       list(APPEND EXTERNAL_INCLUDES ${PETSC_INC})
     endif()
   endif()
+endif()
+if(ENABLE_MPI AND MPI_FOUND)
+  # The MPI library must come after PETSc and the Fortran MPI libraries that
+  # PETSc brings in for its Fortran packages (e.g. MUMPS). Open MPI defines the
+  # marker of MPI_IN_PLACE in both its C library and one of its Fortran
+  # libraries, and its Fortran interface uses the one of the library that is
+  # loaded first; with the C library first, the Fortran code in PETSc (which is
+  # bound to the other one) gets garbage from every in-place reduction: MUMPS
+  # then crashes or returns NaN on more than one rank.
+  list(APPEND EXTERNAL_LIBRARIES ${MPI_CXX_LIBRARIES})
 endif()
 
 if(ENABLE_FORTRAN)
