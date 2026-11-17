@@ -2068,6 +2068,7 @@ static void _solve(gMatrix *A, gVector *B, gSolver *Solver, gVector *X,
   if(kspIndex != 0) Message::Info("Using solver index %d", kspIndex);
 
   PC pc;
+  bool reused = false; // the matrix the KSP was set up with is used again
 
   if(!Solver->ksp[kspIndex]) {
     _try(KSPCreate(MyComm, &Solver->ksp[kspIndex]));
@@ -2106,6 +2107,7 @@ static void _solve(gMatrix *A, gVector *B, gSolver *Solver, gVector *X,
 #if(PETSC_VERSION_MAJOR == 3) && (PETSC_VERSION_MINOR >= 5)
     _try(KSPSetReusePreconditioner(Solver->ksp[kspIndex], PETSC_FALSE));
     Mat op = _getOperator(Solver->ksp[kspIndex], A->M);
+    reused = (op != A->M);
     _try(KSPSetOperators(Solver->ksp[kspIndex], op, op));
 #else
     _try(KSPSetOperators(Solver->ksp[kspIndex], A->M, A->M,
@@ -2117,6 +2119,7 @@ static void _solve(gMatrix *A, gVector *B, gSolver *Solver, gVector *X,
 #if(PETSC_VERSION_MAJOR == 3) && (PETSC_VERSION_MINOR >= 5)
     _try(KSPSetReusePreconditioner(Solver->ksp[kspIndex], PETSC_TRUE));
     Mat op = _getOperator(Solver->ksp[kspIndex], A->M);
+    reused = (op != A->M);
     _try(KSPSetOperators(Solver->ksp[kspIndex], op, op));
 #endif
     _try(KSPGetPC(Solver->ksp[kspIndex], &pc));
@@ -2218,6 +2221,23 @@ static void _solve(gMatrix *A, gVector *B, gSolver *Solver, gVector *X,
   KSPConvergedReason reason;
   _try(KSPGetConvergedReason(Solver->ksp[kspIndex], &reason));
   Current.KSPConvergedReason = (double)reason;
+
+  if(reason < 0) {
+    // A solver that failed is not used again: e.g. PETSc skips the numerical
+    // factorizations of MUMPS as long as MUMPS reports an error, i.e. until a
+    // new symbolic factorization. If the failed solve reused the matrix of a
+    // previous one, and thus its symbolic factorization, which can be the
+    // cause of the failure (e.g. a work array that is now too small), the
+    // system is solved again from scratch.
+    _try(KSPDestroy(&Solver->ksp[kspIndex]));
+    Solver->ksp[kspIndex] = PETSC_NULL;
+    if(reused) {
+      Message::Info("Linear solver failed: solving again without reusing the "
+                    "previous factorization");
+      _solve(A, B, Solver, X, precond, kspIndex);
+    }
+    return;
+  }
 
   PetscTruth set, kspfree = PETSC_FALSE;
   PetscOptionsGetTruth(PETSC_NULL, "-kspfree", &kspfree, &set);
