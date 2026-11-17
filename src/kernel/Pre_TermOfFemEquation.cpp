@@ -43,83 +43,96 @@ void Pre_InitTermOfFemEquation(struct EquationTerm *EquationTerm_P,
 /*  P r e _ T e r m O f F e m F o r m u l a t i o n                         */
 /* ------------------------------------------------------------------------ */
 
-bool IsEquationNonLocal(BasisFunction *bf)
+static bool IsFunctionNonLocal(void (*Function)())
 {
-  if(!bf) return false;
-  if(bf->Function == (void (*)())BF_Region ||
-     bf->Function == (void (*)())BF_RegionX ||
-     bf->Function == (void (*)())BF_RegionY ||
-     bf->Function == (void (*)())BF_RegionZ ||
-     bf->Function == (void (*)())BF_Global ||
-     bf->Function == (void (*)())BF_dGlobal ||
-     bf->Function == (void (*)())BF_Zero ||
-     bf->Function == (void (*)())BF_One ||
-     bf->Function == (void (*)())BF_GroupOfNodes ||
-     bf->Function == (void (*)())BF_GroupOfNodes_2E ||
-     bf->Function == (void (*)())BF_GroupOfNodes_2F ||
-     bf->Function == (void (*)())BF_GroupOfNodes_2V ||
-     bf->Function == (void (*)())BF_GroupOfNodes_3E ||
-     bf->Function == (void (*)())BF_GroupOfNodes_3F ||
-     bf->Function == (void (*)())BF_GroupOfNodes_3V ||
-     bf->Function == (void (*)())BF_GradGroupOfNodes ||
-     bf->Function == (void (*)())BF_GradGroupOfNodes_2E ||
-     bf->Function == (void (*)())BF_GradGroupOfNodes_2F ||
-     bf->Function == (void (*)())BF_GradGroupOfNodes_2V ||
-     bf->Function == (void (*)())BF_GradGroupOfNodes_3E ||
-     bf->Function == (void (*)())BF_GradGroupOfNodes_3F ||
-     bf->Function == (void (*)())BF_GradGroupOfNodes_3V ||
-     bf->Function == (void (*)())BF_GroupOfEdges ||
-     bf->Function == (void (*)())BF_GroupOfEdges_2E ||
-     bf->Function == (void (*)())BF_GroupOfEdges_2F ||
-     bf->Function == (void (*)())BF_GroupOfEdges_2V ||
-     bf->Function == (void (*)())BF_GroupOfEdges_3E ||
-     bf->Function == (void (*)())BF_GroupOfEdges_3F_a ||
-     bf->Function == (void (*)())BF_GroupOfEdges_3F_b ||
-     bf->Function == (void (*)())BF_GroupOfEdges_3F_c ||
-     bf->Function == (void (*)())BF_GroupOfEdges_3V ||
-     bf->Function == (void (*)())BF_GroupOfEdges_4E ||
-     bf->Function == (void (*)())BF_GroupOfEdges_4F ||
-     bf->Function == (void (*)())BF_GroupOfEdges_4V ||
-     bf->Function == (void (*)())BF_CurlGroupOfEdges ||
-     bf->Function == (void (*)())BF_CurlGroupOfEdges_2E ||
-     bf->Function == (void (*)())BF_CurlGroupOfEdges_2F ||
-     bf->Function == (void (*)())BF_CurlGroupOfEdges_2V ||
-     bf->Function == (void (*)())BF_CurlGroupOfEdges_3E ||
-     bf->Function == (void (*)())BF_CurlGroupOfEdges_3F_a ||
-     bf->Function == (void (*)())BF_CurlGroupOfEdges_3F_b ||
-     bf->Function == (void (*)())BF_CurlGroupOfEdges_3F_c ||
-     bf->Function == (void (*)())BF_CurlGroupOfEdges_3V ||
-     bf->Function == (void (*)())BF_CurlGroupOfEdges_4E ||
-     bf->Function == (void (*)())BF_CurlGroupOfEdges_4F ||
-     bf->Function == (void (*)())BF_CurlGroupOfEdges_4V ||
-     bf->Function == (void (*)())BF_GroupOfPerpendicularEdges ||
-     bf->Function == (void (*)())BF_GroupOfPerpendicularEdges_2E ||
-     bf->Function == (void (*)())BF_GroupOfPerpendicularEdges_2F ||
-     bf->Function == (void (*)())BF_GroupOfPerpendicularEdges_2V ||
-     bf->Function == (void (*)())BF_GroupOfPerpendicularEdges_3E ||
-     bf->Function == (void (*)())BF_GroupOfPerpendicularEdges_3F ||
-     bf->Function == (void (*)())BF_GroupOfPerpendicularEdges_3V ||
-     bf->Function == (void (*)())BF_CurlGroupOfPerpendicularEdges ||
-     bf->Function == (void (*)())BF_CurlGroupOfPerpendicularEdges_2E ||
-     bf->Function == (void (*)())BF_CurlGroupOfPerpendicularEdges_2F ||
-     bf->Function == (void (*)())BF_CurlGroupOfPerpendicularEdges_2V ||
-     bf->Function == (void (*)())BF_CurlGroupOfPerpendicularEdges_3E ||
-     bf->Function == (void (*)())BF_CurlGroupOfPerpendicularEdges_3F ||
-     bf->Function == (void (*)())BF_CurlGroupOfPerpendicularEdges_3V ||
-     bf->Function == (void (*)())BF_GroupOfNodesX ||
-     bf->Function == (void (*)())BF_GroupOfNodesY ||
-     bf->Function == (void (*)())BF_GroupOfNodesZ ||
-     bf->Function == (void (*)())BF_GroupOfNodesX_D1 ||
-     bf->Function == (void (*)())BF_GroupOfNodesY_D1 ||
-     bf->Function == (void (*)())BF_GroupOfNodesZ_D1 ||
-     bf->Function == (void (*)())BF_GroupOfNodesX_D2 ||
-     bf->Function == (void (*)())BF_GroupOfNodesY_D2 ||
-     bf->Function == (void (*)())BF_GroupOfNodesZ_D2 ||
-     bf->Function == (void (*)())BF_GroupOfNodesX_D12 ||
-     bf->Function == (void (*)())BF_GroupOfNodesY_D12 ||
-     bf->Function == (void (*)())BF_GroupOfNodesZ_D12)
+  if(Function == (void (*)())BF_Region ||
+     Function == (void (*)())BF_RegionX ||
+     Function == (void (*)())BF_RegionY ||
+     Function == (void (*)())BF_RegionZ ||
+     Function == (void (*)())BF_Global ||
+     Function == (void (*)())BF_dGlobal ||
+     Function == (void (*)())BF_Zero ||
+     Function == (void (*)())BF_One ||
+     Function == (void (*)())BF_GroupOfNodes ||
+     Function == (void (*)())BF_GroupOfNodes_2E ||
+     Function == (void (*)())BF_GroupOfNodes_2F ||
+     Function == (void (*)())BF_GroupOfNodes_2V ||
+     Function == (void (*)())BF_GroupOfNodes_3E ||
+     Function == (void (*)())BF_GroupOfNodes_3F ||
+     Function == (void (*)())BF_GroupOfNodes_3V ||
+     Function == (void (*)())BF_GradGroupOfNodes ||
+     Function == (void (*)())BF_GradGroupOfNodes_2E ||
+     Function == (void (*)())BF_GradGroupOfNodes_2F ||
+     Function == (void (*)())BF_GradGroupOfNodes_2V ||
+     Function == (void (*)())BF_GradGroupOfNodes_3E ||
+     Function == (void (*)())BF_GradGroupOfNodes_3F ||
+     Function == (void (*)())BF_GradGroupOfNodes_3V ||
+     Function == (void (*)())BF_GroupOfEdges ||
+     Function == (void (*)())BF_GroupOfEdges_2E ||
+     Function == (void (*)())BF_GroupOfEdges_2F ||
+     Function == (void (*)())BF_GroupOfEdges_2V ||
+     Function == (void (*)())BF_GroupOfEdges_3E ||
+     Function == (void (*)())BF_GroupOfEdges_3F_a ||
+     Function == (void (*)())BF_GroupOfEdges_3F_b ||
+     Function == (void (*)())BF_GroupOfEdges_3F_c ||
+     Function == (void (*)())BF_GroupOfEdges_3V ||
+     Function == (void (*)())BF_GroupOfEdges_4E ||
+     Function == (void (*)())BF_GroupOfEdges_4F ||
+     Function == (void (*)())BF_GroupOfEdges_4V ||
+     Function == (void (*)())BF_CurlGroupOfEdges ||
+     Function == (void (*)())BF_CurlGroupOfEdges_2E ||
+     Function == (void (*)())BF_CurlGroupOfEdges_2F ||
+     Function == (void (*)())BF_CurlGroupOfEdges_2V ||
+     Function == (void (*)())BF_CurlGroupOfEdges_3E ||
+     Function == (void (*)())BF_CurlGroupOfEdges_3F_a ||
+     Function == (void (*)())BF_CurlGroupOfEdges_3F_b ||
+     Function == (void (*)())BF_CurlGroupOfEdges_3F_c ||
+     Function == (void (*)())BF_CurlGroupOfEdges_3V ||
+     Function == (void (*)())BF_CurlGroupOfEdges_4E ||
+     Function == (void (*)())BF_CurlGroupOfEdges_4F ||
+     Function == (void (*)())BF_CurlGroupOfEdges_4V ||
+     Function == (void (*)())BF_GroupOfPerpendicularEdges ||
+     Function == (void (*)())BF_GroupOfPerpendicularEdges_2E ||
+     Function == (void (*)())BF_GroupOfPerpendicularEdges_2F ||
+     Function == (void (*)())BF_GroupOfPerpendicularEdges_2V ||
+     Function == (void (*)())BF_GroupOfPerpendicularEdges_3E ||
+     Function == (void (*)())BF_GroupOfPerpendicularEdges_3F ||
+     Function == (void (*)())BF_GroupOfPerpendicularEdges_3V ||
+     Function == (void (*)())BF_CurlGroupOfPerpendicularEdges ||
+     Function == (void (*)())BF_CurlGroupOfPerpendicularEdges_2E ||
+     Function == (void (*)())BF_CurlGroupOfPerpendicularEdges_2F ||
+     Function == (void (*)())BF_CurlGroupOfPerpendicularEdges_2V ||
+     Function == (void (*)())BF_CurlGroupOfPerpendicularEdges_3E ||
+     Function == (void (*)())BF_CurlGroupOfPerpendicularEdges_3F ||
+     Function == (void (*)())BF_CurlGroupOfPerpendicularEdges_3V ||
+     Function == (void (*)())BF_GroupOfNodesX ||
+     Function == (void (*)())BF_GroupOfNodesY ||
+     Function == (void (*)())BF_GroupOfNodesZ ||
+     Function == (void (*)())BF_GroupOfNodesX_D1 ||
+     Function == (void (*)())BF_GroupOfNodesY_D1 ||
+     Function == (void (*)())BF_GroupOfNodesZ_D1 ||
+     Function == (void (*)())BF_GroupOfNodesX_D2 ||
+     Function == (void (*)())BF_GroupOfNodesY_D2 ||
+     Function == (void (*)())BF_GroupOfNodesZ_D2 ||
+     Function == (void (*)())BF_GroupOfNodesX_D12 ||
+     Function == (void (*)())BF_GroupOfNodesY_D12 ||
+     Function == (void (*)())BF_GroupOfNodesZ_D12)
     return true;
   return false;
+}
+
+// called for each basis function of each element: the answer for the last
+// function is remembered, as the list of comparisons above is long
+bool IsEquationNonLocal(BasisFunction *bf)
+{
+  static void (*last)() = nullptr;
+  static bool lastNonLocal = false;
+  if(!bf) return false;
+  if(bf->Function != last) {
+    last = bf->Function;
+    lastNonLocal = IsFunctionNonLocal(last);
+  }
+  return lastNonLocal;
 }
 
 void Pre_TermOfFemEquation(struct Element *Element,

@@ -49,14 +49,27 @@ struct EntityBitmap {
 };
 static std::unordered_map<const List_T *, EntityBitmap> EntityBitmaps;
 
-static void ClearEntityBitmaps() { EntityBitmaps.clear(); }
+// the bitmap of the last list tested: the same list is usually tested many
+// times in a row
+static const List_T *LastEntityList = nullptr;
+static EntityBitmap *LastEntityBitmap = nullptr;
+
+static void ClearEntityBitmaps()
+{
+  EntityBitmaps.clear();
+  LastEntityBitmap = nullptr;
+}
 
 static bool IsIntInList(List_T *List, int Entity)
 {
   int n = List_Nbr(List);
   if(n < 64) return List_Search(List, &Entity, fcmp_int);
   int *a = (int *)List_Pointer(List, 0);
-  EntityBitmap &b = EntityBitmaps[List];
+  if(List != LastEntityList || !LastEntityBitmap) {
+    LastEntityList = List;
+    LastEntityBitmap = &EntityBitmaps[List];
+  }
+  EntityBitmap &b = *LastEntityBitmap;
   if(b.array != (const void *)a || b.n != n) {
     b.array = a;
     b.n = n;
