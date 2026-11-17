@@ -26,7 +26,7 @@
 extern struct Problem Problem_S;
 extern struct CurrentData Current;
 
-extern int Flag_PRE, Flag_CAL, Flag_POS, Flag_SPARSITY_PATTERN;
+extern int Flag_PRE, Flag_CAL, Flag_POS;
 extern int Flag_RESTART;
 
 extern char *Name_Generic;
@@ -124,9 +124,9 @@ void Treatment_Preprocessing(int Nbr_DefineSystem, struct DofData *DofData_P0,
       int maxPartition = 0;
       for(int e = 0; e < Geo_GetNbrGeoElements(); e++)
         maxPartition = std::max(maxPartition, Geo_GetGeoElement(e)->Partition);
-      if(maxPartition != Message::GetCommSize() || !Flag_SPARSITY_PATTERN ||
+      if(maxPartition != Message::GetCommSize() ||
          Current.GeoData->HasMovingBand) {
-        Message::Error("-local-dofs needs -sparsity, a mesh with one partition "
+        Message::Error("-local-dofs needs a mesh with one partition "
                        "for each of the %d ranks (it has %d) and no moving band",
                        Message::GetCommSize(), maxPartition);
         return;

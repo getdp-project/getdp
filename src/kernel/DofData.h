@@ -148,12 +148,6 @@ struct DofData {
 
   std::vector<int> NonLocalEquations; // equ nums of non-local equations
   std::vector<int> PartitionSplit; // equ num starting each partition
-  std::unordered_multimap<int, int> *ElementRanks; // element x MPI rank(s)
-
-  // this should be added to each gMatrix, but the current implementation makes
-  // it cumbersome, so it contains the combined non zero pattern for all the
-  // matrices in the DofData
-  std::set<std::pair<int, int>> *SparsityPattern;
 };
 
 int fcmp_Dof(const void *a, const void *b);
@@ -214,7 +208,7 @@ bool Dof_IsNonLocalEquation(int n);
 bool Dof_UseLocalDofs();
 void Dof_SyncPreResolutions(List_T *PreResolutionInfo_L);
 bool Dof_IsPartitionOfThisRank(int partition);
-void Dof_ExchangeSparsityPattern();
+bool Dof_HasRankPartitions();
 bool Dof_GetPostOnRootOnly();
 void Dof_SetPostOnRootOnly(bool rootOnly);
 void Dof_DefineAssociateDof(int E1, int E2, int D1, int D2, int NbrHar,

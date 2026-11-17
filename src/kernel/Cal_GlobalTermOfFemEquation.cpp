@@ -66,10 +66,9 @@ void Cal_GlobalTermOfFemEquation(int Num_Region,
   Element.Num = NO_ELEMENT;
   // A global term has no mesh element: this Element is a dummy whose address is
   // published as Current.Element below. GeoElement must be nulled explicitly -
-  // consumers test it to detect "no element" (e.g. the ASSEMBLY_SPARSITY_PATTERN
-  // branch of Dof_AssembleInMat, which reads Current.Element->GeoElement->Num).
-  // Left uninitialized it holds stack garbage, which passes those non-null tests
-  // and then segfaults on dereference.
+  // consumers test it to detect "no element". Left uninitialized it holds stack
+  // garbage, which passes those non-null tests and then segfaults on
+  // dereference.
   Element.GeoElement = NULL;
 
   switch(EquationTerm_P->Case.GlobalTerm.Term.TypeTimeDerivative) {
@@ -261,10 +260,9 @@ void Cal_GlobalTermOfFemEquation_old(
   Element.Num = NO_ELEMENT;
   // A global term has no mesh element: this Element is a dummy whose address is
   // published as Current.Element below. GeoElement must be nulled explicitly -
-  // consumers test it to detect "no element" (e.g. the ASSEMBLY_SPARSITY_PATTERN
-  // branch of Dof_AssembleInMat, which reads Current.Element->GeoElement->Num).
-  // Left uninitialized it holds stack garbage, which passes those non-null tests
-  // and then segfaults on dereference.
+  // consumers test it to detect "no element". Left uninitialized it holds stack
+  // garbage, which passes those non-null tests and then segfaults on
+  // dereference.
   Element.GeoElement = NULL;
 
 

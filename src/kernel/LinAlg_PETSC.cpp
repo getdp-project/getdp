@@ -23,6 +23,7 @@
 #include <stdio.h>
 #include "GetDPConfig.h"
 #include "LinAlg.h"
+#include "SparseRows.h"
 #include "MallocUtils.h"
 #include "Message.h"
 #include "OS.h"
@@ -225,20 +226,90 @@ static int _getLocalSize(int n = -1)
 // entries, which the element loop adds a few at a time in mesh order. Inserted
 // directly, each new column shifts the rest of the row in the AIJ storage, so
 // filling such a row costs its length squared. Their contributions are thus
-// accumulated here, sorted by column, and inserted in one call per row when the
-// matrix is assembled.
+// accumulated here, sorted by column, and added to the storage of the matrix
+// (see below) when it is assembled.
 static std::map<Mat, std::unordered_map<int, std::map<int, PetscScalar> > >
   _nonLocalRows;
 
-// Collective: the rows are first gathered on their owner, since the pieces of a
-// row sent through the PETSc stash would be inserted one after the other, each
-// new column again shifting the rest of the row
-static void _flushNonLocalRows(Mat M)
+// In parallel the element loop adds all the entries of the elements of the rank,
+// whoever owns their row (see Dof_IsPartitionOfThisRank); the other terms (e.g.
+// global terms), which every rank computes, only add the entries of the rows
+// the rank owns
+template <class T> static bool _addsRow(T *MV, int i)
+{
+  return Current.AddAllRows || _isInLocalRange(MV, i);
+}
+
+// The matrices are assembled in a storage of our own (see SparseRows.h), and
+// given to PETSc when they are assembled (LinAlg_AssembleMatrix). The element
+// loop adds the entries of the elementary matrices one at a time: giving each
+// of them to PETSc (MatSetValues) costs a search in the PETSc row for each
+// entry, and PETSc needs the number of nonzeros of each row before the first
+// entry is added, not to reallocate the matrix again and again. With the
+// storage the nonzero pattern is built on the fly by each assembly, the PETSc
+// matrix is preallocated exactly, and its rows are set in one call each.
+//
+// In parallel the rows of the storage that belong to another rank (-local-dofs)
+// and the non-local rows (see above) are first sent to their owner.
+struct _Assembly {
+  SparseRows<PetscScalar, PetscInt> rows;
+  bool isNew = false; // the PETSc matrix was just created: preallocate it
+};
+
+static std::map<Mat, _Assembly> _assembly;
+static Mat _lastMat = PETSC_NULL;
+static _Assembly *_lastAssembly = nullptr;
+
+static _Assembly &_getAssembly(Mat M)
+{
+  if(M == _lastMat) return *_lastAssembly;
+  auto it = _assembly.find(M);
+  if(it == _assembly.end()) {
+    PetscInt first, last;
+    _try(MatGetOwnershipRange(M, &first, &last));
+    it = _assembly.insert(std::make_pair(M, _Assembly())).first;
+    it->second.rows = SparseRows<PetscScalar, PetscInt>(first, last);
+  }
+  _lastMat = M;
+  _lastAssembly = &it->second;
+  return it->second;
+}
+
+static void _dropAssembly(Mat M)
+{
+  _assembly.erase(M);
+  _nonLocalRows.erase(M);
+  _lastMat = PETSC_NULL;
+}
+
+static void _addInMatrix(gMatrix *M, int i, int j, PetscScalar v)
+{
+  if(!Current.DofData->NonLocalEquations.empty() && Dof_IsNonLocalEquation(i))
+    _nonLocalRows[M->M][i][j] += v;
+  else
+    _getAssembly(M->M).rows.add(i, j, v);
+}
+
+static void _setRow(Mat M, PetscInt i, SparseRows<PetscScalar, PetscInt>::Row &r)
+{
+  if(r.cols.empty()) return;
+  _try(MatSetValues(M, 1, &i, (PetscInt)r.cols.size(), r.cols.data(),
+                    r.vals.data(), ADD_VALUES));
+}
+
+// Collective: sends the entries of the rows owned by other ranks (the rows of
+// the storage that belong to other ranks and the non-local rows) to their
+// owners, and adds the non-local rows owned by this rank to the storage. The
+// non-local rows are gathered on their owner before they are added, sorted by
+// column, since adding the pieces of such a row one after the other would
+// shift the rest of the row for each new column.
+static void _gatherRows(Mat M)
 {
   MPI_Comm comm = PetscObjectComm((PetscObject)M);
   int size, rank;
   MPI_Comm_size(comm, &size);
   MPI_Comm_rank(comm, &rank);
+  SparseRows<PetscScalar, PetscInt> &S = _getAssembly(M).rows;
   auto &rows = _nonLocalRows[M];
   if(size > 1) {
     const PetscInt *ranges;
@@ -252,13 +323,23 @@ static void _flushNonLocalRows(Mat M)
         ++it;
         continue;
       }
-      for(auto &c : it->second) {
+      for(auto &e : it->second) {
         idx[owner].push_back(it->first);
-        idx[owner].push_back(c.first);
-        val[owner].push_back(c.second);
+        idx[owner].push_back(e.first);
+        val[owner].push_back(e.second);
       }
       it = rows.erase(it);
     }
+    for(auto &row : S.others()) {
+      int owner = std::upper_bound(ranges, ranges + size + 1, row.first) -
+                  ranges - 1;
+      for(std::size_t k = 0; k < row.second.cols.size(); k++) {
+        idx[owner].push_back(row.first);
+        idx[owner].push_back(row.second.cols[k]);
+        val[owner].push_back(row.second.vals[k]);
+      }
+    }
+    S.others().clear();
     std::vector<int> nsend(size), nrecv(size), sdispl(size), rdispl(size);
     for(int i = 0; i < size; i++) nsend[i] = (int)val[i].size();
     MPI_Alltoall(nsend.data(), 1, MPI_INT, nrecv.data(), 1, MPI_INT, comm);
@@ -294,40 +375,176 @@ static void _flushNonLocalRows(Mat M)
                   ridx.data(), nrecv.data(), rdispl.data(), MPIU_INT, comm);
     for(int i = 0; i < nr; i++) rows[ridx[2 * i]][ridx[2 * i + 1]] += rval[i];
   }
-  std::vector<PetscInt> cols;
-  std::vector<PetscScalar> vals;
-  for(auto &row : rows) {
-    cols.clear();
-    vals.clear();
-    for(auto &c : row.second) {
-      cols.push_back(c.first);
-      vals.push_back(c.second);
-    }
-    PetscInt ti = row.first;
-    _try(MatSetValues(M, 1, &ti, (PetscInt)cols.size(), cols.data(),
-                      vals.data(), ADD_VALUES));
-  }
+  for(auto &row : rows)
+    for(auto &e : row.second) S.add(row.first, e.first, e.second);
   _nonLocalRows.erase(M);
 }
 
-// In a partitioned assembly, only one rank adds the contributions of an element
-// to the non-local rows, which can thus belong to another rank (see
-// Current.NonLocalRows); otherwise each rank adds its own rows
-static bool _addsRow(bool local, int i)
+// Preallocates a PETSc matrix that was just created for the rows of the storage
+static void _preallocate(Mat M, SparseRows<PetscScalar, PetscInt> &S)
 {
-  if(Current.NonLocalRows == 2) return true; // -local-dofs: all the rows
-  if(!Current.NonLocalRows || !Dof_IsNonLocalEquation(i)) return local;
-  return Current.NonLocalRows > 0;
+  PetscMPIInt size;
+  MPI_Comm_size(PetscObjectComm((PetscObject)M), &size);
+  PetscInt nr, nc, cfirst, clast;
+  _try(MatGetSize(M, &nr, &nc));
+  _try(MatGetOwnershipRangeColumn(M, &cfirst, &clast));
+  std::vector<PetscInt> dnnz(S.last() - S.first() + 1), onnz(dnnz.size());
+  for(PetscInt i = S.first(); i < S.last(); i++) {
+    // PETSc (I)LU does not like matrices with empty diagonals
+    if(size == 1 && i < nc) S.add(i, i, 0.);
+    for(PetscInt j : S.row(i).cols) {
+      if(j >= cfirst && j < clast)
+        dnnz[i - S.first()]++;
+      else
+        onnz[i - S.first()]++;
+    }
+  }
+  _try(MatXAIJSetPreallocation(M, 1, dnnz.data(), onnz.data(), PETSC_NULL,
+                               PETSC_NULL));
+  // the pattern of the matrix can still change, e.g. if a matrix is added to it
+  _try(MatSetOption(M, MAT_NEW_NONZERO_ALLOCATION_ERR, PETSC_FALSE));
 }
 
-static void _addInMatrix(gMatrix *M, int i, int j, PetscScalar v)
+// Gives the entries added to the storage of M since the last hand-over to the
+// PETSc matrix. Collective, unless local is set: the rows of the other ranks
+// then go through the PETSc stash, and the non-local rows are left for the next
+// collective hand-over.
+static void _handOver(Mat M, bool local = false)
 {
-  if(Dof_IsNonLocalEquation(i)) {
-    _nonLocalRows[M->M][i][j] += v;
+  _Assembly &A = _getAssembly(M);
+  if(local) {
+    for(auto &row : A.rows.others()) _setRow(M, row.first, row.second);
+  }
+  else {
+    _gatherRows(M);
+    if(A.isNew) _preallocate(M, A.rows);
+  }
+  A.isNew = false;
+  for(PetscInt i = A.rows.first(); i < A.rows.last(); i++)
+    _setRow(M, i, A.rows.row(i));
+  A.rows.clear();
+}
+
+// The element loop also adds the entries of the right-hand side one at a time,
+// several times for most of them. Between LinAlg_StartElementCache() and
+// LinAlg_FlushElementCache(), i.e. while the terms of one element are
+// assembled, they are summed here by vector and added with one call per vector
+// by the flush. Outside these calls they are added directly.
+static bool _elementCache = false;
+
+// beyond this size a vector buffer is no longer searched for an existing entry
+// (duplicates are summed by PETSc)
+static const std::size_t _maxSearch = 128;
+
+struct _VecBuf {
+  Vec V = PETSC_NULL;
+  std::size_t last = 0;
+  std::vector<PetscInt> rows;
+  std::vector<PetscScalar> vals;
+};
+
+static std::vector<_VecBuf> _vecBufs;
+
+static void _flushVecBufs()
+{
+  for(auto &b : _vecBufs) {
+    if(!b.rows.empty())
+      _try(VecSetValues(b.V, (PetscInt)b.rows.size(), b.rows.data(),
+                        b.vals.data(), ADD_VALUES));
+    b.rows.clear();
+    b.vals.clear();
+    b.last = 0;
+  }
+}
+
+// forget the entries accumulated for vector V (if V is destroyed or zeroed)
+static void _dropVecBuf(Vec V)
+{
+  for(std::size_t k = 0; k < _vecBufs.size(); k++) {
+    if(_vecBufs[k].V == V) {
+      _vecBufs.erase(_vecBufs.begin() + k);
+      return;
+    }
+  }
+}
+
+static void _addInVector(Vec V, PetscInt i, PetscScalar v)
+{
+  if(!_elementCache) {
+    _try(VecSetValues(V, 1, &i, &v, ADD_VALUES));
     return;
   }
-  PetscInt ti = i, tj = j;
-  _try(MatSetValues(M->M, 1, &ti, 1, &tj, &v, ADD_VALUES));
+  static std::size_t lastBuf = 0;
+  if(lastBuf >= _vecBufs.size() || _vecBufs[lastBuf].V != V) {
+    for(lastBuf = 0; lastBuf < _vecBufs.size(); lastBuf++)
+      if(_vecBufs[lastBuf].V == V) break;
+    if(lastBuf == _vecBufs.size()) {
+      _vecBufs.emplace_back();
+      _vecBufs.back().V = V;
+    }
+  }
+  _VecBuf &b = _vecBufs[lastBuf];
+  std::size_t n = b.rows.size(), k = b.last;
+  if(k < n && b.rows[k] == i) {
+    b.vals[k] += v;
+    return;
+  }
+  if(++k < n && b.rows[k] == i) {
+    b.vals[k] += v;
+    b.last = k;
+    return;
+  }
+  if(n <= _maxSearch) {
+    for(k = 0; k < n; k++) {
+      if(b.rows[k] == i) {
+        b.vals[k] += v;
+        b.last = k;
+        return;
+      }
+    }
+  }
+  b.rows.push_back(i);
+  b.vals.push_back(v);
+  b.last = n;
+}
+
+// The element loop also reads the solution vectors one entry at a time: while
+// the element cache is active the arrays of the vectors that are read stay
+// open, instead of being requested and released for each entry
+static std::vector<std::pair<Vec, const PetscScalar *> > _readArrays;
+
+static const PetscScalar *_readArray(Vec V)
+{
+  const PetscScalar *a;
+  if(_elementCache) {
+    for(auto &r : _readArrays)
+      if(r.first == V) return r.second;
+    _try(VecGetArrayRead(V, &a));
+    _readArrays.push_back(std::make_pair(V, a));
+    return a;
+  }
+  _try(VecGetArrayRead(V, &a));
+  return a;
+}
+
+static void _doneArray(Vec V, const PetscScalar *a)
+{
+  if(!_elementCache) _try(VecRestoreArrayRead(V, &a));
+}
+
+static void _closeReadArrays()
+{
+  for(auto &r : _readArrays) _try(VecRestoreArrayRead(r.first, &r.second));
+  _readArrays.clear();
+}
+
+void LinAlg_StartElementCache() { _elementCache = true; }
+
+void LinAlg_FlushElementCache()
+{
+  _flushVecBufs();
+  _closeReadArrays();
+  _elementCache = false;
 }
 
 // sequential copies of the distributed vectors (see _fillseq below)
@@ -464,126 +681,36 @@ void LinAlg_CreateMatrix(gMatrix *M, gSolver *Solver, int n, int m, bool silent)
   Message::Debug("Creating matrix with MPI_CommSize=%d and MPI_IsCommWorld=%d",
                  Message::GetCommSize(), Message::GetIsCommWorld());
 
-  if(Current.DofData->SparsityPattern->size() &&
-     (Message::GetCommSize() == 1 || MyComm == PETSC_COMM_SELF)) {
-    Message::Debug("... SeqAIJ matrix with exact sparsity pattern");
-    // we add 1 to account for the diagonal element enforced below
-    std::vector<PetscInt> nnz;
-    nnz.resize(n, 1);
-    for(auto p : *Current.DofData->SparsityPattern) {
-      nnz[p.first]++;
-    }
-    _try(MatCreateSeqAIJ(PETSC_COMM_SELF, n, m, 0, &nnz[0], &M->M));
-    // PETSc (I)LU does not like matrices with empty (non assembled) diagonals
-    for(int i = 0; i < n; i++) {
-      PetscInt ti = i;
-      PetscScalar d = 0.;
-      _try(MatSetValues(M->M, 1, &ti, 1, &ti, &d, INSERT_VALUES));
-    }
-    _try(MatAssemblyBegin(M->M, MAT_FLUSH_ASSEMBLY));
-    _try(MatAssemblyEnd(M->M, MAT_FLUSH_ASSEMBLY));
-  }
-  else if(Current.DofData->SparsityPattern->size() && _usePartitions()) {
-    Message::Debug("... MPIAIJ matrix with exact sparsity pattern");
-    PetscInt nloc = _getLocalSize();
-    PetscInt mloc = nloc;
-    std::vector<PetscInt> d_nnz, o_nnz;
-    d_nnz.resize(nloc, 1);
-    o_nnz.resize(nloc, 0);
-    int r = Message::GetCommRank();
-    int istart = Current.DofData->PartitionSplit[r];
-    int iend = (r == Message::GetCommSize() - 1) ?
-      *Current.DofData->PartitionSplit.rbegin() :
-      Current.DofData->PartitionSplit[r + 1];
-    for(auto p : *Current.DofData->SparsityPattern) {
-      if(p.first >= istart && p.first < iend) {
-        int i = p.first - istart;
-        if(p.second >= istart && p.second < iend)
-          d_nnz[i]++;
-        else
-          o_nnz[i]++;
-      }
-    }
-#if((PETSC_VERSION_MAJOR == 3) && (PETSC_VERSION_MINOR >= 3))
-    _try(MatCreateAIJ(MyComm, nloc, mloc, n, m, 0, &d_nnz[0],
-                      0, &o_nnz[0], &M->M));
-#else
-    _try(MatCreateMPIAIJ(MyComm, nloc, mloc, n, m, 0, &d_nnz[0],
-                         0, &o_nnz[0], &M->M));
-#endif
-  }
-  else {
-    // use heuristics
-    PetscInt nloc = (Message::GetCommSize() == 1 || MyComm == PETSC_COMM_SELF) ?
-      n : _getLocalSize();
-    PetscInt mloc = nloc;
-    PetscInt prealloc = 100.;
-    PetscInt prealloc_full = (mloc > 0) ? mloc : n;
-    int nonloc = Current.DofData->NonLocalEquations.size();
-
-    // heuristic for global rows: don't prelloc more than 500 MB
-    double limit = 500. * 1024. * 1024. / (gSCALAR_SIZE * sizeof(double));
-    double estim = (double)nonloc * (double)mloc;
-    if(estim > limit) {
-      prealloc_full = (int)(limit / nonloc);
-      Message::Debug("Heuristic PETSc prealloc_full changed to %d", prealloc_full);
-    }
-
-    PetscTruth set_prealloc, set_prealloc_full;
-    PetscOptionsGetInt(PETSC_NULL, "-petsc_prealloc", &prealloc,
-                       &set_prealloc);
-    PetscOptionsGetInt(PETSC_NULL, "-petsc_prealloc_full", &prealloc_full,
-                       &set_prealloc_full);
-
-    // prealloc cannot be bigger than the number of columns!
-    prealloc = (mloc > 0 && prealloc > mloc) ? mloc :
-      (prealloc > n) ? n : prealloc;
-    prealloc_full = (mloc > 0 && prealloc_full > mloc) ? mloc :
-      (prealloc_full > n) ? n : prealloc_full;
-
-    if(!silent && set_prealloc)
-      Message::Info("Setting PETSc prealloc to %d", prealloc);
-    if(!silent && set_prealloc_full)
-      Message::Info("Setting PETSc prealloc_full to %d", prealloc_full);
-
-    if(Message::GetCommSize() == 1 || MyComm == PETSC_COMM_SELF) {
-      Message::Debug("... SeqAIJ matrix with heuristic allocation");
-      std::vector<PetscInt> nnz;
-      nnz.resize(n, prealloc);
-      for(int i = 0; i < nonloc; i++)
-        nnz[Current.DofData->NonLocalEquations[i] - 1] = prealloc_full;
-      _try(MatCreateSeqAIJ(PETSC_COMM_SELF, n, m, 0, &nnz[0], &M->M));
-      // PETSc (I)LU does not like matrices with empty (non assembled) diagonals
-      for(int i = 0; i < n; i++) {
-        PetscInt ti = i;
-        PetscScalar d = 0.;
-        _try(MatSetValues(M->M, 1, &ti, 1, &ti, &d, INSERT_VALUES));
-      }
-      _try(MatAssemblyBegin(M->M, MAT_FLUSH_ASSEMBLY));
-      _try(MatAssemblyEnd(M->M, MAT_FLUSH_ASSEMBLY));
-    }
-    else {
-      Message::Debug("... MPIAIJ matrix with heuristic allocation");
-#if((PETSC_VERSION_MAJOR == 3) && (PETSC_VERSION_MINOR >= 3))
-      _try(MatCreateAIJ(MyComm, nloc, mloc, n, m, prealloc, PETSC_NULL,
-                        prealloc, PETSC_NULL, &M->M));
-#else
-      _try(MatCreateMPIAIJ(MyComm, nloc, mloc, n, m, prealloc, PETSC_NULL,
-                           prealloc, PETSC_NULL, &M->M));
-#endif
-    }
-  }
-
-#if((PETSC_VERSION_MAJOR == 3) && (PETSC_VERSION_MINOR >= 3))
-  // Preallocation routines automatically set this to true, which causes a
-  // problem when the mask of the matrix changes (e.g. moving band), where we
-  // must allow (some) new allocations
+  // the matrix is preallocated when it is assembled for the first time, once
+  // its nonzero pattern is known (see _handOver)
+  bool seq = (Message::GetCommSize() == 1 || MyComm == PETSC_COMM_SELF);
+  PetscInt nloc = seq ? n : _getLocalSize();
+  PetscInt mloc = seq ? m : nloc;
+  _try(MatCreate(seq ? PETSC_COMM_SELF : MyComm, &M->M));
+  _try(MatSetSizes(M->M, nloc, mloc, n, m));
+  _try(MatSetType(M->M, MATAIJ));
+  _try(MatSeqAIJSetPreallocation(M->M, 0, PETSC_NULL));
+  _try(MatMPIAIJSetPreallocation(M->M, 0, PETSC_NULL, 0, PETSC_NULL));
   _try(MatSetOption(M->M, MAT_NEW_NONZERO_ALLOCATION_ERR, PETSC_FALSE));
-#endif
 
   // override the default options with the ones from the option
   // database (if any)
   _try(MatSetFromOptions(M->M));
+
+  _getAssembly(M->M).isNew = true;
+}
+
+// Destroys and creates the matrix again, as LinAlg_DestroyMatrix followed by
+// LinAlg_CreateMatrix, but keeps the memory of its storage for the next
+// assembly
+void LinAlg_RecreateMatrix(gMatrix *M, gSolver *Solver, int n, int m)
+{
+  SparseRows<PetscScalar, PetscInt> rows = std::move(_getAssembly(M->M).rows);
+  rows.clear();
+  LinAlg_DestroyMatrix(M);
+  LinAlg_CreateMatrix(M, Solver, n, m, true);
+  SparseRows<PetscScalar, PetscInt> &S = _getAssembly(M->M).rows;
+  if(rows.first() == S.first() && rows.last() == S.last()) S = std::move(rows);
 }
 
 void LinAlg_DestroySolver(gSolver *Solver)
@@ -613,6 +740,7 @@ void LinAlg_DestroySolver(gSolver *Solver)
 
 void LinAlg_DestroyVector(gVector *V)
 {
+  _dropVecBuf(V->V);
   if(V->haveSeq) {
     auto it = _seqNum.find(V->Vseq);
     if(it != _seqNum.end()) {
@@ -631,7 +759,7 @@ void LinAlg_DestroyVector(gVector *V)
 
 void LinAlg_DestroyMatrix(gMatrix *M)
 {
-  _nonLocalRows.erase(M->M);
+  _dropAssembly(M->M);
 #if(PETSC_VERSION_MAJOR == 3) && (PETSC_VERSION_MINOR >= 2)
   _try(MatDestroy(&M->M));
 #else
@@ -667,6 +795,15 @@ void LinAlg_SwapVector(gVector *V1, gVector *V2)
 
 void LinAlg_CopyMatrix(gMatrix *M1, gMatrix *M2)
 {
+  if(_getAssembly(M2->M).isNew) {
+    // a matrix that was just created is not preallocated
+    _try(MatSetUp(M2->M));
+    _try(MatAssemblyBegin(M2->M, MAT_FINAL_ASSEMBLY));
+    _try(MatAssemblyEnd(M2->M, MAT_FINAL_ASSEMBLY));
+    _try(MatAXPY(M2->M, 1., M1->M, DIFFERENT_NONZERO_PATTERN));
+    _getAssembly(M2->M).isNew = false;
+    return;
+  }
   _try(MatCopy(M1->M, M2->M, DIFFERENT_NONZERO_PATTERN));
 }
 
@@ -676,6 +813,7 @@ void LinAlg_ZeroVector(gVector *V)
 {
   PetscScalar zero = 0.0;
 
+  _dropVecBuf(V->V);
   _try(VecSet(V->V, zero));
   if(V->haveSeq) {
     _try(VecSet(V->Vseq, zero));
@@ -685,6 +823,7 @@ void LinAlg_ZeroVector(gVector *V)
 
 void LinAlg_ZeroMatrix(gMatrix *M)
 {
+  _getAssembly(M->M).rows.clear();
   _nonLocalRows.erase(M->M);
   _try(MatZeroEntries(M->M));
 }
@@ -939,43 +1078,39 @@ void LinAlg_GetComplexInScalar(double *d1, double *d2, gScalar *S)
 void LinAlg_GetScalarInVector(gScalar *S, gVector *V, int i)
 {
   Vec VV = V->haveSeq ? V->Vseq : V->V;
-  PetscScalar *tmp;
-  _try(VecGetArray(VV, &tmp));
+  const PetscScalar *tmp = _readArray(VV);
   S->s = tmp[i];
-  _try(VecRestoreArray(VV, &tmp));
+  _doneArray(VV, tmp);
 }
 
 void LinAlg_GetDoubleInVector(double *d, gVector *V, int i)
 {
   Vec VV = V->haveSeq ? V->Vseq : V->V;
-  PetscScalar *tmp;
-  _try(VecGetArray(VV, &tmp));
+  const PetscScalar *tmp = _readArray(VV);
 #if defined(PETSC_USE_COMPLEX)
   *d = real(tmp[i]);
 #else
   *d = tmp[i];
 #endif
-  _try(VecRestoreArray(VV, &tmp));
+  _doneArray(VV, tmp);
 }
 
 void LinAlg_GetAbsDoubleInVector(double *d, gVector *V, int i)
 {
   Vec VV = V->haveSeq ? V->Vseq : V->V;
-  PetscScalar *tmp;
-  _try(VecGetArray(VV, &tmp));
+  const PetscScalar *tmp = _readArray(VV);
 #if defined(PETSC_USE_COMPLEX)
   *d = fabs(real(tmp[i]));
 #else
   *d = fabs(tmp[i]);
 #endif
-  _try(VecRestoreArray(VV, &tmp));
+  _doneArray(VV, tmp);
 }
 
 void LinAlg_GetComplexInVector(double *d1, double *d2, gVector *V, int i, int j)
 {
   Vec VV = V->haveSeq ? V->Vseq : V->V;
-  PetscScalar *tmp;
-  _try(VecGetArray(VV, &tmp));
+  const PetscScalar *tmp = _readArray(VV);
 #if defined(PETSC_USE_COMPLEX)
   *d1 = real(tmp[i]);
   *d2 = imag(tmp[i]);
@@ -983,7 +1118,7 @@ void LinAlg_GetComplexInVector(double *d1, double *d2, gVector *V, int i, int j)
   *d1 = (double)tmp[i];
   *d2 = (double)tmp[j];
 #endif
-  _try(VecRestoreArray(VV, &tmp));
+  _doneArray(VV, tmp);
 }
 
 void LinAlg_GetScalarInMatrix(gScalar *S, gMatrix *M, int i, int j)
@@ -1089,6 +1224,7 @@ void LinAlg_SetComplexInVector(double d1, double d2, gVector *V, int i, int j)
 
 void LinAlg_SetScalarInMatrix(gScalar *S, gMatrix *M, int i, int j)
 {
+  _handOver(M->M, true);
   if(!_isInLocalRange(M, i)) return;
   PetscInt ti = i, tj = j;
   _try(MatSetValues(M->M, 1, &ti, 1, &tj, &S->s, INSERT_VALUES));
@@ -1096,6 +1232,7 @@ void LinAlg_SetScalarInMatrix(gScalar *S, gMatrix *M, int i, int j)
 
 void LinAlg_SetDoubleInMatrix(double d, gMatrix *M, int i, int j)
 {
+  _handOver(M->M, true);
   if(!_isInLocalRange(M, i)) return;
   PetscInt ti = i, tj = j;
   _try(MatSetValues(M->M, 1, &ti, 1, &tj, (PetscScalar *)&d, INSERT_VALUES));
@@ -1104,6 +1241,7 @@ void LinAlg_SetDoubleInMatrix(double d, gMatrix *M, int i, int j)
 void LinAlg_SetComplexInMatrix(double d1, double d2, gMatrix *M, int i, int j,
                                int k, int l)
 {
+  _handOver(M->M, true);
   PetscScalar tmp;
 #if defined(PETSC_USE_COMPLEX)
   PetscInt ti = i, tj = j;
@@ -1153,25 +1291,25 @@ void LinAlg_DummyVector(gVector *V)
 
 void LinAlg_AddScalarInVector(gScalar *S, gVector *V, int i)
 {
-  if(!_addsRow(_isInLocalRange(V, i), i)) return;
+  if(!_addsRow(V, i)) return;
 
   if(Current.DofData->DummyDof)
     if(Current.DofData->DummyDof[i] == 1) return;
 
   PetscInt ti = i;
-  _try(VecSetValues(V->V, 1, &ti, &S->s, ADD_VALUES));
+  _addInVector(V->V, ti, S->s);
 }
 
 void LinAlg_AddDoubleInVector(double d, gVector *V, int i)
 {
-  if(!_addsRow(_isInLocalRange(V, i), i)) return;
+  if(!_addsRow(V, i)) return;
 
   if(Current.DofData->DummyDof)
     if(Current.DofData->DummyDof[i] == 1) return;
 
   PetscScalar tmp = d;
   PetscInt ti = i;
-  _try(VecSetValues(V->V, 1, &ti, &tmp, ADD_VALUES));
+  _addInVector(V->V, ti, tmp);
 }
 
 void LinAlg_AddComplexInVector(double d1, double d2, gVector *V, int i, int j)
@@ -1185,27 +1323,27 @@ void LinAlg_AddComplexInVector(double d1, double d2, gVector *V, int i, int j)
   }
 
 #if defined(PETSC_USE_COMPLEX)
-  if(_addsRow(_isInLocalRange(V, i), i) && iok && jok) {
+  if(_addsRow(V, i) && iok && jok) {
     PetscInt ti = i;
     tmp = d1 + PETSC_i * d2;
-    _try(VecSetValues(V->V, 1, &ti, &tmp, ADD_VALUES));
+    _addInVector(V->V, ti, tmp);
   }
 #else
   PetscInt ti = i, tj = j;
-  if(_addsRow(_isInLocalRange(V, i), i) && iok) {
+  if(_addsRow(V, i) && iok) {
     tmp = d1;
-    _try(VecSetValues(V->V, 1, &ti, &tmp, ADD_VALUES));
+    _addInVector(V->V, ti, tmp);
   }
-  if(_addsRow(_isInLocalRange(V, j), j) && jok) {
+  if(_addsRow(V, j) && jok) {
     tmp = d2;
-    _try(VecSetValues(V->V, 1, &tj, &tmp, ADD_VALUES));
+    _addInVector(V->V, tj, tmp);
   }
 #endif
 }
 
 void LinAlg_AddScalarInMatrix(gScalar *S, gMatrix *M, int i, int j)
 {
-  if(!_addsRow(_isInLocalRange(M, i), i)) return;
+  if(!_addsRow(M, i)) return;
 
   if(Current.DofData->DummyDof)
     if((Current.DofData->DummyDof[i] == 1 ||
@@ -1218,7 +1356,7 @@ void LinAlg_AddScalarInMatrix(gScalar *S, gMatrix *M, int i, int j)
 
 void LinAlg_AddDoubleInMatrix(double d, gMatrix *M, int i, int j)
 {
-  if(!_addsRow(_isInLocalRange(M, i), i)) return;
+  if(!_addsRow(M, i)) return;
 
   if(Current.DofData->DummyDof)
     if((Current.DofData->DummyDof[i] == 1 ||
@@ -1234,13 +1372,13 @@ void LinAlg_AddComplexInMatrix(double d1, double d2, gMatrix *M, int i, int j,
 {
   PetscScalar tmp;
 #if defined(PETSC_USE_COMPLEX)
-  if(_addsRow(_isInLocalRange(M, i), i)) {
+  if(_addsRow(M, i)) {
     tmp = d1 + PETSC_i * d2;
     _addInMatrix(M, i, j, tmp);
   }
 #else
-  bool iok = _addsRow(_isInLocalRange(M, i), i);
-  bool kok = _addsRow(_isInLocalRange(M, k), k);
+  bool iok = _addsRow(M, i);
+  bool kok = _addsRow(M, k);
   if(d1) {
     tmp = d1;
     if(iok) _addInMatrix(M, i, j, tmp);
@@ -1523,7 +1661,7 @@ void LinAlg_VectorNormInf(gVector *V1, double *norm)
 
 void LinAlg_AssembleMatrix(gMatrix *M)
 {
-  _flushNonLocalRows(M->M);
+  _handOver(M->M);
   Message::Barrier();
   _try(MatAssemblyBegin(M->M, MAT_FINAL_ASSEMBLY));
   _try(MatAssemblyEnd(M->M, MAT_FINAL_ASSEMBLY));
@@ -1531,6 +1669,7 @@ void LinAlg_AssembleMatrix(gMatrix *M)
 
 void LinAlg_AssembleVector(gVector *V)
 {
+  _flushVecBufs();
   Message::Barrier();
   _try(VecAssemblyBegin(V->V));
   _try(VecAssemblyEnd(V->V));

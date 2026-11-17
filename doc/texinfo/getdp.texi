@@ -481,16 +481,6 @@ Specifies the maximum interpolation order.
 
 Caches lump element circuit computations to disk.
 
-@item -sparsity
-
-Computes the sparsity and parallel matrix layout once per system. When
-running with several MPI processes, this also makes @code{Integral}
-post-processing of global quantities distributed by default
-
-@item -sparsity-all
-
-Always computes sparsity and parallel matrix layout.
-
 @item -bin
 
 Selects binary format for output files.
@@ -5059,7 +5049,7 @@ Distributes the post-processing suboperations over all MPI processes
 case, each suboperation is executed on a single, different MPI
 process. Default value is 0, meaning that all suboperations are executed
 on all MPI processes, with integral quantities distributed over all
-processes when @code{-sparsity} is used. Do not use this option if
+processes. Do not use this option if
 @code{PostOperation} to be used for error estimation in
 @code{TimeLoopAdaptive} or @code{IterativeLoopAdvanced}. This is an
 expert-only option. An optional @var{expression-cst} can be given to

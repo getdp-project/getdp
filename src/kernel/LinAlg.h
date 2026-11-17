@@ -101,6 +101,7 @@ void LinAlg_CreateMatrix(gMatrix *M, gSolver *Solver, int n, int m, bool silent=
 void LinAlg_DestroySolver(gSolver *Solver);
 void LinAlg_DestroyVector(gVector *V);
 void LinAlg_DestroyMatrix(gMatrix *M);
+void LinAlg_RecreateMatrix(gMatrix *M, gSolver *Solver, int n, int m);
 
 void LinAlg_CopyScalar(gScalar *S1, gScalar *S2);
 void LinAlg_CopyVector(gVector *V1, gVector *V2);
@@ -205,6 +206,8 @@ void LinAlg_VectorNormInf(gVector *V1, double *norm);
 void LinAlg_AssembleMatrix(gMatrix *M);
 void LinAlg_AssembleVector(gVector *V);
 void LinAlg_UpdateSequentialVectors();
+void LinAlg_StartElementCache();
+void LinAlg_FlushElementCache();
 
 void LinAlg_Solve(gMatrix *A, gVector *B, gSolver *Solver, gVector *X,
                   int solverIndex = 0);

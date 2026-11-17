@@ -30,7 +30,7 @@
 int Flag_PRE = 0, Flag_CAL = 0, Flag_POS = 0, Flag_RESTART = 0;
 int Flag_XDATA = 0, Flag_BIN = 0, Flag_SPLIT = 0, Flag_GMSH_VERSION = 1;
 int Flag_NETWORK_CACHE = 0, Flag_CALLED_WITH_ONELAB_SERVER = 0;
-int Flag_SLEPC = 0, Flag_SPARSITY_PATTERN = 0, Flag_LOCAL_DOFS = 0;
+int Flag_SLEPC = 0, Flag_LOCAL_DOFS = 0;
 double Flag_ORDER = -1., Flag_MSH_SCALING = 1.;
 char *Name_Generic = 0, *Name_Path = 0;
 char *Name_Resolution = 0;
@@ -67,12 +67,8 @@ static void Info(int level, char *arg0)
       "  -order num                restrict maximum interpolation order\n"
       "  -cache                    cache network computations to disk\n"
 #if defined(HAVE_PETSC)
-      "  -sparsity                 compute sparsity and parallel layout once "
-      "per system (or -s)\n"
-      "  -sparsity-all             always compute sparsity and parallel layout "
-      "(or -sa)\n"
       "  -local-dofs               keep on each rank only the Dofs of its mesh "
-      "partition (rank 0 keeps all of them; needs -sparsity)\n"
+      "partition (rank 0 keeps all of them)\n"
 #endif
       "Linear solver options:\n"
 #if defined(HAVE_PETSC)
@@ -169,18 +165,8 @@ static void Get_Options(int argc, char *argv[], int *sargc, char **sargv,
         Flag_NETWORK_CACHE = 1;
         i++;
       }
-      else if(!strcmp(argv[i] + 1, "sparsity") ||
-              !strcmp(argv[i] + 1, "s")) {
-        Flag_SPARSITY_PATTERN = 1;
-        i++;
-      }
       else if(!strcmp(argv[i] + 1, "local-dofs")) {
         Flag_LOCAL_DOFS = 1;
-        i++;
-      }
-      else if(!strcmp(argv[i] + 1, "sparsity-all") ||
-              !strcmp(argv[i] + 1, "sa")) {
-        Flag_SPARSITY_PATTERN = 2;
         i++;
       }
       else if(!strcmp(argv[i] + 1, "bin")) {

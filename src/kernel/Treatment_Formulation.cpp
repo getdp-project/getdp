@@ -565,19 +565,38 @@ void Treatment_FemFormulation(struct Formulation *Formulation_P)
   const bool localDofs = Dof_UseLocalDofs();
   const bool rootTreatsAll =
     localDofs && TreatmentStatus == STATUS_CST && !Message::GetCommRank();
-  bool partitioned = false;
-  if(Message::GetCommSize() > 1 && Current.DofData->ElementRanks->size() &&
-     Current.TypeAssembly != ASSEMBLY_SPARSITY_PATTERN) {
-    if((int)Current.DofData->PartitionSplit.size() ==
-         Message::GetCommSize() + 1 ||
-       (int)Current.DofData->PartitionSplit.size() ==
-         Message::GetCommSize() + 2) {
-      partitioned = true;
+  // in parallel each element is assembled by one rank, which adds all its
+  // contributions (see Dof_IsPartitionOfThisRank)
+  const bool oneRankPerElement =
+    localDofs || (TreatmentStatus == STATUS_CAL && Message::GetCommSize() > 1 &&
+                  Message::GetIsCommWorld());
+
+  if(TreatmentStatus == STATUS_CAL &&
+     Current.TypeAssembly == ASSEMBLY_SEPARATE && Message::GetCommSize() > 1 &&
+     Message::GetIsCommWorld()) {
+    // The matrices of GenerateSeparate are created when a first term is
+    // assembled in them (see Cal_InitSeparate). All the ranks must create the
+    // same ones, in the same order, but each one only assembles its own
+    // elements: the matrices of the terms that have an element in their support
+    // are thus created here, which only depends on the mesh.
+    std::unordered_set<int> regions;
+    for(int i_Element = 0; i_Element < Nbr_Element; i_Element++) {
+      int region = Geo_GetGeoElement(i_Element)->Region;
+      if(!Generate_Group ||
+         List_Search(Generate_Group->InitialList, &region, fcmp_int))
+        regions.insert(region);
     }
-    else {
-      Message::Warning("Number of ranks %d not compatible with partition "
-                       "split - reverting to full assembly",
-                       Message::GetCommSize());
+    for(int i_EquTerm = 0; i_EquTerm < Nbr_EquationTerm; i_EquTerm++) {
+      EquationTerm_P = EquationTerm_P0 + i_EquTerm;
+      if(EquationTerm_P->Type != GALERKIN) continue;
+      struct Group *GroupIn_P = (struct Group *)List_Pointer(
+        Problem_S.Group, EquationTerm_P->Case.LocalTerm.InIndex);
+      bool used = (GroupIn_P->Type == ELEMENTLIST);
+      for(int i = 0; !used && i < List_Nbr(GroupIn_P->InitialList); i++)
+        used = regions.count(*(int *)List_Pointer(GroupIn_P->InitialList, i));
+      int k = Cal_GetSeparateIndex(
+        EquationTerm_P->Case.LocalTerm.Term.TypeTimeDerivative);
+      if(used && k) Cal_InitSeparate(k);
     }
   }
 
@@ -617,28 +636,6 @@ void Treatment_FemFormulation(struct Formulation *Formulation_P)
     Element.Num = Element.GeoElement->Num;
     Element.Type = Element.GeoElement->Type;
     Current.Region = Element.Region = Element.GeoElement->Region;
-
-    if(partitioned) {
-      // the element is assembled by the ranks of its equations. Its
-      // contributions to the non-local equations (recorded as rank -1 by all
-      // ranks) are added by the rank of its mesh partition, which assembles it
-      // in any case, instead of by the owner of these equations: all the ranks
-      // agree on this rank, whereas each one only knows its own equations.
-      auto range = Current.DofData->ElementRanks->equal_range(Element.Num);
-      int me = Message::GetCommRank(), np = Message::GetCommSize();
-      bool mine = false, nonLocal = false;
-      for(auto it = range.first; it != range.second; ++it) {
-        if(it->second < 0)
-          nonLocal = true;
-        else if(it->second == me)
-          mine = true;
-      }
-      int part = Element.GeoElement->Partition;
-      int adder = (part > 0) ? (part - 1) % np : np - 1;
-      if(nonLocal && me == adder) mine = true;
-      if(!mine) continue;
-      Current.NonLocalRows = nonLocal ? (me == adder ? 1 : -1) : 0;
-    }
 
     /* ---------------------------- */
     /* 2.1.  Loop on equation terms */
@@ -699,17 +696,20 @@ void Treatment_FemFormulation(struct Formulation *Formulation_P)
       Formulation_P->ElementListEquationTermIDsIsInit = 1;
     }
 
-    if(localDofs) {
-      // with -local-dofs each element is treated by the rank of its partition,
-      // the only one to have all its Dofs (rank 0 has them all and updates the
-      // constraints of all the Dofs); it adds all its rows, whoever owns them.
-      // This is after the setup above, which must see all the regions: all the
-      // elements are not treated in all the passes.
+    if(oneRankPerElement) {
+      // with -local-dofs this applies to all the passes: the rank of the
+      // partition of an element is the only one to have all its Dofs (rank 0
+      // has them all and updates the constraints of all the Dofs). This is
+      // after the setup above, which must see all the regions.
       if(!rootTreatsAll &&
          !Dof_IsPartitionOfThisRank(Element.GeoElement->Partition))
         continue;
-      Current.NonLocalRows = 2;
+      Current.AddAllRows = true;
     }
+
+    // the entries added by the terms of this element are accumulated, and
+    // inserted together in the matrices and vectors after the last term
+    LinAlg_StartElementCache();
 
     // first Loop for all equation terms with GroupIn_P->TYPE != ELEMENTLIST it
     // is performed by looping only on the relevant equation terms for the
@@ -759,15 +759,15 @@ void Treatment_FemFormulation(struct Formulation *Formulation_P)
 
     } // for i_EquTerm ...
 
+    LinAlg_FlushElementCache();
+
     Message::ProgressMeter(i_Element + 1, Nbr_Element,
                            (TreatmentStatus == STATUS_PRE) ?
                              "Pre-processing" :
-                           (Current.TypeAssembly == ASSEMBLY_SPARSITY_PATTERN) ?
-                             "Processing (Sparsity)" :
                              "Processing (Generate)");
     if(Message::GetErrorCount()) break;
   } // for i_Element ...
-  Current.NonLocalRows = 0;
+  Current.AddAllRows = false;
 
   // mark as initialized for next assembly:
   Formulation_P->RegionToEquationTermIDsIsInit = 1;

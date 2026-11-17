@@ -36,7 +36,7 @@
 #include <mpi.h>
 #endif
 
-extern int Flag_LOCAL_DOFS, Flag_SPARSITY_PATTERN;
+extern int Flag_LOCAL_DOFS;
 
 // define this to revert to the old numbering of Dofs, that does not take mesh
 // partitions into account
@@ -231,8 +231,6 @@ void Dof_InitDofData(struct DofData *DofData_P, int Num, int ResolutionIndex,
 
   DofData_P->DummyDof = NULL;
 
-  DofData_P->ElementRanks = new std::unordered_multimap<int, int>();
-  DofData_P->SparsityPattern = new std::set<std::pair<int, int>>();
 }
 
 /* ------------------------------------------------------------------------ */
@@ -349,8 +347,6 @@ void Dof_FreeDofData(struct DofData *DofData_P)
     }
   }
 
-  delete DofData_P->ElementRanks;
-  delete DofData_P->SparsityPattern;
 
   // TODO: handle MH data and CorrectionSolutions
 }
@@ -1692,7 +1688,10 @@ bool Dof_UseLocalDofs()
          Message::GetIsCommWorld();
 }
 
-// Elements without partition go to the last rank, like the global equations
+// In parallel each element is assembled by a single rank, the one of its mesh
+// partition, which adds all its contributions, whoever owns the rows (they are
+// sent to their owner when the matrix or the vector is assembled). Elements
+// without partition go to the last rank, like the global equations.
 bool Dof_IsPartitionOfThisRank(int partition)
 {
   int np = Message::GetCommSize();
@@ -2171,22 +2170,14 @@ void Dof_UpdateLinkDof(int D1, int D2, int NbrHar, double Value[], int D2_Link)
   }
 }
 
-// When the Dofs are numbered by mesh partition (-sparsity with a partitioned
-// mesh in parallel), equation n belongs to the rank whose range of the
-// partition split contains it; the non-partitioned (global) equations at the
-// end go to the last rank
-static bool Dof_HasPartitionSplit()
+// Whether the Dofs are numbered by mesh partition, with one partition for each
+// MPI rank (plus possibly the non-partitioned Dofs, which go to the last rank)
+bool Dof_HasRankPartitions()
 {
-  return Message::GetCommSize() > 1 &&
-         (int)Current.DofData->PartitionSplit.size() > Message::GetCommSize();
-}
-
-static int Dof_GetRankOfEquation(int n)
-{
-  const std::vector<int> &s = Current.DofData->PartitionSplit;
-  int i = std::upper_bound(s.begin(), s.end(), n) - s.begin();
-  if(i == 0 || i == (int)s.size()) return -1;
-  return std::min(i - 1, Message::GetCommSize() - 1);
+  int np = Message::GetCommSize();
+  if(np == 1 || !Message::GetIsCommWorld() || !Current.DofData) return false;
+  int ns = (int)Current.DofData->PartitionSplit.size();
+  return ns == np + 1 || ns == np + 2;
 }
 
 // Whether equation n (starting at 0) is non-local, i.e. a global quantity
@@ -2208,82 +2199,6 @@ bool Dof_IsNonLocalEquation(int n)
   return equ.count(n) > 0;
 }
 
-// Records that element ele contributes to equation n, i.e. that the rank of n
-// has to assemble it. This is called for every entry of every element matrix:
-// store each (element, rank) pair only once. A non-local equation is recorded
-// as rank -1: such an element (e.g. of a conductor coupled to its circuit
-// unknowns) is not assembled by the last rank because of this equation, which
-// would then assemble all such elements (see Treatment_Formulation).
-static void Dof_AddElementRank(int ele, int n)
-{
-  if(Dof_UseLocalDofs()) return; // each element is assembled by its partition
-  int rank = Dof_GetRankOfEquation(n);
-  if(rank < 0) return;
-  if(Dof_IsNonLocalEquation(n)) rank = -1;
-  static int lastEle = -1, lastRank = -1;
-  static std::unordered_multimap<int, int> *lastMap = NULL;
-  std::unordered_multimap<int, int> *m = Current.DofData->ElementRanks;
-  if(m == lastMap && !m->empty() && ele == lastEle && rank == lastRank) return;
-  lastMap = m;
-  lastEle = ele;
-  lastRank = rank;
-  auto range = m->equal_range(ele);
-  for(auto it = range.first; it != range.second; ++it)
-    if(it->second == rank) return;
-  m->insert({ele, rank});
-}
-
-// Records the nonzero (i, j) of the matrices; in parallel, with the Dofs
-// numbered by partition, each rank only needs (and preallocates) its own rows
-static void Dof_AddToSparsityPattern(int i, int j)
-{
-  // with -local-dofs the rows of the elements of this rank that belong to other
-  // ranks are kept for them: see Dof_ExchangeSparsityPattern
-  if(Dof_HasPartitionSplit() &&
-     Dof_GetRankOfEquation(i) != Message::GetCommRank() &&
-     Current.NonLocalRows != 2)
-    return;
-  Current.DofData->SparsityPattern->insert(std::make_pair(i, j));
-}
-
-// With -local-dofs, sends the entries of the rows of other ranks to these ranks
-void Dof_ExchangeSparsityPattern()
-{
-#if defined(HAVE_MPI)
-  if(!Dof_UseLocalDofs()) return;
-  const int np = Message::GetCommSize(), me = Message::GetCommRank();
-  std::set<std::pair<int, int>> *pattern = Current.DofData->SparsityPattern;
-  std::vector<std::vector<int>> out(np);
-  for(auto it = pattern->begin(); it != pattern->end();) {
-    int r = Dof_GetRankOfEquation(it->first);
-    if(r == me || r < 0) {
-      ++it;
-      continue;
-    }
-    out[r].push_back(it->first);
-    out[r].push_back(it->second);
-    it = pattern->erase(it);
-  }
-  std::vector<int> scounts(np), rcounts(np), sdispls(np, 0), rdispls(np, 0);
-  for(int i = 0; i < np; i++) scounts[i] = (int)out[i].size();
-  MPI_Alltoall(&scounts[0], 1, MPI_INT, &rcounts[0], 1, MPI_INT, MPI_COMM_WORLD);
-  int nsend = scounts[0], nrecv = rcounts[0];
-  for(int i = 1; i < np; i++) {
-    sdispls[i] = sdispls[i - 1] + scounts[i - 1];
-    rdispls[i] = rdispls[i - 1] + rcounts[i - 1];
-    nsend += scounts[i];
-    nrecv += rcounts[i];
-  }
-  std::vector<int> sbuf(nsend + 1), rbuf(nrecv + 1);
-  for(int i = 0; i < np; i++)
-    std::copy(out[i].begin(), out[i].end(), sbuf.begin() + sdispls[i]);
-  MPI_Alltoallv(&sbuf[0], &scounts[0], &sdispls[0], MPI_INT, &rbuf[0],
-                &rcounts[0], &rdispls[0], MPI_INT, MPI_COMM_WORLD);
-  for(int i = 0; i + 1 < nrecv; i += 2)
-    pattern->insert(std::make_pair(rbuf[i], rbuf[i + 1]));
-#endif
-}
-
 /* ------------------------------------------------------------------------ */
 /*  D o f _ A s s e m b l e I n M a t                                       */
 /* ------------------------------------------------------------------------ */
@@ -2298,36 +2213,19 @@ void Dof_AssembleInMat(struct Dof *Equ_P, struct Dof *Dof_P, int NbrHar,
   case DOF_UNKNOWN:
   case DOF_FIXEDWITHASSOCIATE:
 
-    if(Current.TypeAssembly == ASSEMBLY_SPARSITY_PATTERN &&
-       Dof_HasPartitionSplit() && Current.Element->GeoElement) {
-      int ele = Current.Element->GeoElement->Num;
-      Dof_AddElementRank(ele, Equ_P->Case.Unknown.NumDof - 1);
-      if(NbrHar > 1 && gSCALAR_SIZE == 1)
-        Dof_AddElementRank(ele, (Equ_P + 1)->Case.Unknown.NumDof - 1);
-    }
-
     switch(Dof_P->Type) {
     case DOF_UNKNOWN:
       if(Current.DofData->Flag_RHS) break;
-      if(Current.TypeAssembly == ASSEMBLY_SPARSITY_PATTERN) {
-        Dof_AddToSparsityPattern(Equ_P->Case.Unknown.NumDof - 1,
+      if(NbrHar == 1) {
+        LinAlg_AddDoubleInMatrix(Val[0], Mat, Equ_P->Case.Unknown.NumDof - 1,
                                  Dof_P->Case.Unknown.NumDof - 1);
-        if(NbrHar > 1 && gSCALAR_SIZE == 1)
-          Dof_AddToSparsityPattern((Equ_P + 1)->Case.Unknown.NumDof - 1,
-                                   (Dof_P + 1)->Case.Unknown.NumDof - 1);
       }
-      else {
-        if(NbrHar == 1) {
-          LinAlg_AddDoubleInMatrix(Val[0], Mat, Equ_P->Case.Unknown.NumDof - 1,
-                                   Dof_P->Case.Unknown.NumDof - 1);
-        }
-        else
-          LinAlg_AddComplexInMatrix(
-            Val[0], Val[1], Mat, Equ_P->Case.Unknown.NumDof - 1,
-            Dof_P->Case.Unknown.NumDof - 1,
-            (gSCALAR_SIZE == 1) ? ((Equ_P + 1)->Case.Unknown.NumDof - 1) : -1,
-            (gSCALAR_SIZE == 1) ? ((Dof_P + 1)->Case.Unknown.NumDof - 1) : -1);
-      }
+      else
+        LinAlg_AddComplexInMatrix(
+          Val[0], Val[1], Mat, Equ_P->Case.Unknown.NumDof - 1,
+          Dof_P->Case.Unknown.NumDof - 1,
+          (gSCALAR_SIZE == 1) ? ((Equ_P + 1)->Case.Unknown.NumDof - 1) : -1,
+          (gSCALAR_SIZE == 1) ? ((Dof_P + 1)->Case.Unknown.NumDof - 1) : -1);
       break;
 
     case DOF_FIXED:
@@ -2464,20 +2362,6 @@ void Dof_AssembleInVec(struct Dof *Equ_P, struct Dof *Dof_P, int NbrHar,
   switch(Equ_P->Type) {
   case DOF_UNKNOWN:
   case DOF_FIXEDWITHASSOCIATE:
-
-    if(Current.TypeAssembly == ASSEMBLY_SPARSITY_PATTERN &&
-       Dof_HasPartitionSplit() && Current.Element->GeoElement) {
-      int ele = Current.Element->GeoElement->Num;
-      Dof_AddElementRank(ele, Equ_P->Case.Unknown.NumDof - 1);
-      if(NbrHar > 1 && gSCALAR_SIZE == 1)
-        Dof_AddElementRank(ele, (Equ_P + 1)->Case.Unknown.NumDof - 1);
-    }
-
-    // During the -sparsity pattern pass only the matrix structure is being
-    // recorded (the element-rank bookkeeping above); the values are discarded
-    // and the matrices are recreated afterwards. Let's avoid reading them here
-    // so we avoid any unsafe memory access -> return early.
-    if(Current.TypeAssembly == ASSEMBLY_SPARSITY_PATTERN) return;
 
     switch(Dof_P->Type) {
     case DOF_UNKNOWN:

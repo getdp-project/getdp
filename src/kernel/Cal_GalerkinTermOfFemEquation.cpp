@@ -711,35 +711,6 @@ void Cal_GalerkinTermOfFemEquation(struct Element *Element,
       } /* if NextElement */
     } /* if INTEGRALQUANTITY */
 
-    // TODO: this could (should?) be remove once -sparsity has been validated
-#if 1
-    if(Message::GetCommSize() > 1 && Current.NonLocalRows != 2) {
-      // if all the equations lead to matrix entries and they are all outside
-      // the range owned by the current process, skip the assembly altogether:
-      int skip = 0, low, high;
-      LinAlg_GetLocalMatrixRange(&Current.DofData->A, &low, &high);
-      for(i = 0; i < Nbr_Equ; i++) {
-        struct Dof *Equ_P = QuantityStorageEqu_P->BasisFunction[i].Dof;
-        if(Equ_P->Type == DOF_UNKNOWN) {
-          int n = Equ_P->Case.Unknown.NumDof - 1;
-          bool outside = (n < low || n > high);
-          // all the ranks must see the non-local equations of the elements in
-          // the sparsity pattern pass, and the rank that adds them for this
-          // element is not necessarily their owner (see Current.NonLocalRows)
-          if(Dof_IsNonLocalEquation(n)) {
-            if(Current.TypeAssembly == ASSEMBLY_SPARSITY_PATTERN ||
-               Current.NonLocalRows > 0)
-              outside = false;
-            else if(Current.NonLocalRows < 0)
-              outside = true;
-          }
-          if(outside) skip++;
-        }
-      }
-      if(skip == Nbr_Equ) return;
-    }
-#endif
-
     if(FI->SymmetricalMatrix)
       for(i = 0; i < Nbr_Equ; i++)
         for(j = 0; j <= i; j++)
@@ -749,17 +720,6 @@ void Cal_GalerkinTermOfFemEquation(struct Element *Element,
         for(j = 0; j < Nbr_Dof; j++)
           for(k = 0; k < Current.NbrHar; k++) Ek[i][j][k] = 0.;
 
-
-    if(Current.TypeAssembly == ASSEMBLY_SPARSITY_PATTERN) {
-      for(i = 0; i < Nbr_Equ; i++)
-        for(j = 0; j < Nbr_Dof; j++)
-          ((void (*)(struct Dof *, struct Dof *,
-                     double *))FI->Function_AssembleTerm)(
-            QuantityStorageEqu_P->BasisFunction[i].Dof,
-            QuantityStorageDof_P->BasisFunction[j].Dof, Ek[i][j]);
-      if(FI->Type_DefineQuantityDof != INTEGRALQUANTITY) break;
-      continue;
-    }
 
     switch(IntegrationCase_P->Type) {
       /*  -------------------------------------  */

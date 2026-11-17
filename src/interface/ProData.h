@@ -35,7 +35,6 @@
 
 #define ASSEMBLY_AGGREGATE 1
 #define ASSEMBLY_SEPARATE 2
-#define ASSEMBLY_SPARSITY_PATTERN 3
 
 /* ------------------------------------------------------------------------ */
 /*  V a l u e                                                               */
@@ -1709,11 +1708,10 @@ struct CurrentData {
   int SourceIntegrationSupportIndex;
 
   int TypeTime, TypeAssembly;
-  // in a partitioned parallel assembly, whether the current element adds its
-  // contributions to the rows of the non-local equations: 0 if only their
-  // owner does (default), 1 if this rank does (even if it does not own them),
-  // -1 if it does not (even if it owns them)
-  int NonLocalRows;
+  // in parallel, whether all the entries are added to the matrices and the
+  // vectors, whoever owns their row (in the element loop, where each element
+  // is assembled by a single rank), or only those of the rows owned by the rank
+  bool AddAllRows;
   int SubTimeStep;
 
   int flagAssDiag;

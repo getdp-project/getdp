@@ -8,6 +8,8 @@
 
 #include "ProData.h"
 
+void Cal_InitSeparate(int k);
+int Cal_GetSeparateIndex(int TypeTimeDerivative);
 void Cal_AssembleTerm_NoDt(struct Dof *Equ, struct Dof *Dof, double Val[]);
 void Cal_AssembleTerm_DtDof(struct Dof *Equ, struct Dof *Dof, double Val[]);
 void Cal_AssembleTerm_Dt(struct Dof *Equ, struct Dof *Dof, double Val[]);

@@ -6,6 +6,7 @@
 #include <string.h>
 #include <math.h>
 #include <vector>
+#include <algorithm>
 #include "GetDPConfig.h"
 #include "GeoData.h"
 #include "ProData.h"
@@ -47,6 +48,87 @@ static void swapBytes(char *array, int size, int n)
 /*  G e o _ A d d G e o D a t a                                             */
 /* ------------------------------------------------------------------------ */
 
+// Recursive coordinate bisection: assigns the elements e[begin, end) to the
+// partitions first, ..., first + n - 1, by splitting them along the direction in
+// which their barycenters (x[d][element]) are the most spread out
+static void Geo_Bisect(struct GeoData *GeoData_P, const std::vector<double> x[3],
+                       std::vector<int> &e, int begin, int end, int first, int n)
+{
+  if(n == 1) {
+    for(int i = begin; i < end; i++)
+      ((struct Geo_Element *)List_Pointer(GeoData_P->Elements, e[i]))
+        ->Partition = first;
+    return;
+  }
+  int dir = 0;
+  double size = -1.;
+  for(int d = 0; d < 3; d++) {
+    double min = 1e200, max = -1e200;
+    for(int i = begin; i < end; i++) {
+      min = std::min(min, x[d][e[i]]);
+      max = std::max(max, x[d][e[i]]);
+    }
+    if(max - min > size) {
+      size = max - min;
+      dir = d;
+    }
+  }
+  int mid = begin + (int)((long long)(end - begin) * (n / 2) / n);
+  std::nth_element(e.begin() + begin, e.begin() + mid, e.begin() + end,
+                   [&](int a, int b) { return x[dir][a] < x[dir][b]; });
+  Geo_Bisect(GeoData_P, x, e, begin, mid, first, n / 2);
+  Geo_Bisect(GeoData_P, x, e, mid, end, first + n / 2, n - n / 2);
+}
+
+// In parallel each mesh element is assembled by the rank of its mesh partition,
+// and the Dofs are numbered by partition, so that a rank owns most of the rows
+// of its elements. If the mesh does not come with one partition for each rank,
+// its elements are thus partitioned here, by recursive coordinate bisection (or
+// by merging its partitions, if their number is a multiple of the number of
+// ranks). Partitioning the mesh with Gmsh gives better partitions.
+static void Geo_SetPartitions(struct GeoData *GeoData_P)
+{
+  int np = Message::GetCommSize(), n = List_Nbr(GeoData_P->Elements);
+  if(np == 1 || !n) return;
+  int nbr = 0;
+  for(int i = 0; i < n; i++)
+    nbr = std::max(
+      nbr, ((struct Geo_Element *)List_Pointer(GeoData_P->Elements, i))->Partition);
+  if(nbr == np) return;
+  if(nbr > np && nbr % np == 0) {
+    Message::Info("Merging the %d mesh partitions for %d ranks", nbr, np);
+    for(int i = 0; i < n; i++) {
+      struct Geo_Element *e =
+        (struct Geo_Element *)List_Pointer(GeoData_P->Elements, i);
+      if(e->Partition > 0) e->Partition = (e->Partition - 1) % np + 1;
+    }
+  }
+  else {
+    Message::Info("Partitioning the mesh for %d ranks (it has %d partitions)",
+                  np, nbr);
+    std::vector<double> x[3];
+    std::vector<int> e(n);
+    for(int d = 0; d < 3; d++) x[d].resize(n, 0.);
+    for(int i = 0; i < n; i++) {
+      e[i] = i;
+      struct Geo_Element *ele =
+        (struct Geo_Element *)List_Pointer(GeoData_P->Elements, i);
+      for(int j = 0; j < ele->NbrNodes; j++) {
+        struct Geo_Node node, *node_P;
+        node.Num = abs(ele->NumNodes[j]);
+        if((node_P = (struct Geo_Node *)List_PQuery(GeoData_P->Nodes, &node,
+                                                    fcmp_Nod))) {
+          x[0][i] += node_P->x / ele->NbrNodes;
+          x[1][i] += node_P->y / ele->NbrNodes;
+          x[2][i] += node_P->z / ele->NbrNodes;
+        }
+      }
+    }
+    Geo_Bisect(GeoData_P, x, e, 0, n, 1, np);
+  }
+  GeoData_P->NbrPartitions = np;
+}
+
 int Geo_AddGeoData(List_T *GeoData_L, char *Name_MshFile,
                    char *Name_DefaultMshFile, char *Name_AdaptFile,
                    char *Name_DefaultAdaptFile)
@@ -64,6 +146,7 @@ int Geo_AddGeoData(List_T *GeoData_L, char *Name_MshFile,
     Geo_OpenFile(Name_MshFile, "rb");
     Geo_ReadFile(&GeoData_S);
     Geo_CloseFile();
+    Geo_SetPartitions(&GeoData_S);
     if(Message::GetInfoCpu()) Message::MarkOperationCpu("");
 
     if(!Name_AdaptFile) Name_AdaptFile = Name_DefaultAdaptFile;

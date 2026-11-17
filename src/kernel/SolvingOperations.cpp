@@ -44,7 +44,7 @@ extern int TreatmentStatus;
 
 extern int Flag_POS;
 extern int Flag_RESTART;
-extern int Flag_BIN, Flag_SPLIT, Flag_SPARSITY_PATTERN;
+extern int Flag_BIN, Flag_SPLIT;
 
 extern char *Name_Generic, *Name_Path;
 extern char *Name_MshFile, *Name_ResFile[NBR_MAX_RES];
@@ -176,13 +176,12 @@ void Init_SystemData(struct DofData *DofData_P, int Flag_Jac)
 
 static void ZeroMatrix(gMatrix *M, gSolver *S, int N)
 {
-  // We destroy and recreate the matrix to avoid filling-in the mask when
-  // generating systems on meshes with changing topologies (remeshing, moving
-  // band, ..., e.g. in time loops) or when constraints are updated. Using
-  // LinAlg_ZeroMatrix preserves the mask from iteration to iteration, which
-  // increases memory every time we reassemble.
-  LinAlg_DestroyMatrix(M);
-  LinAlg_CreateMatrix(M, S, N, N, true);
+  // We destroy and recreate the matrix instead of using LinAlg_ZeroMatrix, so
+  // that it only holds the entries of the next assembly: the nonzero pattern
+  // changes when the topology of the mesh does (remeshing, moving band, ...,
+  // e.g. in time loops) or when constraints are updated, and would otherwise
+  // fill up with the entries of all the past assemblies.
+  LinAlg_RecreateMatrix(M, S, N, N);
 }
 
 void ExtrapolatingPolynomial(int degreewanted, struct DofData *DofData_P,
@@ -449,64 +448,6 @@ void Generate_System(struct DefineSystem *DefineSystem_P,
                Current.DofData->NbrDof);
 
   Nbr_Formulation = List_Nbr(DefineSystem_P->FormulationIndex);
-
-  static std::set<std::string> sparsity_done;
-
-  if(Flag_SPARSITY_PATTERN == 2 || // each time
-     (Flag_SPARSITY_PATTERN == 1 && !sparsity_done.count(DefineSystem_P->Name))) { // once
-    sparsity_done.insert(DefineSystem_P->Name);
-    Message::Info("Computing exact sparsity patterns");
-    // do a first "fake" assembly pass to compute the exact sparsity patterns
-    int old = Current.TypeAssembly;
-    Current.TypeAssembly = ASSEMBLY_SPARSITY_PATTERN;
-    for(int i = 0; i < Nbr_Formulation; i++) {
-      List_Read(DefineSystem_P->FormulationIndex, i, &Index_Formulation);
-      Formulation_P = (struct Formulation *)List_Pointer(Problem_S.Formulation,
-                                                         Index_Formulation);
-      Init_DofDataInDefineQuantity(DefineSystem_P, DofData_P0, Formulation_P);
-      Treatment_Formulation(Formulation_P);
-    }
-    Dof_ExchangeSparsityPattern();
-    // recreate matrices with exact sparsity pattern - TODO: A1, A2, A3
-    ZeroMatrix(&Current.DofData->A, &Current.DofData->Solver,
-               Current.DofData->NbrDof);
-    if(Flag_Jac)
-      ZeroMatrix(&Current.DofData->Jac, &Current.DofData->Solver,
-                 Current.DofData->NbrDof);
-    // cleanup vectors
-    LinAlg_AssembleVector(&Current.DofData->b);
-    LinAlg_ZeroVector(&Current.DofData->b);
-    if(Flag_Separate) {
-      // same for the separate matrices, which would otherwise keep the
-      // heuristic preallocation, and their vectors, which have received the
-      // contributions of the fixed Dofs during the pass
-      gMatrix *M[8] = {NULL,
-                       &Current.DofData->M1, &Current.DofData->M2,
-                       &Current.DofData->M3, &Current.DofData->M4,
-                       &Current.DofData->M5, &Current.DofData->M6,
-                       &Current.DofData->M7};
-      gVector *m[8] = {NULL,
-                       &Current.DofData->m1, &Current.DofData->m2,
-                       &Current.DofData->m3, &Current.DofData->m4,
-                       &Current.DofData->m5, &Current.DofData->m6,
-                       &Current.DofData->m7};
-      List_T *ms[8] = {NULL,
-                       DofData_P->m1s, DofData_P->m2s, DofData_P->m3s,
-                       DofData_P->m4s, DofData_P->m5s, DofData_P->m6s,
-                       DofData_P->m7s};
-      for(int i = 1; i < 8; i++) {
-        if(!Current.DofData->Flag_Init[i]) continue;
-        ZeroMatrix(M[i], &Current.DofData->Solver, Current.DofData->NbrDof);
-        LinAlg_AssembleVector(m[i]);
-        LinAlg_ZeroVector(m[i]);
-        for(int j = 0; j < List_Nbr(ms[i]); j++) {
-          LinAlg_AssembleVector((gVector *)List_Pointer(ms[i], j));
-          LinAlg_ZeroVector((gVector *)List_Pointer(ms[i], j));
-        }
-      }
-    }
-    Current.TypeAssembly = old;
-  }
 
   for(int i = 0; i < Nbr_Formulation; i++) {
     List_Read(DefineSystem_P->FormulationIndex, i, &Index_Formulation);
