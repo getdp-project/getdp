@@ -460,17 +460,27 @@ static void _linearEVP(struct DofData *DofData_P, int numEigenValues,
   _try(EPSSetWhichEigenpairs(eps, EPS_SMALLEST_MAGNITUDE));
   _try(EPSMonitorSet(eps, _myEpsMonitor, PETSC_NULL, PETSC_NULL));
 
-  // override these options at runtime, petsc-style
+  // apply shift-and-invert transformation, with a direct solver by default
+  ST st;
+  _try(EPSGetST(eps, &st));
+  _try(STSetType(st, STSINVERT));
+  KSP ksp;
+  _try(STGetKSP(st, &ksp));
+  _try(KSPSetType(ksp, "preonly"));
+  PC pc;
+  _try(KSPGetPC(ksp, &pc));
+  _try(PCSetType(pc, PCLU));
+#if(PETSC_VERSION_MAJOR > 2) && defined(PETSC_HAVE_MUMPS)
+  _try(PCFactorSetMatSolverPackage(pc, "mumps"));
+#endif
+
+  // override these options at runtime, petsc-style (e.g. -st_ksp_type and
+  // -st_pc_type for the linear solver of the spectral transformation)
   _try(EPSSetFromOptions(eps));
 
   // force options specified directly as arguments
   if(numEigenValues)
     _try(EPSSetDimensions(eps, numEigenValues, PETSC_DECIDE, PETSC_DECIDE));
-
-  // apply shift-and-invert transformation
-  ST st;
-  _try(EPSGetST(eps, &st));
-  _try(STSetType(st, STSINVERT));
   _try(EPSSetWhichEigenpairs(eps, EPS_TARGET_MAGNITUDE));
   if(shift_r || shift_i) {
 #if defined(PETSC_USE_COMPLEX)
@@ -484,16 +494,6 @@ static void _linearEVP(struct DofData *DofData_P, int numEigenValues,
     //_try(STSetShift(st, shift));
     _try(EPSSetTarget(eps, shift));
   }
-
-  KSP ksp;
-  _try(STGetKSP(st, &ksp));
-  _try(KSPSetType(ksp, "preonly"));
-  PC pc;
-  _try(KSPGetPC(ksp, &pc));
-  _try(PCSetType(pc, PCLU));
-#if(PETSC_VERSION_MAJOR > 2) && defined(PETSC_HAVE_MUMPS)
-  _try(PCFactorSetMatSolverPackage(pc, "mumps"));
-#endif
 
   // print info
 #if(PETSC_VERSION_RELASE == 0) ||                                              \
