@@ -12,7 +12,7 @@ static double pq1[1] = {4.};
 /* 3 integration points */
 
 static double xq3[3] = {0.816496580928, -0.408248290464, -0.408248290464};
-static double yq3[3] = {0.0, 0.840896415255, -0.840896415255};
+static double yq3[3] = {0.0, 0.707106781187, -0.707106781187};
 static double pq3[3] = {1.33333333333, 1.33333333333, 1.33333333333};
 
 /* 4 integration points */

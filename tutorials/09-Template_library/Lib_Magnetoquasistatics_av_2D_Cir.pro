@@ -117,7 +117,7 @@ Integration {
           { GeoElement Point; NumberOfPoints  1; }
           { GeoElement Line; NumberOfPoints (FEOrder == 1) ? 2 : 4; }
           { GeoElement Triangle; NumberOfPoints (FEOrder == 1) ? 3 : 6; }
-          { GeoElement Quadrangle; NumberOfPoints (FEOrder == 1) ? 4 : 16; }
+          { GeoElement Quadrangle; NumberOfPoints (FEOrder == 1) ? 4 : 7; }
         }
       }
     }

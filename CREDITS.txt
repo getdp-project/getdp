@@ -12,8 +12,8 @@
 Major code contributions to GetDP have been provided by Marc Ume, Francois
 Henrotte, Jean-Francois Remacle, Johan Gyselinck, Ruth Sabariego, Tuan Ledinh,
 Patrick Lefevre, Michael Asam, Bertrand Thierry, Kevin Jacques, Nicolas Marsic,
-Guillaume Dem\'esy, Louis Denis, Erik Schnaubelt. See the source code for more
-details.
+Guillaume Dem\'esy, Louis Denis, Erik Schnaubelt, Amauri Martins. See the source
+code for more details.
 
 Thanks to the following folks who have contributed by providing patches, fresh
 ideas on theoretical or programming topics, who have sent requests for changes

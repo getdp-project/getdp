@@ -37,7 +37,9 @@ struct GeoData {
 
   double *H, *P;
 
-  std::map<int, int> *PeriodicNodes;
+  // slave node -> (master node, link), the link being identified by the index
+  // of its slave group (filled from the facet links, see Generate_Link)
+  std::map<int, std::pair<int, int> > *PeriodicNodes;
 
   int NbrPartitions;
   bool HasMovingBand;

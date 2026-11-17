@@ -96,6 +96,14 @@ void GaussLegendre_Tetrahedron(int Nbr_Points, int Num, double *u, double *v,
   int i, j, k, index = 0, nb;
   double pt1, pt2, pt3, wt1, wt2, wt3, dJ, dum;
 
+  if(Nbr_Points == 1) {
+    // the degenerate rule with one point does not even give the volume: use
+    // the barycenter
+    *u = *v = *w = 0.25;
+    *wght = 1. / 6.;
+    return;
+  }
+
   nb = (int)(cbrt((double)Nbr_Points) + 0.5);
 
   if(nb * nb * nb != Nbr_Points || nb > MAX_LINE_POINTS) {
