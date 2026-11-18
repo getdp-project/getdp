@@ -588,8 +588,6 @@ static const char *WhatNeedsAllDofs()
     for(int j = 0; j < List_Nbr(c->ConstraintPerRegion); j++) {
       switch(((struct ConstraintPerRegion *)List_Pointer(c->ConstraintPerRegion, j))
                ->Type) {
-      case CST_LINK:
-      case CST_LINKCPLX: return "a Link constraint";
       case ASSIGNFROMRESOLUTION: return "an AssignFromResolution constraint";
       default: break;
       }

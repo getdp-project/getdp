@@ -437,6 +437,50 @@ void Treatment_FemFormulation_LocalTerm(
 /*  T r e a t m e n t _ F e m F o r m u l a t i o n                         */
 /* ------------------------------------------------------------------------ */
 
+// Whether an element of the current mesh has a node on a region of a Link
+// constraint (slave or reference), for any Link constraint of the problem
+static bool IsElementOnLinkRegion(int i_Element)
+{
+  static struct GeoData *geo = NULL;
+  static std::vector<char> onLink;
+  int n = Geo_GetNbrGeoElements();
+  if(geo != Current.GeoData || (int)onLink.size() != n) {
+    geo = Current.GeoData;
+    onLink.assign(n, 0);
+    std::unordered_set<int> regions, nodes;
+    for(int i = 0; i < List_Nbr(Problem_S.Constraint); i++) {
+      struct Constraint *c =
+        (struct Constraint *)List_Pointer(Problem_S.Constraint, i);
+      for(int j = 0; j < List_Nbr(c->ConstraintPerRegion); j++) {
+        struct ConstraintPerRegion *cpr =
+          (struct ConstraintPerRegion *)List_Pointer(c->ConstraintPerRegion, j);
+        if(cpr->Type != CST_LINK && cpr->Type != CST_LINKCPLX) continue;
+        int groups[2] = {cpr->RegionIndex, cpr->Case.Link.RegionRefIndex};
+        for(int g = 0; g < 2; g++) {
+          if(groups[g] < 0) continue;
+          List_T *l = ((struct Group *)List_Pointer(Problem_S.Group, groups[g]))
+                        ->InitialList;
+          for(int k = 0; k < List_Nbr(l); k++)
+            regions.insert(*(int *)List_Pointer(l, k));
+        }
+      }
+    }
+    if(!regions.empty()) {
+      for(int e = 0; e < n; e++) {
+        struct Geo_Element *ge = Geo_GetGeoElement(e);
+        if(regions.count(ge->Region))
+          for(int k = 0; k < ge->NbrNodes; k++) nodes.insert(abs(ge->NumNodes[k]));
+      }
+      for(int e = 0; e < n; e++) {
+        struct Geo_Element *ge = Geo_GetGeoElement(e);
+        for(int k = 0; k < ge->NbrNodes && !onLink[e]; k++)
+          if(nodes.count(abs(ge->NumNodes[k]))) onLink[e] = 1;
+      }
+    }
+  }
+  return onLink[i_Element];
+}
+
 void Treatment_FemFormulation(struct Formulation *Formulation_P)
 {
   // with -local-dofs the messages of the element loop (e.g. the addition of a
@@ -697,12 +741,19 @@ void Treatment_FemFormulation(struct Formulation *Formulation_P)
     }
 
     if(oneRankPerElement) {
-      // with -local-dofs this applies to all the passes: the rank of the
+      // with rank-local Dofs this applies to all the passes: the rank of the
       // partition of an element is the only one to have all its Dofs (rank 0
       // has them all and updates the constraints of all the Dofs). This is
       // after the setup above, which must see all the regions.
+      //
+      // The elements that touch the regions of the Link constraints are the
+      // exception: all the ranks define their Dofs and update their
+      // constraints (not their matrices), since a Dof of one rank can be
+      // linked to a Dof anywhere on these regions.
       if(!rootTreatsAll &&
-         !Dof_IsPartitionOfThisRank(Element.GeoElement->Partition))
+         !Dof_IsPartitionOfThisRank(Element.GeoElement->Partition) &&
+         !(localDofs && TreatmentStatus != STATUS_CAL &&
+           IsElementOnLinkRegion(i_Element)))
         continue;
       Current.AddAllRows = true;
     }

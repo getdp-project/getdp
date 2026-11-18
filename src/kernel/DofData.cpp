@@ -1751,8 +1751,6 @@ static void GetLocalUnknownDofs(void *a, void *b)
   case DOF_UNKNOWN_INIT:
     if(Dof_P->Case.Unknown.NumDof == -1) LocalUnknownDofs.push_back(Dof_P);
     break;
-  case DOF_LINK:
-  case DOF_LINKCPLX:
   case DOF_FIXEDWITHASSOCIATE_SOLVE:
   case DOF_FIXED_SOLVE: NbrUnsupportedLocalDofs++; break;
   default: break;
@@ -1784,7 +1782,7 @@ static void Dof_NumberUnknownDofLocal(void)
   int bad = NbrUnsupportedLocalDofs;
   MPI_Allreduce(MPI_IN_PLACE, &bad, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
   if(bad) {
-    Message::Error("Rank-local Dofs (use -all-dofs) do not handle Link constraints and "
+    Message::Error("Rank-local Dofs (use -all-dofs) do not handle "
                    "AssignFromResolution yet (%d such Dofs)", bad);
     return;
   }
