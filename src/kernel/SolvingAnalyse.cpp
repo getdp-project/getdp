@@ -12,6 +12,8 @@
 #include "ProData.h"
 #include "GeoData.h"
 #include "DofData.h"
+#include "F.h"
+#include "ExtendedGroup.h"
 #include "Treatment_Formulation.h"
 #include "Cal_Quantity.h"
 #include "Get_DofOfElement.h"
@@ -124,7 +126,7 @@ void Treatment_Preprocessing(int Nbr_DefineSystem, struct DofData *DofData_P0,
       int maxPartition = 0;
       for(int e = 0; e < Geo_GetNbrGeoElements(); e++)
         maxPartition = std::max(maxPartition, Geo_GetGeoElement(e)->Partition);
-      if(maxPartition != Message::GetCommSize() ||
+      if((!Current.GeoData->IsPart && maxPartition != Message::GetCommSize()) ||
          Current.GeoData->HasMovingBand) {
         Message::Error("Rank-local Dofs (use -all-dofs) need a mesh with one partition "
                        "for each of the %d ranks (it has %d) and no moving band",
@@ -132,8 +134,8 @@ void Treatment_Preprocessing(int Nbr_DefineSystem, struct DofData *DofData_P0,
         return;
       }
       // The edges and facets are numbered when they are first met, and these
-      // numbers identify their Dofs: all the ranks must number them all in the
-      // same order, before they only treat the elements of their partition.
+      // numbers identify their Dofs: all the ranks must have the same ones,
+      // before they only treat the elements of their partition.
       bool edges = false, facets = false;
       for(int g = 0; g < List_Nbr(Problem_S.Group); g++) {
         switch(((struct Group *)List_Pointer(Problem_S.Group, g))->FunctionType) {
@@ -151,10 +153,10 @@ void Treatment_Preprocessing(int Nbr_DefineSystem, struct DofData *DofData_P0,
         default: break;
         }
       }
-      for(int e = 0; edges && e < Geo_GetNbrGeoElements(); e++) {
-        struct Geo_Element *ge = Geo_GetGeoElement(e);
-        if(ge->NbrEdges == 0) Geo_CreateEdgesOfElement(ge);
-        if(facets && ge->NbrFacets == 0) Geo_CreateFacetsOfElement(ge);
+      if(edges) Geo_CreateEdgesAndFacets(facets);
+      if(Current.GeoData->HasParts || Current.GeoData->IsPart) {
+        Generate_TreesOnFirstRank();
+        F_ComputeRegionMeasures();
       }
     }
 

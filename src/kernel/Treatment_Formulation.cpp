@@ -448,23 +448,7 @@ static bool IsElementOnLinkRegion(int i_Element)
     geo = Current.GeoData;
     onLink.assign(n, 0);
     std::unordered_set<int> regions, nodes;
-    for(int i = 0; i < List_Nbr(Problem_S.Constraint); i++) {
-      struct Constraint *c =
-        (struct Constraint *)List_Pointer(Problem_S.Constraint, i);
-      for(int j = 0; j < List_Nbr(c->ConstraintPerRegion); j++) {
-        struct ConstraintPerRegion *cpr =
-          (struct ConstraintPerRegion *)List_Pointer(c->ConstraintPerRegion, j);
-        if(cpr->Type != CST_LINK && cpr->Type != CST_LINKCPLX) continue;
-        int groups[2] = {cpr->RegionIndex, cpr->Case.Link.RegionRefIndex};
-        for(int g = 0; g < 2; g++) {
-          if(groups[g] < 0) continue;
-          List_T *l = ((struct Group *)List_Pointer(Problem_S.Group, groups[g]))
-                        ->InitialList;
-          for(int k = 0; k < List_Nbr(l); k++)
-            regions.insert(*(int *)List_Pointer(l, k));
-        }
-      }
-    }
+    Geo_GetLinkRegions(regions);
     if(!regions.empty()) {
       for(int e = 0; e < n; e++) {
         struct Geo_Element *ge = Geo_GetGeoElement(e);
@@ -630,6 +614,24 @@ void Treatment_FemFormulation(struct Formulation *Formulation_P)
          List_Search(Generate_Group->InitialList, &region, fcmp_int))
         regions.insert(region);
     }
+#if defined(HAVE_MPI)
+    if(Current.GeoData->HasParts || Current.GeoData->IsPart) {
+      // each rank only has a part of the mesh: take the regions of all of them
+      std::vector<int> mine(regions.begin(), regions.end());
+      int np = Message::GetCommSize(), count = (int)mine.size(), total = 0;
+      std::vector<int> counts(np), displs(np);
+      MPI_Allgather(&count, 1, MPI_INT, &counts[0], 1, MPI_INT, MPI_COMM_WORLD);
+      for(int r = 0; r < np; r++) {
+        displs[r] = total;
+        total += counts[r];
+      }
+      std::vector<int> all(total + 1);
+      mine.push_back(0);
+      MPI_Allgatherv(&mine[0], count, MPI_INT, &all[0], &counts[0], &displs[0],
+                     MPI_INT, MPI_COMM_WORLD);
+      regions.insert(all.begin(), all.begin() + total);
+    }
+#endif
     for(int i_EquTerm = 0; i_EquTerm < Nbr_EquationTerm; i_EquTerm++) {
       EquationTerm_P = EquationTerm_P0 + i_EquTerm;
       if(EquationTerm_P->Type != GALERKIN) continue;

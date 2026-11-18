@@ -1842,8 +1842,8 @@ static Mat _getOperator(KSP ksp, Mat M)
 // current system, whose unknowns must all be edge unknowns of one basis
 // function. G has one row per edge unknown and one column per node whose edges
 // are all unknowns (the gradient of the other nodes is not in the space, e.g.
-// on Dirichlet boundaries). Every rank holds the whole mesh and Dof list, so
-// all ranks number the nodes the same way; each sets its own rows. Options read
+// on Dirichlet boundaries). Each rank sets its own rows; the nodes are numbered
+// the same way by all the ranks, or by their owner (see _setupAMS). Options read
 // here: -getdp_ams_zero_beta for a matrix without mass term, -getdp_ams_check to
 // print |A G x| / (|A| |G x|), which is round-off for a correct G.
 // The mesh edges of the current system, with their row (-1 if not an
@@ -1951,27 +1951,63 @@ static void _setupAMS(PC pc, Mat A)
   MPI_Comm_rank(comm, &rank);
   const PetscInt *ranges;
   _try(MatGetOwnershipRanges(A, &ranges));
-  std::vector<std::pair<int, int> > cols; // (owner, node number) -> index
-  for(std::size_t i = 0; i < nodes.size(); i++) {
-    if(outside[i] || minRow[i] == INT_MAX) continue;
-    int owner = std::upper_bound(ranges, ranges + size + 1, minRow[i]) - ranges - 1;
-    cols.push_back(std::make_pair(owner, nodes[i]));
-  }
-  std::sort(cols.begin(), cols.end());
-  std::vector<int> col(nodes.size(), -1);
-  PetscInt nloc = 0, cstart = -1;
-  for(std::size_t i = 0; i < cols.size(); i++) {
-    col[nodeIndex[cols[i].second]] = i;
-    if(cols[i].first == rank) {
-      if(cstart < 0) cstart = i;
-      nloc++;
+  std::vector<int> col(nodes.size(), -1); // column of each node, or -1
+  std::vector<int> myNodes; // the nodes of the columns this rank owns
+  PetscInt nloc = 0, ncols = 0;
+  if(Dof_UseLocalDofs()) {
+    // A rank may only have a part of the mesh: it knows all the edges of the
+    // nodes of its own elements, and thus whether these nodes are in the space
+    // and who owns them. Each rank numbers the nodes it owns, and the numbers
+    // go to all the ranks.
+    std::vector<char> complete(nodes.size(), 0);
+    for(int e = 0; e < Geo_GetNbrGeoElements(); e++) {
+      struct Geo_Element *ge = Geo_GetGeoElement(e);
+      if(!Dof_IsPartitionOfThisRank(ge->Partition)) continue;
+      for(int k = 0; k < ge->NbrNodes; k++) {
+        auto it = nodeIndex.find(abs(ge->NumNodes[k]));
+        if(it != nodeIndex.end()) complete[it->second] = 1;
+      }
     }
+    for(std::size_t i = 0; i < nodes.size(); i++)
+      if(complete[i] && !outside[i] && minRow[i] >= ranges[rank] &&
+         minRow[i] < ranges[rank + 1])
+        myNodes.push_back(nodes[i]);
+    std::sort(myNodes.begin(), myNodes.end());
+    nloc = myNodes.size();
+    int nb = (int)nloc;
+    std::vector<int> nbs(size), displs(size, 0);
+    MPI_Allgather(&nb, 1, MPI_INT, &nbs[0], 1, MPI_INT, comm);
+    for(int i = 1; i < size; i++) displs[i] = displs[i - 1] + nbs[i - 1];
+    ncols = displs[size - 1] + nbs[size - 1];
+    std::vector<int> all(ncols + 1);
+    MPI_Allgatherv(myNodes.empty() ? NULL : &myNodes[0], nb, MPI_INT, &all[0],
+                   &nbs[0], &displs[0], MPI_INT, comm);
+    for(PetscInt c = 0; c < ncols; c++) {
+      auto it = nodeIndex.find(all[c]);
+      if(it != nodeIndex.end()) col[it->second] = c;
+    }
+  }
+  else {
+    std::vector<std::pair<int, int> > cols; // (owner, node number) -> index
+    for(std::size_t i = 0; i < nodes.size(); i++) {
+      if(outside[i] || minRow[i] == INT_MAX) continue;
+      int owner =
+        std::upper_bound(ranges, ranges + size + 1, minRow[i]) - ranges - 1;
+      cols.push_back(std::make_pair(owner, nodes[i]));
+    }
+    std::sort(cols.begin(), cols.end());
+    ncols = cols.size();
+    for(std::size_t i = 0; i < cols.size(); i++) {
+      col[nodeIndex[cols[i].second]] = i;
+      if(cols[i].first == rank) myNodes.push_back(cols[i].second);
+    }
+    nloc = myNodes.size();
   }
 
   PetscInt rstart, rend;
   _try(MatGetOwnershipRange(A, &rstart, &rend));
   Mat G;
-  _try(MatCreateAIJ(comm, rend - rstart, nloc, PETSC_DETERMINE, cols.size(), 2,
+  _try(MatCreateAIJ(comm, rend - rstart, nloc, PETSC_DETERMINE, ncols, 2,
                     PETSC_NULL, 2, PETSC_NULL, &G));
   for(auto &ed : edges) {
     if(ed.row < rstart || ed.row >= rend) continue;
@@ -1986,7 +2022,7 @@ static void _setupAMS(PC pc, Mat A)
 
   std::vector<PetscReal> xyz(3 * nloc);
   for(PetscInt i = 0; i < nloc; i++) {
-    struct Geo_Node *Geo_Node = Geo_GetGeoNodeOfNum(cols[cstart + i].second);
+    struct Geo_Node *Geo_Node = Geo_GetGeoNodeOfNum(myNodes[i]);
     xyz[3 * i] = Geo_Node->x;
     xyz[3 * i + 1] = Geo_Node->y;
     xyz[3 * i + 2] = Geo_Node->z;
@@ -2000,7 +2036,7 @@ static void _setupAMS(PC pc, Mat A)
                            PETSC_NULL));
   if(zeroBeta) _try(PCHYPRESetBetaPoissonMatrix(pc, PETSC_NULL));
   Message::Info("AMS: discrete gradient with %d edge unknowns and %d nodes%s",
-                (int)(ranges[size]), (int)cols.size(),
+                (int)(ranges[size]), (int)ncols,
                 zeroBeta ? ", no mass term" : "");
 
   if(check) {
@@ -2029,7 +2065,8 @@ static void _setupAMS(PC pc, Mat A)
 // computed by walking the tree from the nodes outside G (psi = 0 there, e.g.
 // on Dirichlet boundaries). The curl is unchanged, and the result is the
 // solution of the problem gauged by the tree. Every rank has the whole
-// solution in Vseq after the solve, so all compute the same psi.
+// solution in Vseq after the solve, so all compute the same psi (or the first
+// rank alone, see below).
 static void _gaugeOnTreeForAMS(PC pc, gVector *X)
 {
   char name[256];
@@ -2049,6 +2086,9 @@ static void _gaugeOnTreeForAMS(PC pc, gVector *X)
     Message::Error("Group '%s' is not defined with EdgesOfTreeIn", name);
     return;
   }
+  // when the ranks only have a part of the mesh, the first one, which has it
+  // all (and the whole solution), walks the tree and corrects all the rows
+  const bool onlyFirst = CurrentGeoData->IsPart || CurrentGeoData->HasParts;
   if(!Group_P->ExtendedList) Generate_ExtendedGroup(Group_P);
   std::set<int> tree;
   for(int j = 0; j < List_Nbr(Group_P->ExtendedList); j++) {
@@ -2059,6 +2099,7 @@ static void _gaugeOnTreeForAMS(PC pc, gVector *X)
 
   AMSEdges a;
   if(!_getAMSEdges(a)) return;
+  if(onlyFirst && Message::GetCommRank()) a.edges.clear();
   Vec VV = X->haveSeq ? X->Vseq : X->V;
   const PetscScalar *x;
   _try(VecGetArrayRead(VV, &x));
@@ -2105,7 +2146,8 @@ static void _gaugeOnTreeForAMS(PC pc, gVector *X)
   std::vector<PetscScalar> vals;
   double treeMax = 0.;
   for(auto &ed : a.edges) {
-    if(ed.row < rstart || ed.row >= rend) continue;
+    if(ed.row < 0 || (!onlyFirst && (ed.row < rstart || ed.row >= rend)))
+      continue;
     double g = 0.;
     for(int j = 0; j < 2; j++)
       if(!a.outside[ed.n[j]]) g += ed.s[j] * psi[ed.n[j]];

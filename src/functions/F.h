@@ -89,6 +89,7 @@ void F_NormalSource(F_ARG);
 void F_Tangent(F_ARG);
 void F_TangentSource(F_ARG);
 void F_ElementVol(F_ARG);
+void F_ComputeRegionMeasures();
 void F_SurfaceArea(F_ARG);
 void F_GetVolume(F_ARG);
 void F_GetNumElement(F_ARG);

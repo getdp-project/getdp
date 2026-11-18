@@ -10,6 +10,7 @@
 #include "TreeUtils.h"
 #include <map>
 #include <vector>
+#include <unordered_set>
 
 struct Grid {
   int Init;
@@ -49,8 +50,17 @@ struct GeoData {
   // search (see Geo_FindNode); NodeIndexSize is the number of nodes it covers
   std::vector<int> *NodeIndex;
   int NodeIndexSize;
+
+  // In parallel, with rank-local Dofs, only the first rank reads the mesh: it
+  // sends to each other rank the part of the mesh this rank needs
+  // (Geo_DistributeMesh). HasParts is set on the first rank and IsPart on the
+  // others; EntitiesLevel tells which entities of the elements of the parts
+  // have been numbered by the first rank (1: edges, 2: edges and facets).
+  bool HasParts, IsPart;
+  int EntitiesLevel;
 };
 
+void Geo_GetLinkRegions(std::unordered_set<int> &regions);
 int Geo_AddGeoData(List_T *GeoData_L, char *Name_MshFile,
                    char *Name_DefaultMshFile, char *Name_AdaptFile,
                    char *Name_DefaultAdaptFile);
@@ -93,6 +103,7 @@ double *Geo_GetBarycenter_uvw(int Type);
 void Geo_CreateEdgesOfElement(struct Geo_Element *Geo_Element);
 int *Geo_GetNodesOfEdgeInElement(struct Geo_Element *Geo_Element, int Num_Edge);
 void Geo_CreateFacetsOfElement(struct Geo_Element *Geo_Element);
+void Geo_CreateEdgesAndFacets(bool facets);
 int *Geo_GetNodesOfFacetInElement(struct Geo_Element *Geo_Element,
                                   int Num_Facet);
 

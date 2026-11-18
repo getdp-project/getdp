@@ -11,6 +11,7 @@
 
 int Check_IsEntityInExtendedGroup(struct Group *Group_P, int Entity, int Flag);
 void Generate_ExtendedGroup(struct Group *Group_P);
+void Generate_TreesOnFirstRank();
 void Generate_ElementaryEntities(List_T *InitialList, List_T **ExtendedList,
                                  int Type_Entity);
 void Generate_GroupsOfNodes(List_T *InitialList, List_T **ExtendedList);

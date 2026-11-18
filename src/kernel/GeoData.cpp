@@ -6,6 +6,7 @@
 #include <string.h>
 #include <math.h>
 #include <vector>
+#include <unordered_set>
 #include <algorithm>
 #include "GetDPConfig.h"
 #include "GeoData.h"
@@ -17,6 +18,10 @@
 #include "Message.h"
 #include "OS.h"
 
+#if defined(HAVE_MPI)
+#include <mpi.h>
+#endif
+
 #if defined(HAVE_GMSH)
 #include "gmsh.h"
 #include "GModel.h"
@@ -26,6 +31,8 @@
 
 extern double Flag_ORDER, Flag_MSH_SCALING;
 extern int Flag_CALLED_WITH_ONELAB_SERVER;
+extern int Flag_PRE, Flag_LOCAL_DOFS;
+extern struct Problem Problem_S;
 
 FILE *File_GEO;
 char *name;
@@ -157,6 +164,228 @@ static void Geo_SetPartitions(struct GeoData *GeoData_P)
   GeoData_P->NbrPartitions = np;
 }
 
+// The regions of the Link constraints of the problem (slave and reference)
+void Geo_GetLinkRegions(std::unordered_set<int> &regions)
+{
+  for(int i = 0; i < List_Nbr(Problem_S.Constraint); i++) {
+    struct Constraint *c =
+      (struct Constraint *)List_Pointer(Problem_S.Constraint, i);
+    for(int j = 0; j < List_Nbr(c->ConstraintPerRegion); j++) {
+      struct ConstraintPerRegion *cpr =
+        (struct ConstraintPerRegion *)List_Pointer(c->ConstraintPerRegion, j);
+      if(cpr->Type != CST_LINK && cpr->Type != CST_LINKCPLX) continue;
+      int groups[2] = {cpr->RegionIndex, cpr->Case.Link.RegionRefIndex};
+      for(int g = 0; g < 2; g++) {
+        if(groups[g] < 0) continue;
+        List_T *l =
+          ((struct Group *)List_Pointer(Problem_S.Group, groups[g]))->InitialList;
+        for(int k = 0; k < List_Nbr(l); k++)
+          regions.insert(*(int *)List_Pointer(l, k));
+      }
+    }
+  }
+}
+
+// In parallel, with rank-local Dofs, the other ranks do not read the mesh: the
+// first rank sends to each of them the part of the mesh it needs, i.e.
+//
+// - the elements whose Dofs it defines: those of its mesh partition, which it
+//   assembles, and those that touch a region of a Link constraint, whose Dofs
+//   are defined by all the ranks (see Treatment_FemFormulation);
+// - the elements that share a node with them: to know to which regions the
+//   nodes, edges and facets of these elements belong (e.g. whether a node is
+//   on a surface with a boundary condition), a rank must have all the elements
+//   that contain them;
+//
+// with their nodes. The first rank keeps the whole mesh, for what it still
+// does alone: the numbering of the edges and facets, the trees, the
+// post-processing that is not parallel.
+static bool Geo_CanDistributeMesh(char *Name_AdaptFile)
+{
+#if defined(HAVE_MPI)
+  return Flag_PRE && Flag_LOCAL_DOFS && !Name_AdaptFile &&
+         Message::GetCommSize() > 1 && Message::GetIsCommWorld();
+#else
+  return false;
+#endif
+}
+
+#if defined(HAVE_MPI)
+static int Geo_RankOfPartition(int partition)
+{
+  int np = Message::GetCommSize(); // as Dof_IsPartitionOfThisRank
+  return (partition > 0) ? (partition - 1) % np : np - 1;
+}
+
+static void Geo_SendParts(struct GeoData *GeoData_P)
+{
+  const int np = Message::GetCommSize();
+  const int nElements = List_Nbr(GeoData_P->Elements);
+  const int nNodes = List_Nbr(GeoData_P->Nodes);
+  struct Geo_Node *node0 = nNodes ?
+    (struct Geo_Node *)List_Pointer(GeoData_P->Nodes, 0) : NULL;
+  auto element = [&](int e) {
+    return (struct Geo_Element *)List_Pointer(GeoData_P->Elements, e);
+  };
+  auto nodeIndex = [&](int num) {
+    return (int)(Geo_FindNode(GeoData_P, abs(num)) - node0);
+  };
+
+  // the nodes of the regions of the Link constraints
+  std::vector<char> onLink(nNodes, 0);
+  std::unordered_set<int> linkRegions;
+  Geo_GetLinkRegions(linkRegions);
+  for(int e = 0; e < nElements && !linkRegions.empty(); e++) {
+    struct Geo_Element *ge = element(e);
+    if(!linkRegions.count(ge->Region)) continue;
+    for(int k = 0; k < ge->NbrNodes; k++) onLink[nodeIndex(ge->NumNodes[k])] = 1;
+  }
+
+  // the ranks that define the Dofs of each element: the one of its partition,
+  // or all of them if it touches a region of a Link constraint; this gives the
+  // ranks that have each node in such an element ("all the ranks" is a flag)
+  std::vector<std::vector<int> > ranksOfNode(nNodes);
+  std::vector<char> allRanksOfNode(nNodes, 0);
+  for(int e = 0; e < nElements; e++) {
+    struct Geo_Element *ge = element(e);
+    int rank = Geo_RankOfPartition(ge->Partition);
+    bool all = false;
+    for(int k = 0; k < ge->NbrNodes && !all; k++)
+      all = onLink[nodeIndex(ge->NumNodes[k])];
+    for(int k = 0; k < ge->NbrNodes; k++) {
+      int i = nodeIndex(ge->NumNodes[k]);
+      if(all)
+        allRanksOfNode[i] = 1;
+      else {
+        std::vector<int> &r = ranksOfNode[i];
+        if(std::find(r.begin(), r.end(), rank) == r.end()) r.push_back(rank);
+      }
+    }
+  }
+
+  // the elements of each rank: those that share a node with an element whose
+  // Dofs it defines
+  std::vector<std::vector<int> > elementsOfRank(np);
+  std::vector<char> has(np);
+  for(int e = 0; e < nElements; e++) {
+    struct Geo_Element *ge = element(e);
+    bool all = false;
+    std::fill(has.begin(), has.end(), 0);
+    for(int k = 0; k < ge->NbrNodes && !all; k++) {
+      int i = nodeIndex(ge->NumNodes[k]);
+      if(allRanksOfNode[i]) all = true;
+      for(int rank : ranksOfNode[i]) has[rank] = 1;
+    }
+    for(int rank = 1; rank < np; rank++)
+      if(all || has[rank]) elementsOfRank[rank].push_back(e);
+  }
+  std::vector<std::vector<int> >().swap(ranksOfNode);
+
+  std::vector<int> stamp(nNodes, 0);
+  for(int rank = 1; rank < np; rank++) {
+    std::vector<int> ints, nodes;
+    for(int e : elementsOfRank[rank]) {
+      struct Geo_Element *ge = element(e);
+      int head[6] = {ge->Num, ge->Type, ge->Region, ge->ElementaryRegion,
+                     ge->Partition, ge->NbrNodes};
+      ints.insert(ints.end(), head, head + 6);
+      ints.insert(ints.end(), ge->NumNodes, ge->NumNodes + ge->NbrNodes);
+      for(int k = 0; k < ge->NbrNodes; k++) {
+        int i = nodeIndex(ge->NumNodes[k]);
+        if(stamp[i] != rank) {
+          stamp[i] = rank;
+          nodes.push_back(i);
+        }
+      }
+    }
+    std::sort(nodes.begin(), nodes.end());
+    std::vector<int> nums(nodes.size());
+    std::vector<double> reals(3 * nodes.size() + 7);
+    for(std::size_t i = 0; i < nodes.size(); i++) {
+      nums[i] = node0[nodes[i]].Num;
+      reals[3 * i] = node0[nodes[i]].x;
+      reals[3 * i + 1] = node0[nodes[i]].y;
+      reals[3 * i + 2] = node0[nodes[i]].z;
+    }
+    double box[7] = {GeoData_P->Xmin, GeoData_P->Xmax, GeoData_P->Ymin,
+                     GeoData_P->Ymax, GeoData_P->Zmin, GeoData_P->Zmax,
+                     GeoData_P->CharacteristicLength};
+    std::copy(box, box + 7, reals.end() - 7);
+    long long sizes[5] = {(long long)elementsOfRank[rank].size(),
+                          (long long)ints.size(), (long long)nodes.size(),
+                          (long long)GeoData_P->Dimension,
+                          (long long)GeoData_P->NbrPartitions};
+    if(ints.size() > 2000000000u || reals.size() > 2000000000u) {
+      Message::Error("The part of the mesh of rank %d is too large to be sent",
+                     rank);
+      return;
+    }
+    MPI_Send(sizes, 5, MPI_LONG_LONG, rank, 0, MPI_COMM_WORLD);
+    MPI_Send(ints.empty() ? NULL : &ints[0], (int)ints.size(), MPI_INT, rank, 0,
+             MPI_COMM_WORLD);
+    MPI_Send(nums.empty() ? NULL : &nums[0], (int)nums.size(), MPI_INT, rank, 0,
+             MPI_COMM_WORLD);
+    MPI_Send(&reals[0], (int)reals.size(), MPI_DOUBLE, rank, 0, MPI_COMM_WORLD);
+  }
+  GeoData_P->HasParts = true;
+}
+
+static void Geo_ReceivePart(struct GeoData *GeoData_P)
+{
+  long long sizes[5];
+  MPI_Recv(sizes, 5, MPI_LONG_LONG, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+  std::vector<int> ints(sizes[1] + 1), nums(sizes[2] + 1);
+  std::vector<double> reals(3 * sizes[2] + 7);
+  MPI_Recv(&ints[0], (int)sizes[1], MPI_INT, 0, 0, MPI_COMM_WORLD,
+           MPI_STATUS_IGNORE);
+  MPI_Recv(&nums[0], (int)sizes[2], MPI_INT, 0, 0, MPI_COMM_WORLD,
+           MPI_STATUS_IGNORE);
+  MPI_Recv(&reals[0], (int)reals.size(), MPI_DOUBLE, 0, 0, MPI_COMM_WORLD,
+           MPI_STATUS_IGNORE);
+
+  GeoData_P->Nodes = List_Create(sizes[2] + 1, 1000, sizeof(struct Geo_Node));
+  for(long long i = 0; i < sizes[2]; i++) {
+    struct Geo_Node node;
+    node.Num = nums[i];
+    node.x = reals[3 * i];
+    node.y = reals[3 * i + 1];
+    node.z = reals[3 * i + 2];
+    List_Add(GeoData_P->Nodes, &node);
+  }
+  const double *box = &reals[3 * sizes[2]];
+  GeoData_P->Xmin = box[0];
+  GeoData_P->Xmax = box[1];
+  GeoData_P->Ymin = box[2];
+  GeoData_P->Ymax = box[3];
+  GeoData_P->Zmin = box[4];
+  GeoData_P->Zmax = box[5];
+  GeoData_P->CharacteristicLength = box[6];
+  GeoData_P->Dimension = (int)sizes[3];
+  GeoData_P->NbrPartitions = (int)sizes[4];
+
+  GeoData_P->Elements =
+    List_Create(sizes[0] + 1, 1000, sizeof(struct Geo_Element));
+  const int *p = &ints[0];
+  for(long long e = 0; e < sizes[0]; e++) {
+    struct Geo_Element ge;
+    ge.Num = p[0];
+    ge.Type = p[1];
+    ge.Region = p[2];
+    ge.ElementaryRegion = p[3];
+    ge.Partition = p[4];
+    ge.NbrNodes = p[5];
+    ge.NumNodes = (int *)Malloc(ge.NbrNodes * sizeof(int));
+    memcpy(ge.NumNodes, p + 6, ge.NbrNodes * sizeof(int));
+    ge.NbrEdges = ge.NbrFacets = 0;
+    ge.NumEdges = ge.NumFacets = NULL;
+    List_Add(GeoData_P->Elements, &ge);
+    p += 6 + ge.NbrNodes;
+  }
+  GeoData_P->IsPart = true;
+}
+#endif
+
+
 int Geo_AddGeoData(List_T *GeoData_L, char *Name_MshFile,
                    char *Name_DefaultMshFile, char *Name_AdaptFile,
                    char *Name_DefaultAdaptFile)
@@ -171,10 +400,27 @@ int Geo_AddGeoData(List_T *GeoData_L, char *Name_MshFile,
     i = List_Nbr(GeoData_L);
     Geo_InitGeoData(&GeoData_S, i, Name_MshFile);
     if(Message::GetInfoCpu()) Message::MarkOperationCpu("ReadMeshFile");
-    Geo_OpenFile(Name_MshFile, "rb");
-    Geo_ReadFile(&GeoData_S);
-    Geo_CloseFile();
-    Geo_SetPartitions(&GeoData_S);
+    bool distribute = Geo_CanDistributeMesh(
+      Name_AdaptFile ? Name_AdaptFile : Name_DefaultAdaptFile);
+    // the messages of the first rank (with -cpu they ask all the ranks for
+    // their time and memory) are then not reached by the others
+    MessageLocalCpu localCpu(distribute);
+    if(!distribute || !Message::GetCommRank()) {
+      Geo_OpenFile(Name_MshFile, "rb");
+      Geo_ReadFile(&GeoData_S);
+      Geo_CloseFile();
+      Geo_SetPartitions(&GeoData_S);
+    }
+#if defined(HAVE_MPI)
+    if(distribute) {
+      if(!Message::GetCommRank()) {
+        Message::Info("Sending their part of the mesh to the other ranks");
+        Geo_SendParts(&GeoData_S);
+      }
+      else
+        Geo_ReceivePart(&GeoData_S);
+    }
+#endif
     if(Message::GetInfoCpu()) Message::MarkOperationCpu("");
 
     if(!Name_AdaptFile) Name_AdaptFile = Name_DefaultAdaptFile;
@@ -228,6 +474,9 @@ void Geo_InitGeoData(struct GeoData *GeoData_P, int Num, char *Name)
 
   GeoData_P->NodeIndex = new std::vector<int>;
   GeoData_P->NodeIndexSize = -1;
+
+  GeoData_P->HasParts = GeoData_P->IsPart = false;
+  GeoData_P->EntitiesLevel = 0;
 }
 
 /* ------------------------------------------------------------------------ */

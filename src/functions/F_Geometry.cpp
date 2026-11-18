@@ -4,6 +4,9 @@
 // issues on https://gitlab.onelab.info/getdp/getdp/issues.
 
 #include <math.h>
+#include <algorithm>
+#include <vector>
+#include <map>
 #include "GetDPConfig.h"
 #include "ProData.h"
 #include "ProDefine.h"
@@ -11,6 +14,10 @@
 #include "NumericUtils.h"
 #include "MallocUtils.h"
 #include "Message.h"
+
+#if defined(HAVE_MPI)
+#include <mpi.h>
+#endif
 
 #if defined(HAVE_KERNEL)
 #include "GeoData.h"
@@ -203,6 +210,149 @@ void F_ElementVol(F_ARG)
 #endif
 }
 
+#if defined(HAVE_KERNEL)
+// the area of a surface element (or of a line element, times 1 m), or -1
+static double Get_SurfaceAreaOfElement(struct Element &Element)
+{
+  if(Element.Type == TRIANGLE || Element.Type == QUADRANGLE ||
+     Element.Type == TRIANGLE_2) {
+    Get_NodesCoordinatesOfElement(&Element);
+    Get_BFGeoElement(&Element, 0., 0., 0.);
+    double c11 = 0., c21 = 0., c12 = 0., c22 = 0., c13 = 0., c23 = 0.;
+    for(int i = 0; i < Element.GeoElement->NbrNodes; i++) {
+      c11 += Element.x[i] * Element.dndu[i][0];
+      c21 += Element.x[i] * Element.dndu[i][1];
+      c12 += Element.y[i] * Element.dndu[i][0];
+      c22 += Element.y[i] * Element.dndu[i][1];
+      c13 += Element.z[i] * Element.dndu[i][0];
+      c23 += Element.z[i] * Element.dndu[i][1];
+    }
+    double DetJac =
+      sqrt(SQU(c11 * c22 - c12 * c21) + SQU(c13 * c21 - c11 * c23) +
+           SQU(c12 * c23 - c13 * c22));
+    return fabs(DetJac) * ((Element.Type == QUADRANGLE) ? 4. : 0.5);
+  }
+  else if(Element.Type == LINE || Element.Type == LINE_2) {
+    Get_NodesCoordinatesOfElement(&Element);
+    Get_BFGeoElement(&Element, 0., 0., 0.);
+    double c11 = 0., c12 = 0., c13 = 0.;
+    for(int i = 0; i < Element.GeoElement->NbrNodes; i++) {
+      c11 += Element.x[i] * Element.dndu[i][0];
+      c12 += Element.y[i] * Element.dndu[i][0];
+      c13 += Element.z[i] * Element.dndu[i][0];
+    }
+    return fabs(sqrt(SQU(c11) + SQU(c12) + SQU(c13))) * 2; // LINE x 1m
+  }
+  return -1.;
+}
+
+// the volume of a volume element, or -1
+static double Get_VolumeOfElement(struct Element &Element)
+{
+  if(Element.Type == TETRAHEDRON || Element.Type == TETRAHEDRON_2 ||
+     Element.Type == HEXAHEDRON || Element.Type == PRISM ||
+     Element.Type == PYRAMID) {
+    Get_NodesCoordinatesOfElement(&Element);
+    Get_BFGeoElement(&Element, 0., 0., 0.);
+    double c11 = 0, c21 = 0, c31 = 0, c12 = 0, c22 = 0, c32 = 0, c13 = 0,
+           c23 = 0, c33 = 0;
+    for(int i = 0; i < Element.GeoElement->NbrNodes; i++) {
+      c11 += Element.x[i] * Element.dndu[i][0];
+      c21 += Element.x[i] * Element.dndu[i][1];
+      c31 += Element.x[i] * Element.dndu[i][2];
+
+      c12 += Element.y[i] * Element.dndu[i][0];
+      c22 += Element.y[i] * Element.dndu[i][1];
+      c32 += Element.y[i] * Element.dndu[i][2];
+
+      c13 += Element.z[i] * Element.dndu[i][0];
+      c23 += Element.z[i] * Element.dndu[i][1];
+      c33 += Element.z[i] * Element.dndu[i][2];
+    }
+    double DetJac = c11 * c22 * c33 + c13 * c21 * c32 + c12 * c23 * c31 -
+                    c13 * c22 * c31 - c11 * c23 * c32 - c12 * c21 * c33;
+    switch(Element.Type) {
+    case TETRAHEDRON:
+    case TETRAHEDRON_2: return 1. / 6. * fabs(DetJac);
+    case HEXAHEDRON: return 8. * fabs(DetJac);
+    case PRISM: return fabs(DetJac);
+    case PYRAMID: return 4. / 3. * fabs(DetJac);
+    }
+  }
+  return -1.;
+}
+
+// SurfaceArea[], GetVolume[] and GetNumElements[] sum over all the elements of
+// some regions. When the ranks only have a part of the mesh
+// (Geo_DistributeMesh) they cannot do it alone: before the pre-processing each
+// rank computes the area, the volume and the number of elements of each region
+// in its own mesh partition, and these are summed over the ranks.
+struct RegionMeasure {
+  double area, volume, count;
+};
+static std::map<int, RegionMeasure> RegionMeasures;
+
+void F_ComputeRegionMeasures()
+{
+#if defined(HAVE_MPI)
+  std::map<int, RegionMeasure> mine;
+  struct Element Element;
+  for(int i = 0; i < Geo_GetNbrGeoElements(); i++) {
+    Element.GeoElement = Geo_GetGeoElement(i);
+    if(!Dof_IsPartitionOfThisRank(Element.GeoElement->Partition)) continue;
+    Element.Num = Element.GeoElement->Num;
+    Element.Type = Element.GeoElement->Type;
+    RegionMeasure &m = mine[Element.GeoElement->Region];
+    m.area += std::max(0., Get_SurfaceAreaOfElement(Element));
+    m.volume += std::max(0., Get_VolumeOfElement(Element));
+    m.count += 1.;
+  }
+  int np = Message::GetCommSize(), count = 4 * (int)mine.size(), total = 0;
+  std::vector<double> send(count + 1);
+  int k = 0;
+  for(auto &m : mine) {
+    send[k++] = m.first;
+    send[k++] = m.second.area;
+    send[k++] = m.second.volume;
+    send[k++] = m.second.count;
+  }
+  std::vector<int> counts(np), displs(np);
+  MPI_Allgather(&count, 1, MPI_INT, &counts[0], 1, MPI_INT, MPI_COMM_WORLD);
+  for(int r = 0; r < np; r++) {
+    displs[r] = total;
+    total += counts[r];
+  }
+  std::vector<double> all(total + 1);
+  MPI_Allgatherv(&send[0], count, MPI_DOUBLE, &all[0], &counts[0], &displs[0],
+                 MPI_DOUBLE, MPI_COMM_WORLD);
+  RegionMeasures.clear();
+  for(int i = 0; i < total; i += 4) {
+    RegionMeasure &m = RegionMeasures[(int)all[i]];
+    m.area += all[i + 1];
+    m.volume += all[i + 2];
+    m.count += all[i + 3];
+  }
+#endif
+}
+
+// the sum over the regions of the list (or over the current region) of the
+// area (what = 0), volume (1) or number of elements (2); all the regions for
+// the number of elements without list
+static double Get_MeasureOfRegions(List_T *Regions, int what, bool all = false)
+{
+  double sum = 0.;
+  for(auto &m : RegionMeasures) {
+    if(!all &&
+       !(Regions ? List_Search(Regions, (void *)&m.first, fcmp_int) != 0 :
+                   m.first == Current.Region))
+      continue;
+    sum += (what == 0) ? m.second.area :
+           (what == 1) ? m.second.volume : m.second.count;
+  }
+  return sum;
+}
+#endif
+
 void F_SurfaceArea(F_ARG)
 {
 #if !defined(HAVE_KERNEL)
@@ -258,6 +408,11 @@ void F_SurfaceArea(F_ARG)
     double Val_Surface = 0.;
     int Nbr_Element = Geo_GetNbrGeoElements();
     int Nbr_Found_Element = 0;
+    if(Current.GeoData->IsPart) { // only a part of the mesh is here
+      Val_Surface = Get_MeasureOfRegions(InitialList_L, 0);
+      Nbr_Found_Element = 1;
+      Nbr_Element = 0;
+    }
     for(int i_Element = 0; i_Element < Nbr_Element; i_Element++) {
       Element.GeoElement = Geo_GetGeoElement(i_Element);
       if((InitialList_L &&
@@ -269,42 +424,9 @@ void F_SurfaceArea(F_ARG)
         Element.Num = Element.GeoElement->Num;
         Element.Type = Element.GeoElement->Type;
 
-        if(Element.Type == TRIANGLE || Element.Type == QUADRANGLE ||
-           Element.Type == TRIANGLE_2) {
-          Get_NodesCoordinatesOfElement(&Element);
-          Get_BFGeoElement(&Element, 0., 0., 0.);
-          double c11 = 0., c21 = 0., c12 = 0., c22 = 0., c13 = 0., c23 = 0.;
-          for(int i = 0; i < Element.GeoElement->NbrNodes; i++) {
-            c11 += Element.x[i] * Element.dndu[i][0];
-            c21 += Element.x[i] * Element.dndu[i][1];
-            c12 += Element.y[i] * Element.dndu[i][0];
-            c22 += Element.y[i] * Element.dndu[i][1];
-            c13 += Element.z[i] * Element.dndu[i][0];
-            c23 += Element.z[i] * Element.dndu[i][1];
-          }
-          double DetJac =
-            sqrt(SQU(c11 * c22 - c12 * c21) + SQU(c13 * c21 - c11 * c23) +
-                 SQU(c12 * c23 - c13 * c22));
-
-          if(Element.Type == TRIANGLE || Element.Type == TRIANGLE_2)
-            Val_Surface += fabs(DetJac) * 0.5;
-          else if(Element.Type == QUADRANGLE)
-            Val_Surface += fabs(DetJac) * 4.;
-        }
-        else if(Element.Type == LINE || Element.Type == LINE_2) {
-          Get_NodesCoordinatesOfElement(&Element);
-          Get_BFGeoElement(&Element, 0., 0., 0.);
-
-          double c11 = 0., c12 = 0., c13 = 0.;
-          for(int i = 0; i < Element.GeoElement->NbrNodes; i++) {
-            c11 += Element.x[i] * Element.dndu[i][0];
-            c12 += Element.y[i] * Element.dndu[i][0];
-            c13 += Element.z[i] * Element.dndu[i][0];
-          }
-          double DetJac = sqrt(SQU(c11) + SQU(c12) + SQU(c13));
-
-          Val_Surface += fabs(DetJac) * 2; // SurfaceArea of LINE x 1m
-        }
+        double area = Get_SurfaceAreaOfElement(Element);
+        if(area >= 0.)
+          Val_Surface += area;
         else {
           Message::Error(
             "Function 'SurfaceArea' only valid for line, triangle or "
@@ -340,9 +462,7 @@ void F_GetVolume(F_ARG)
 
   int Nbr_Element, i_Element;
   double Val_Volume;
-  double c11, c21, c31, c12, c22, c32, c13, c23, c33;
-  double DetJac;
-  int i, k;
+  int k;
 
   if(!Fct->Active) {
     Fct->Active =
@@ -359,6 +479,10 @@ void F_GetVolume(F_ARG)
 
     Val_Volume = 0.;
     Nbr_Element = Geo_GetNbrGeoElements();
+    if(Current.GeoData->IsPart) { // only a part of the mesh is here
+      Val_Volume = Get_MeasureOfRegions(InitialList_L, 1);
+      Nbr_Element = 0;
+    }
     for(i_Element = 0; i_Element < Nbr_Element; i_Element++) {
       Element.GeoElement = Geo_GetGeoElement(i_Element);
       if((InitialList_L &&
@@ -368,38 +492,9 @@ void F_GetVolume(F_ARG)
         Element.Num = Element.GeoElement->Num;
         Element.Type = Element.GeoElement->Type;
 
-        if(Element.Type == TETRAHEDRON || Element.Type == TETRAHEDRON_2 ||
-           Element.Type == HEXAHEDRON || Element.Type == PRISM ||
-           Element.Type == PYRAMID) {
-          Get_NodesCoordinatesOfElement(&Element);
-          Get_BFGeoElement(&Element, 0., 0., 0.);
-
-          c11 = c21 = c31 = c12 = c22 = c32 = c13 = c23 = c33 = 0;
-          for(i = 0; i < Element.GeoElement->NbrNodes; i++) {
-            c11 += Element.x[i] * Element.dndu[i][0];
-            c21 += Element.x[i] * Element.dndu[i][1];
-            c31 += Element.x[i] * Element.dndu[i][2];
-
-            c12 += Element.y[i] * Element.dndu[i][0];
-            c22 += Element.y[i] * Element.dndu[i][1];
-            c32 += Element.y[i] * Element.dndu[i][2];
-
-            c13 += Element.z[i] * Element.dndu[i][0];
-            c23 += Element.z[i] * Element.dndu[i][1];
-            c33 += Element.z[i] * Element.dndu[i][2];
-          }
-
-          DetJac = c11 * c22 * c33 + c13 * c21 * c32 + c12 * c23 * c31 -
-                   c13 * c22 * c31 - c11 * c23 * c32 - c12 * c21 * c33;
-
-          switch(Element.Type) {
-          case TETRAHEDRON:
-          case TETRAHEDRON_2: Val_Volume += 1. / 6. * fabs(DetJac); break;
-          case HEXAHEDRON: Val_Volume += 8. * fabs(DetJac); break;
-          case PRISM: Val_Volume += fabs(DetJac); break;
-          case PYRAMID: Val_Volume += 4. / 3. * fabs(DetJac); break;
-          }
-        }
+        double volume = Get_VolumeOfElement(Element);
+        if(volume >= 0.)
+          Val_Volume += volume;
         else {
           Message::Error("Function 'GetVolume' not valid for %s",
                          Get_StringForDefine(Element_Type, Element.Type));
@@ -464,7 +559,9 @@ void F_GetNumElements(F_ARG)
 
     int Count = 0.;
     int Nbr_Element = Geo_GetNbrGeoElements();
-    if(!InitialList_L) { Count = Nbr_Element; }
+    if(Current.GeoData->IsPart) // only a part of the mesh is here
+      Count = (int)Get_MeasureOfRegions(InitialList_L, 2, !InitialList_L);
+    else if(!InitialList_L) { Count = Nbr_Element; }
     else {
       for(int i_Element = 0; i_Element < Nbr_Element; i_Element++) {
         Element.GeoElement = Geo_GetGeoElement(i_Element);

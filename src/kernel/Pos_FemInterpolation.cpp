@@ -86,6 +86,14 @@ void Pos_FemInterpolation(struct Element *Element,
     UseNewGeo = (GeoDataNum != Current.GeoData->Num);
 
     if(UseXYZ || UseNewGeo) {
+      if(Dof_UseLocalDofs()) {
+        // the point can be anywhere in the mesh, in an element whose Dofs (or
+        // that itself) this rank does not have
+        Message::Error("A quantity evaluated at given coordinates or on "
+                       "another mesh needs all the Dofs on all the ranks "
+                       "(use -all-dofs)");
+        return;
+      }
       if(UseNewGeo) {
         GeoData_P = (struct GeoData *)List_Pointer(GeoData_L, GeoDataNum);
         GeoDataNum = Current.GeoData->Num;
