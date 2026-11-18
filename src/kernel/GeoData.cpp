@@ -87,6 +87,35 @@ static void Geo_Bisect(struct GeoData *GeoData_P, const std::vector<double> x[3]
 // its elements are thus partitioned here, by recursive coordinate bisection (or
 // by merging its partitions, if their number is a multiple of the number of
 // ranks). Partitioning the mesh with Gmsh gives better partitions.
+// The node of a given number. The nodes are sorted by number: if the numbers
+// are dense enough (the usual case) their positions are tabulated, which
+// replaces a binary search for each node of each element by a direct access.
+static struct Geo_Node *Geo_FindNode(struct GeoData *GeoData_P, int Num)
+{
+  std::vector<int> &index = *GeoData_P->NodeIndex;
+  int n = List_Nbr(GeoData_P->Nodes);
+  if(GeoData_P->NodeIndexSize != n) {
+    GeoData_P->NodeIndexSize = n;
+    index.clear();
+    // the positions must not change afterwards: a search sorts the list
+    List_Sort(GeoData_P->Nodes, fcmp_Nod);
+    int min = n ? ((struct Geo_Node *)List_Pointer(GeoData_P->Nodes, 0))->Num : 0;
+    int max = n ? ((struct Geo_Node *)List_Pointer(GeoData_P->Nodes, n - 1))->Num : 0;
+    if(min >= 0 && max / 4 <= n + 1000) {
+      index.resize(max + 1, -1);
+      for(int i = 0; i < n; i++)
+        index[((struct Geo_Node *)List_Pointer(GeoData_P->Nodes, i))->Num] = i;
+    }
+  }
+  if(index.empty()) {
+    struct Geo_Node node;
+    node.Num = Num;
+    return (struct Geo_Node *)List_PQuery(GeoData_P->Nodes, &node, fcmp_Nod);
+  }
+  if(Num < 0 || Num >= (int)index.size() || index[Num] < 0) return NULL;
+  return (struct Geo_Node *)List_Pointer(GeoData_P->Nodes, index[Num]);
+}
+
 static void Geo_SetPartitions(struct GeoData *GeoData_P)
 {
   int np = Message::GetCommSize(), n = List_Nbr(GeoData_P->Elements);
@@ -115,10 +144,8 @@ static void Geo_SetPartitions(struct GeoData *GeoData_P)
       struct Geo_Element *ele =
         (struct Geo_Element *)List_Pointer(GeoData_P->Elements, i);
       for(int j = 0; j < ele->NbrNodes; j++) {
-        struct Geo_Node node, *node_P;
-        node.Num = abs(ele->NumNodes[j]);
-        if((node_P = (struct Geo_Node *)List_PQuery(GeoData_P->Nodes, &node,
-                                                    fcmp_Nod))) {
+        struct Geo_Node *node_P;
+        if((node_P = Geo_FindNode(GeoData_P, abs(ele->NumNodes[j])))) {
           x[0][i] += node_P->x / ele->NbrNodes;
           x[1][i] += node_P->y / ele->NbrNodes;
           x[2][i] += node_P->z / ele->NbrNodes;
@@ -198,6 +225,9 @@ void Geo_InitGeoData(struct GeoData *GeoData_P, int Num, char *Name)
   GeoData_P->PeriodicNodes = NULL;
 
   GeoData_P->HasMovingBand = false;
+
+  GeoData_P->NodeIndex = new std::vector<int>;
+  GeoData_P->NodeIndexSize = -1;
 }
 
 /* ------------------------------------------------------------------------ */
@@ -219,6 +249,7 @@ void Geo_FreeGeoData(struct GeoData *GeoData_P)
   }
   delete GeoData_P->EdgesXNodes;
   delete GeoData_P->FacetsXEdges;
+  delete GeoData_P->NodeIndex;
   if(GeoData_P->NodesXElements) {
     Tree_Action(GeoData_P->NodesXElements, free_E2XE1);
     Tree_Delete(GeoData_P->NodesXElements);
@@ -1259,12 +1290,7 @@ struct Geo_Node *Geo_GetGeoNode(int Index_Node)
 
 struct Geo_Node *Geo_GetGeoNodeOfNum(int Num_Node)
 {
-  struct Geo_Node node;
-
-  node.Num = Num_Node;
-
-  return (
-    (struct Geo_Node *)List_PQuery(CurrentGeoData->Nodes, &node, fcmp_Nod));
+  return Geo_FindNode(CurrentGeoData, Num_Node);
 }
 
 /* ------------------------------------------------------------------------ */
@@ -1275,14 +1301,11 @@ void Geo_GetNodesCoordinates(int Nbr_Node, int *Num_Node, double *x, double *y,
                              double *z)
 {
   int i;
-  struct Geo_Node Geo_Node, *Geo_Node_P;
+  struct Geo_Node *Geo_Node_P;
 
   for(i = 0; i < Nbr_Node; i++) {
-    Geo_Node.Num = abs(Num_Node[i]);
-
-    if(!(Geo_Node_P = (struct Geo_Node *)List_PQuery(CurrentGeoData->Nodes,
-                                                     &Geo_Node, fcmp_Nod))) {
-      Message::Error("Node %d does not exist", Geo_Node.Num);
+    if(!(Geo_Node_P = Geo_FindNode(CurrentGeoData, abs(Num_Node[i])))) {
+      Message::Error("Node %d does not exist", abs(Num_Node[i]));
       break;
     }
 
@@ -1300,14 +1323,11 @@ void Geo_SetNodesCoordinates(int Nbr_Node, int *Num_Node, double *x, double *y,
                              double *z)
 {
   int i;
-  struct Geo_Node Geo_Node, *Geo_Node_P;
+  struct Geo_Node *Geo_Node_P;
 
   for(i = 0; i < Nbr_Node; i++) {
-    Geo_Node.Num = abs(Num_Node[i]);
-
-    if(!(Geo_Node_P = (struct Geo_Node *)List_PQuery(CurrentGeoData->Nodes,
-                                                     &Geo_Node, fcmp_Nod))) {
-      Message::Error("Node %d does not exist", Geo_Node.Num);
+    if(!(Geo_Node_P = Geo_FindNode(CurrentGeoData, abs(Num_Node[i])))) {
+      Message::Error("Node %d does not exist", abs(Num_Node[i]));
       break;
     }
 
@@ -1320,14 +1340,11 @@ void Geo_SetNodesCoordinates(int Nbr_Node, int *Num_Node, double *x, double *y,
 void Geo_SetNodesCoordinatesX(int Nbr_Node, int *Num_Node, double *x)
 {
   int i;
-  struct Geo_Node Geo_Node, *Geo_Node_P;
+  struct Geo_Node *Geo_Node_P;
 
   for(i = 0; i < Nbr_Node; i++) {
-    Geo_Node.Num = abs(Num_Node[i]);
-
-    if(!(Geo_Node_P = (struct Geo_Node *)List_PQuery(CurrentGeoData->Nodes,
-                                                     &Geo_Node, fcmp_Nod))) {
-      Message::Error("Node %d does not exist", Geo_Node.Num);
+    if(!(Geo_Node_P = Geo_FindNode(CurrentGeoData, abs(Num_Node[i])))) {
+      Message::Error("Node %d does not exist", abs(Num_Node[i]));
       break;
     }
 
@@ -1338,14 +1355,11 @@ void Geo_SetNodesCoordinatesX(int Nbr_Node, int *Num_Node, double *x)
 void Geo_SetNodesCoordinatesY(int Nbr_Node, int *Num_Node, double *y)
 {
   int i;
-  struct Geo_Node Geo_Node, *Geo_Node_P;
+  struct Geo_Node *Geo_Node_P;
 
   for(i = 0; i < Nbr_Node; i++) {
-    Geo_Node.Num = abs(Num_Node[i]);
-
-    if(!(Geo_Node_P = (struct Geo_Node *)List_PQuery(CurrentGeoData->Nodes,
-                                                     &Geo_Node, fcmp_Nod))) {
-      Message::Error("Node %d does not exist", Geo_Node.Num);
+    if(!(Geo_Node_P = Geo_FindNode(CurrentGeoData, abs(Num_Node[i])))) {
+      Message::Error("Node %d does not exist", abs(Num_Node[i]));
       break;
     }
 
@@ -1356,14 +1370,11 @@ void Geo_SetNodesCoordinatesY(int Nbr_Node, int *Num_Node, double *y)
 void Geo_SetNodesCoordinatesZ(int Nbr_Node, int *Num_Node, double *z)
 {
   int i;
-  struct Geo_Node Geo_Node, *Geo_Node_P;
+  struct Geo_Node *Geo_Node_P;
 
   for(i = 0; i < Nbr_Node; i++) {
-    Geo_Node.Num = abs(Num_Node[i]);
-
-    if(!(Geo_Node_P = (struct Geo_Node *)List_PQuery(CurrentGeoData->Nodes,
-                                                     &Geo_Node, fcmp_Nod))) {
-      Message::Error("Node %d does not exist", Geo_Node.Num);
+    if(!(Geo_Node_P = Geo_FindNode(CurrentGeoData, abs(Num_Node[i])))) {
+      Message::Error("Node %d does not exist", abs(Num_Node[i]));
       break;
     }
 

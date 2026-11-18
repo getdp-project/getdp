@@ -9,6 +9,7 @@
 #include "ListUtils.h"
 #include "TreeUtils.h"
 #include <map>
+#include <vector>
 
 struct Grid {
   int Init;
@@ -43,6 +44,11 @@ struct GeoData {
 
   int NbrPartitions;
   bool HasMovingBand;
+
+  // position in Nodes of the node of each number, to find a node without a
+  // search (see Geo_FindNode); NodeIndexSize is the number of nodes it covers
+  std::vector<int> *NodeIndex;
+  int NodeIndexSize;
 };
 
 int Geo_AddGeoData(List_T *GeoData_L, char *Name_MshFile,
