@@ -485,9 +485,11 @@ Caches lump element circuit computations to disk.
 
 Selects binary format for output files.
 
-@item -v2
+@item -list-based
 
-Creates mesh-based Gmsh output files when possible.
+Creates list-based Gmsh output files. By default the Gmsh output files are
+mesh-based when possible, i.e. when a quantity is printed on the elements of
+the mesh.
 
 @item -check
 

@@ -33,7 +33,7 @@
 
 extern struct Problem Problem_S;
 extern struct CurrentData Current;
-extern int Flag_BIN, Flag_GMSH_VERSION;
+extern int Flag_BIN;
 extern char *Name_Path;
 
 FILE *PostStream = stdout;
@@ -414,8 +414,20 @@ void Pos_Formulation(struct Formulation *Formulation_P,
   // on regions are integrated by all the ranks on their own elements. A
   // Distributed Print on the mesh is therefore written whole by rank 0, as
   // without Distributed: the other ranks must not open (and truncate) the file.
+  //
+  // A mesh-based Gmsh view of a single local quantity is the exception: all
+  // the ranks evaluate it, each one on the elements of its mesh partition, and
+  // the first rank writes what they computed in the file (with or without
+  // -local-dofs).
+  bool parallelView = PostSubOperation_P->Type == POP_PRINT &&
+                      Format_CanGmshParallel(PostSubOperation_P) &&
+                      PostSubOperation_P->PostQuantityIndex[0] >= 0 &&
+                      PostSubOperation_P->PostQuantitySupport[0] < 0 &&
+                      PostSubOperation_P->PostQuantityIndex[1] < 0 &&
+                      Formulation_P->Type == FEMEQUATION;
+  Format_SetGmshParallel(parallelView);
   bool rootOnly = Dof_UseLocalDofs() && PostSubOperation_P->Type == POP_PRINT &&
-                  PostSubOperation_P->SubType != PRINT_ONREGION;
+                  PostSubOperation_P->SubType != PRINT_ONREGION && !parallelView;
 
   if(PostSubOperation_P->FileOut) {
     strcpy(PostFileName,
@@ -479,20 +491,11 @@ void Pos_Formulation(struct Formulation *Formulation_P,
     PostStream = stdout;
   }
 
-  // force Gmsh version 1 for anything else than OnElementsOf, or if we store in
-  // memory (which requires old-style list ordering)
-  int oldVersion = Flag_GMSH_VERSION;
-  if(PostSubOperation_P->Type != POP_PRINT ||
-     PostSubOperation_P->SubType != PRINT_ONELEMENTSOF ||
-     PostSubOperation_P->Depth != 1 || PostSubOperation_P->StoreInField >= 0)
-    Flag_GMSH_VERSION = 1;
-
   if(PostSubOperation_P->StoreInField >= 0 &&
      PostSubOperation_P->Format != FORMAT_GMSH)
     Message::Warning("StoreInField only available with Gmsh output format");
 
   if(PostSubOperation_P->StoreInMeshBasedField >= 0) {
-    Flag_GMSH_VERSION = 2;
     if(PostSubOperation_P->SubType != PRINT_ONELEMENTSOF ||
        PostSubOperation_P->Depth != 1)
       Message::Error(
@@ -573,8 +576,6 @@ void Pos_Formulation(struct Formulation *Formulation_P,
   }
 
   Message::SetLocalCpu(previousLocalCpu);
-
-  Flag_GMSH_VERSION = oldVersion;
 
   if(PostStream && PostSubOperation_P->FileOut) {
     fclose(PostStream);

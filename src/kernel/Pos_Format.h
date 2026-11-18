@@ -9,6 +9,10 @@
 #include "ProData.h"
 #include "ListUtils.h"
 
+bool Format_GmshMeshBased(struct PostSubOperation *PSO_P);
+bool Format_CanGmshParallel(struct PostSubOperation *PSO_P);
+void Format_SetGmshParallel(bool parallel);
+bool Format_GetGmshParallel();
 void Format_PostFormat(struct PostSubOperation *PSO_P);
 
 void Format_PostHeader(struct PostSubOperation *PSO_P, int NbTimeStep,

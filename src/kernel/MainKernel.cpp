@@ -28,7 +28,7 @@
 #endif
 
 int Flag_PRE = 0, Flag_CAL = 0, Flag_POS = 0, Flag_RESTART = 0;
-int Flag_XDATA = 0, Flag_BIN = 0, Flag_SPLIT = 0, Flag_GMSH_VERSION = 1;
+int Flag_XDATA = 0, Flag_BIN = 0, Flag_SPLIT = 0, Flag_GMSH_LIST_BASED = 0;
 int Flag_NETWORK_CACHE = 0, Flag_CALLED_WITH_ONELAB_SERVER = 0;
 int Flag_SLEPC = 0, Flag_LOCAL_DOFS = 0;
 double Flag_ORDER = -1., Flag_MSH_SCALING = 1.;
@@ -86,8 +86,8 @@ static void Info(int level, char *arg0)
 #endif
       "Output options:\n"
       "  -bin                      create binary output files\n"
-      "  -v2                       create mesh-based Gmsh output files when "
-      "possible\n"
+      "  -list-based               create list-based Gmsh output files, "
+      "instead of mesh-based ones when possible\n"
       "Other options:\n"
       "  -check                    interactive check of problem structure\n"
       "  -v num                    set verbosity level (default: 5)\n"
@@ -173,8 +173,12 @@ static void Get_Options(int argc, char *argv[], int *sargc, char **sargv,
         Flag_BIN = 1;
         i++;
       }
-      else if(!strcmp(argv[i] + 1, "v2")) {
-        Flag_GMSH_VERSION = 2;
+      else if(!strcmp(argv[i] + 1, "list-based")) {
+        Flag_GMSH_LIST_BASED = 1;
+        i++;
+      }
+      else if(!strcmp(argv[i] + 1, "v2")) { // old name of the default
+        Flag_GMSH_LIST_BASED = 0;
         i++;
       }
       else if(!strcmp(argv[i] + 1, "ascii")) {
@@ -580,7 +584,7 @@ static void Free_GlobalVariables()
   Flag_XDATA = 0;
   Flag_BIN = 0;
   Flag_SPLIT = 0;
-  Flag_GMSH_VERSION = 1;
+  Flag_GMSH_LIST_BASED = 0;
   Flag_NETWORK_CACHE = 0;
   Flag_ORDER = -1.;
   Free(Name_Generic);

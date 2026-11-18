@@ -31,7 +31,7 @@
 extern struct Problem Problem_S;
 extern struct CurrentData Current;
 
-extern int Flag_BIN, Flag_GMSH_VERSION;
+extern int Flag_BIN;
 
 extern FILE *PostStream;
 
@@ -393,14 +393,17 @@ void Pos_PrintOnElementsOf(struct PostQuantity *NCPQ_P,
     else {
       List_Reset(PostElement_L);
       Element.GeoElement = Geo_GetGeoElement(iGeo);
+      // a view evaluated by all the ranks: each one has its mesh partition
+      if(Format_GetGmshParallel() &&
+         !Dof_IsPartitionOfThisRank(Element.GeoElement->Partition))
+        continue;
       if((Group_P->Type != ELEMENTLIST &&
           List_Search(Region_L, &Element.GeoElement->Region, fcmp_int)) ||
          (Group_P->Type == ELEMENTLIST &&
           Check_IsEntityInExtendedGroup(Group_P, Element.GeoElement->Num, 0))) {
         int HighOrder =
           (PSO_P->Format == FORMAT_GMSH &&
-           (PSO_P->StoreInField >= 0 || PSO_P->StoreInMeshBasedField >= 0 ||
-            Flag_GMSH_VERSION == 2)) ?
+           (PSO_P->StoreInField >= 0 || Format_GmshMeshBased(PSO_P))) ?
             1 :
             0;
         Fill_PostElement(Element.GeoElement, PostElement_L, iGeo, PSO_P->Depth,
