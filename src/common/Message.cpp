@@ -150,13 +150,12 @@ void Message::Initialize(int argc, char **argv)
 void Message::Finalize()
 {
 #if defined(HAVE_PETSC)
-  // don't call MPI_*() if _commSize == 1: newer PETSc does like it
-  if(_commSize > 1) {
-    int initialized, finalized;
-    MPI_Initialized(&initialized);
-    MPI_Finalized(&finalized);
-    if(initialized && !finalized) MPI_Finalize();
-  }
+  // also on a single rank: mpirun reports an error if a process that called
+  // MPI_Init exits without calling MPI_Finalize
+  int initialized, finalized;
+  MPI_Initialized(&initialized);
+  MPI_Finalized(&finalized);
+  if(initialized && !finalized) MPI_Finalize();
 #endif
   FinalizeSocket();
   FinalizeOnelab();
