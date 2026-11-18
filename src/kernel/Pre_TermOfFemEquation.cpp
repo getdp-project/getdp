@@ -156,7 +156,7 @@ void Pre_TermOfFemEquation(struct Element *Element,
 
     if(QuantityStorageEqu_P->TypeQuantity == INTEGRALQUANTITY &&
        Dof_UseLocalDofs()) {
-      Message::Error("-local-dofs does not handle integral quantities yet");
+      Message::Error("Rank-local Dofs (use -all-dofs) do not handle integral quantities yet");
       return;
     }
 

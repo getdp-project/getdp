@@ -1728,7 +1728,7 @@ void Dof_SyncPreResolutions(List_T *PreResolutionInfo_L)
   List_Reset(PreResolutionInfo_L);
   for(int i = 0; i < total; i += 2) {
     if(all[i + 1] == PR_GLOBALBASISFUNCTION)
-      Message::Error("-local-dofs does not handle pre-resolutions of global "
+      Message::Error("Rank-local Dofs (use -all-dofs) do not handle pre-resolutions of global "
                      "basis functions yet");
     if(List_ISearchSeq(PreResolutionInfo_L, &all[i], fcmp_int) >= 0) continue;
     struct PreResolutionInfo info;
@@ -1784,7 +1784,7 @@ static void Dof_NumberUnknownDofLocal(void)
   int bad = NbrUnsupportedLocalDofs;
   MPI_Allreduce(MPI_IN_PLACE, &bad, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
   if(bad) {
-    Message::Error("-local-dofs does not handle Link constraints and "
+    Message::Error("Rank-local Dofs (use -all-dofs) do not handle Link constraints and "
                    "AssignFromResolution yet (%d such Dofs)", bad);
     return;
   }
@@ -1796,7 +1796,7 @@ static void Dof_NumberUnknownDofLocal(void)
   int base[2] = {CurrentDofData->NbrDof, -CurrentDofData->NbrDof};
   MPI_Allreduce(MPI_IN_PLACE, base, 2, MPI_INT, MPI_MIN, MPI_COMM_WORLD);
   if(base[0] != -base[1]) {
-    Message::Error("-local-dofs: the ranks have numbered different associated "
+    Message::Error("Rank-local Dofs (use -all-dofs): the ranks have numbered different associated "
                    "Dofs (between %d and %d)", base[0], -base[1]);
     return;
   }

@@ -481,6 +481,12 @@ Specifies the maximum interpolation order.
 
 Caches lump element circuit computations to disk.
 
+@item -all-dofs
+
+In parallel (with MPI), defines all the degrees of freedom on all the
+processes. By default each process only defines the degrees of freedom of its
+partition of the mesh, when the problem allows it.
+
 @item -bin
 
 Selects binary format for output files.

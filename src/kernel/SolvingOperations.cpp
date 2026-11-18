@@ -1284,7 +1284,7 @@ void Treatment_Operation(struct Resolution *Resolution_P, List_T *Operation_L,
         Message::Error("Degrees of freedom can only be copied to a list");
       }
       else if(Dof_UseLocalDofs()) {
-        Message::Error("-local-dofs does not handle CopyDegreesOfFreedom");
+        Message::Error("Rank-local Dofs (use -all-dofs) do not handle CopyDegreesOfFreedom");
       }
       else {
         std::vector<double> v;
@@ -2199,7 +2199,7 @@ void Treatment_Operation(struct Resolution *Resolution_P, List_T *Operation_L,
           }
 
           if(Dof_UseLocalDofs())
-            Message::Error("-local-dofs does not handle multi-harmonic moving "
+            Message::Error("Rank-local Dofs (use -all-dofs) do not handle multi-harmonic moving "
                            "problems");
           DofList_MH_moving = Tree2List(DofTree_MH_moving);
           Tree_Delete(DofTree_MH_moving);
@@ -3178,7 +3178,7 @@ void Treatment_Operation(struct Resolution *Resolution_P, List_T *Operation_L,
         DofData_P0 + Operation_P->Case.FourierTransform2.DefineSystemIndex[1];
 
       if(Dof_UseLocalDofs()) {
-        Message::Error("-local-dofs does not handle FourierTransform");
+        Message::Error("Rank-local Dofs (use -all-dofs) do not handle FourierTransform");
         break;
       }
       NbrHar1 = DofData_P->NbrHar;

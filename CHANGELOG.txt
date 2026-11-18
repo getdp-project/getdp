@@ -1,7 +1,8 @@
 4.0.0 (Work-in-progress): improved documentation with step-by-step tutorial;
 improved parsing speed of .pro files with many functions and groups; improved
 performance and memory use of matrix assembly, in particular with MPI (exact
-matrix preallocation, each element assembled by a single process); improved
+matrix preallocation, each element assembled by a single process, which only
+defines the degrees of freedom of its mesh partition unless -all-dofs); improved
 support for high-order meshes; Gmsh post-processing files are mesh-based by
 default (-list-based for the previous format), and in parallel field maps are
 computed by all the processes and written with MPI-IO; added

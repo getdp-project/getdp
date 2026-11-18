@@ -552,7 +552,7 @@ void Pos_Formulation(struct Formulation *Formulation_P,
       PostSubOperation_P->StoreInMeshBasedField >= 0 ||
       PostSubOperation_P->StoreInRegister >= 0 ||
       PostSubOperation_P->StoreInVariable))
-    Message::Error("-local-dofs does not handle stored Print other than "
+    Message::Error("Rank-local Dofs (use -all-dofs) do not handle stored Print other than "
                    "OnRegion yet");
   Dof_SetPostOnRootOnly(rootOnly);
 

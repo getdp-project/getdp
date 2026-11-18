@@ -27,7 +27,7 @@ extern struct Problem Problem_S;
 extern struct CurrentData Current;
 
 extern int Flag_PRE, Flag_CAL, Flag_POS;
-extern int Flag_RESTART;
+extern int Flag_RESTART, Flag_LOCAL_DOFS;
 
 extern char *Name_Generic;
 extern char *Name_Resolution;
@@ -126,7 +126,7 @@ void Treatment_Preprocessing(int Nbr_DefineSystem, struct DofData *DofData_P0,
         maxPartition = std::max(maxPartition, Geo_GetGeoElement(e)->Partition);
       if(maxPartition != Message::GetCommSize() ||
          Current.GeoData->HasMovingBand) {
-        Message::Error("-local-dofs needs a mesh with one partition "
+        Message::Error("Rank-local Dofs (use -all-dofs) need a mesh with one partition "
                        "for each of the %d ranks (it has %d) and no moving band",
                        Message::GetCommSize(), maxPartition);
         return;
@@ -329,8 +329,8 @@ void Treatment_PostOperation(struct Resolution *Resolution_P,
       PostSubOperation_P->Distributed = false;
     }
     if(wasDistributed)
-      Message::Info("-local-dofs: PostOperation '%s' runs as without "
-                    "Distributed", PostOperation_P->Name);
+      Message::Info("PostOperation '%s' runs as without Distributed (which "
+                    "needs -all-dofs)", PostOperation_P->Name);
   }
 
   bool anyDistributed = false;
@@ -524,6 +524,127 @@ double *Get_TimeFunctionValues(struct DofData *DofData_P)
 /* ------------------------------------------------------------------------ */
 /*! Global analyse of a problem */
 
+// In parallel each rank only defines the Dofs of its mesh partition (see
+// Dof_UseLocalDofs), unless the problem uses something that needs all the Dofs
+// on all the ranks: this returns what, or NULL. The whole problem is examined,
+// since a resolution can pre-resolve any other one.
+static bool AnyOperation(List_T *Operations, bool (*test)(struct Operation *))
+{
+  for(int i = 0; i < List_Nbr(Operations); i++) {
+    struct Operation *o = (struct Operation *)List_Pointer(Operations, i);
+    if(test(o)) return true;
+    List_T *inner[2] = {NULL, NULL}; // the operations inside this one
+    switch(o->Type) {
+    case OPERATION_TEST:
+      inner[0] = o->Case.Test.Operation_True;
+      inner[1] = o->Case.Test.Operation_False;
+      break;
+    case OPERATION_WHILE: inner[0] = o->Case.While.Operation; break;
+    case OPERATION_TIMELOOPTHETA:
+      inner[0] = o->Case.TimeLoopTheta.Operation;
+      break;
+    case OPERATION_TIMELOOPNEWMARK:
+      inner[0] = o->Case.TimeLoopNewmark.Operation;
+      break;
+    case OPERATION_TIMELOOPADAPTIVE:
+      inner[0] = o->Case.TimeLoopAdaptive.Operation;
+      inner[1] = o->Case.TimeLoopAdaptive.OperationEnd;
+      break;
+    case OPERATION_ITERATIVELOOP:
+    case OPERATION_ITERATIVELOOPADVANCED:
+      inner[0] = o->Case.IterativeLoop.Operation;
+      break;
+    case OPERATION_ITERATIVETIMEREDUCTION:
+      inner[0] = o->Case.IterativeTimeReduction.Operation;
+      inner[1] = o->Case.IterativeTimeReduction.OperationEnd;
+      break;
+    case OPERATION_ITERATIVELINEARSOLVER:
+      inner[0] = o->Case.IterativeLinearSolver.Operations_Ax;
+      inner[1] = o->Case.IterativeLinearSolver.Operations_Mx;
+      break;
+    case OPERATION_GENERATE_MH_MOVING:
+      inner[0] = o->Case.Generate_MH_Moving.Operation;
+      break;
+    case OPERATION_GENERATE_MH_MOVING_S:
+      inner[0] = o->Case.Generate_MH_Moving_S.Operation;
+      break;
+    default: break;
+    }
+    for(int k = 0; k < 2; k++)
+      if(inner[k] && AnyOperation(inner[k], test)) return true;
+  }
+  return false;
+}
+
+static const char *WhatNeedsAllDofs()
+{
+  for(int i = 0; i < List_Nbr(Problem_S.Group); i++)
+    if(((struct Group *)List_Pointer(Problem_S.Group, i))->Type == MOVINGBAND2D)
+      return "a moving band";
+
+  for(int i = 0; i < List_Nbr(Problem_S.Constraint); i++) {
+    struct Constraint *c =
+      (struct Constraint *)List_Pointer(Problem_S.Constraint, i);
+    for(int j = 0; j < List_Nbr(c->ConstraintPerRegion); j++) {
+      switch(((struct ConstraintPerRegion *)List_Pointer(c->ConstraintPerRegion, j))
+               ->Type) {
+      case CST_LINK:
+      case CST_LINKCPLX: return "a Link constraint";
+      case ASSIGNFROMRESOLUTION: return "an AssignFromResolution constraint";
+      default: break;
+      }
+    }
+  }
+
+  for(int i = 0; i < List_Nbr(Problem_S.FunctionSpace); i++) {
+    struct FunctionSpace *f =
+      (struct FunctionSpace *)List_Pointer(Problem_S.FunctionSpace, i);
+    for(int j = 0; j < List_Nbr(f->BasisFunction); j++)
+      if(List_Nbr(((struct BasisFunction *)List_Pointer(f->BasisFunction, j))
+                    ->GlobalBasisFunction))
+        return "a global basis function";
+  }
+
+  for(int i = 0; i < List_Nbr(Problem_S.Formulation); i++) {
+    struct Formulation *f =
+      (struct Formulation *)List_Pointer(Problem_S.Formulation, i);
+    for(int j = 0; j < List_Nbr(f->DefineQuantity); j++)
+      if(((struct DefineQuantity *)List_Pointer(f->DefineQuantity, j))->Type ==
+         INTEGRALQUANTITY)
+        return "an integral quantity";
+  }
+
+  for(int i = 0; i < List_Nbr(Problem_S.Resolution); i++) {
+    struct Resolution *r =
+      (struct Resolution *)List_Pointer(Problem_S.Resolution, i);
+    if(AnyOperation(r->Operation, [](struct Operation *o) {
+         return o->Type == OPERATION_COPYDOFS ||
+                o->Type == OPERATION_FOURIERTRANSFORM ||
+                o->Type == OPERATION_FOURIERTRANSFORM2 ||
+                o->Type == OPERATION_GENERATE_MH_MOVING ||
+                o->Type == OPERATION_GENERATE_MH_MOVING_S ||
+                o->Type == OPERATION_INIT_MOVINGBAND2D;
+       }))
+      return "CopyDegreesOfFreedom, FourierTransform or a moving band operation";
+  }
+
+  // a Print on the mesh is evaluated by the first rank alone, and what it
+  // stores would be missing on the others
+  for(int i = 0; i < List_Nbr(Problem_S.PostOperation); i++) {
+    struct PostOperation *po =
+      (struct PostOperation *)List_Pointer(Problem_S.PostOperation, i);
+    for(int j = 0; j < List_Nbr(po->PostSubOperation); j++) {
+      struct PostSubOperation *p =
+        (struct PostSubOperation *)List_Pointer(po->PostSubOperation, j);
+      if(p->Type == POP_PRINT && p->SubType != PRINT_ONREGION &&
+         (p->StoreInField >= 0 || p->StoreInMeshBasedField >= 0 ||
+          p->StoreInRegister >= 0 || p->StoreInVariable))
+        return "a Print that stores its result";
+    }
+  }
+  return NULL;
+}
+
 void SolvingAnalyse()
 {
   struct Resolution *Resolution_P, *Resolution2_P;
@@ -550,6 +671,15 @@ void SolvingAnalyse()
 
   DofData_L = 0; // in case of errors before it is created
   GeoData_L = List_Create(1, 5, sizeof(struct GeoData));
+
+  if(Flag_LOCAL_DOFS && Message::GetCommSize() > 1) {
+    const char *what = WhatNeedsAllDofs();
+    if(what) {
+      Message::Info("All the ranks define all the Dofs (the problem has %s)",
+                    what);
+      Flag_LOCAL_DOFS = 0;
+    }
+  }
 
   /* -------------------- */
   /* Treatment Resolution */

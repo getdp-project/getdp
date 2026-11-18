@@ -598,7 +598,7 @@ void Get_CodesOfElement(struct FunctionSpace *FunctionSpace_P,
       if(!CodeExist && TreatmentStatus == STATUS_POS && Dof_UseLocalDofs() &&
          Message::GetCommRank() && Current.Element && Current.Element->GeoElement &&
          !Dof_IsPartitionOfThisRank(Current.Element->GeoElement->Partition)) {
-        Message::Error("-local-dofs: rank %d evaluates a quantity on element %d "
+        Message::Error("Rank-local Dofs (use -all-dofs): rank %d evaluates a quantity on element %d "
                        "of another rank", Message::GetCommRank(),
                        Current.Element->GeoElement->Num);
         return;
