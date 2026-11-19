@@ -1309,6 +1309,14 @@ if(${Python3_FOUND} AND GMSH)
   # the search of the element of a point close to surfaces (see tests/search.pro)
   test_mpi(parallel_search tests "search.geo -3"
            "search.pro -solve Laplace -pos Points")
+  # the scaling benchmark (see utils/misc/scaling.py), with the default direct
+  # solver and, if PETSc has hypre, with the AMS preconditioner for edge elements
+  test_mpi(parallel_scaling tests "scaling.geo -3 -setnumber N 6"
+           "scaling.pro -solve Solve")
+  if(PETSC_VARIABLES MATCHES "HYPRE_LIB = [^\n\r]*-lHYPRE")
+    test_mpi(parallel_ams tests "scaling.geo -3 -setnumber N 6"
+             "scaling.pro -setnumber Space 1 -solve Solve -ksp_type cg -pc_type hypre -pc_hypre_type ams -ksp_rtol 1e-10")
+  endif()
   # an assembly limited to a group before the assembly of the whole system
   add_test(NAME grouped_assembly
            COMMAND ${RUN_TEST} --workdir ${CMAKE_SOURCE_DIR}/tests

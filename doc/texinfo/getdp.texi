@@ -605,7 +605,32 @@ freedom.
 @end itemize
 
 The linear solver is selected with the PETSc options given on the command
-line or with the @code{-solver} option; the default is a direct solver.
+line or with the @code{-solver} option; the default is a direct solver (MUMPS
+if PETSc was built with it), which is robust but whose time and memory grow
+faster than the size of the problem. For large problems an iterative solver
+with a multigrid preconditioner can be used when the problem allows it, e.g.
+with hypre (if PETSc was built with it):
+
+@itemize @bullet
+@item
+for a symmetric positive definite problem with nodal unknowns (a scalar
+potential): @code{-ksp_type cg -pc_type hypre -pc_hypre_type boomeramg};
+@item
+for a symmetric positive (semi-)definite problem whose unknowns are the
+circulations of a vector field on the edges of the mesh (lowest order edge
+elements, a single basis function): @code{-ksp_type cg -pc_type hypre
+-pc_hypre_type ams}. GetDP gives the preconditioner the discrete gradient and
+the coordinates of the nodes that it needs. With @code{-getdp_ams_zero_beta}
+the matrix is declared to have no mass term (e.g. magnetostatics without
+gauge, whose right-hand side must then be compatible: see
+@code{-getdp_ams_clean_rhs}), and @code{-getdp_ams_check} prints a check of
+the discrete gradient.
+@end itemize
+
+The script @file{utils/misc/scaling.py} runs a model problem
+(@file{tests/scaling.pro}) on several numbers of processes with these solvers,
+and prints the time spent in each phase of the computation and the memory
+used by the processes.
 
 @c =========================================================================
 @c GetDP problem definition language
