@@ -1290,6 +1290,9 @@ if(${Python3_FOUND} AND GMSH)
            "parallel.pro -solve Transfer")
   test_mpi(parallel_periodic tests "parallel.geo -2"
            "parallel.pro -solve Periodic -pos Periodic")
+  # the search of the element of a point close to surfaces (see tests/search.pro)
+  test_mpi(parallel_search tests "search.geo -3"
+           "search.pro -solve Laplace -pos Points")
 endif()
 
 if(ENABLE_COVERAGE)

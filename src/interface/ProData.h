@@ -1625,7 +1625,6 @@ struct PostOpSolutions {
 #define DIVISION 4
 
 /* Unsuccessful search results */
-#define NO_BRICK -999
 #define NO_ELEMENT -999
 #define NO_REGION -999
 

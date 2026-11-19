@@ -8,10 +8,12 @@
 //
 
 #include <math.h>
+#include <vector>
 #include "ProData.h"
 #include "GeoData.h"
 #include "Get_Geometry.h"
 #include "Pos_Search.h"
+#include "BoxTree.h"
 #include "Get_DofOfElement.h"
 #include "DofData.h"
 #include "Message.h"
@@ -31,8 +33,9 @@ void Pos_SearchInPartitionOfThisRank(bool own) { InPartitionOfThisRank = own; }
 /*  C o m p u t e E l e m e n t B o x                                       */
 /* ------------------------------------------------------------------------ */
 
-static void ComputeElementBox(struct Element *Element,
-                              struct ElementBox *ElementBox)
+// Returns by how much the box of the nodes was made bigger in each direction.
+static double ComputeElementBox(struct Element *Element,
+                                struct ElementBox *ElementBox)
 {
   int i;
 
@@ -59,6 +62,7 @@ static void ComputeElementBox(struct Element *Element,
   ElementBox->Ymax += c;
   ElementBox->Zmin -= c;
   ElementBox->Zmax += c;
+  return c;
 }
 
 /* ------------------------------------------------------------------------ */
@@ -161,7 +165,7 @@ int PointInElement(struct Element *Element, List_T *ExcludeRegion_L, double x,
   Element->Region = Element->GeoElement->Region;
 
   Get_NodesCoordinatesOfElement(Element);
-  ComputeElementBox(Element, &ElementBox);
+  double c = ComputeElementBox(Element, &ElementBox);
 
   if(!PointInElementBox(ElementBox, x, y, z)) {
     return (0);
@@ -174,227 +178,143 @@ int PointInElement(struct Element *Element, List_T *ExcludeRegion_L, double x,
     return (0);
   }
 
+  // (u, v, w) is the point of a surface or of a curve that is the closest to
+  // (x, y, z), which can be far from it: accept the same distance as the box
+  // does for a surface or a curve along the axes
+  if(DimensionOfElementType(Element->Type) + 1 < Current.GeoData->Dimension) {
+    Get_BFGeoElement(Element, *u, *v, *w);
+    double d[3] = {x, y, z};
+    for(int i = 0; i < Element->GeoElement->NbrNodes; i++) {
+      d[0] -= Element->x[i] * Element->n[i];
+      d[1] -= Element->y[i] * Element->n[i];
+      d[2] -= Element->z[i] * Element->n[i];
+    }
+    if(d[0] * d[0] + d[1] * d[1] + d[2] * d[2] > c * c) return (0);
+  }
+
   return (1);
 }
 
 /* ------------------------------------------------------------------------ */
-/*  I n i t _ S e a r c h G r i d                                           */
+/*  E l e m e n t S e a r c h                                               */
 /* ------------------------------------------------------------------------ */
 
-/* TODO: Grid should be replaced by GeoElementRTree */
+// The elements of a mesh and the tree of their bounding boxes. The boxes are
+// numbered in the order the elements must be tested: the volumes, then the
+// surfaces, then the curves, each in the order of the mesh.
 
-static void Init_SearchGrid(struct Grid *Grid)
+struct ElementSearch {
+  BoxTree Tree;
+  std::vector<struct Geo_Element *> Elements;
+  int NbrOfDim[3]; // number of curves, surfaces and volumes
+};
+
+// 0 for a curve, 1 for a surface, 2 for a volume, -1 otherwise
+int DimensionOfElementType(int Type)
 {
-  struct Element Element;
-  struct ElementBox ElementBox;
-  struct Brick Brick, *Brick_P;
-  int NbrGeoElements, iElm;
-  int Ix1, Ix2, Iy1, Iy2, Iz1, Iz2;
-  int i, j, k, index;
+  switch(Type) {
+  case LINE:
+  case LINE_2:
+  case LINE_3:
+  case LINE_4: return 0;
+  case TRIANGLE:
+  case TRIANGLE_2:
+  case TRIANGLE_3:
+  case TRIANGLE_4:
+  case QUADRANGLE:
+  case QUADRANGLE_2:
+  case QUADRANGLE_2_8N:
+  case QUADRANGLE_3:
+  case QUADRANGLE_4: return 1;
+  case TETRAHEDRON:
+  case TETRAHEDRON_2:
+  case TETRAHEDRON_3:
+  case TETRAHEDRON_4:
+  case HEXAHEDRON:
+  case HEXAHEDRON_2:
+  case HEXAHEDRON_2_20N:
+  case HEXAHEDRON_3:
+  case HEXAHEDRON_4:
+  case PRISM:
+  case PRISM_2:
+  case PRISM_2_15N:
+  case PRISM_3:
+  case PRISM_4:
+  case PYRAMID:
+  case PYRAMID_2:
+  case PYRAMID_2_13N:
+  case PYRAMID_3: // case PYRAMID_4 :
+    return 2;
+  default: return -1;
+  }
+}
 
+static void Init_ElementSearch(struct GeoData *GeoData)
+{
   LastGeoElement = NULL;
 
-  if(Grid->Init) { return; }
+  Message::Info("Building the search tree of the elements...");
 
-  Grid->Xmin = Current.GeoData->Xmin;
-  Grid->Xmax = Current.GeoData->Xmax;
-  Grid->Ymin = Current.GeoData->Ymin;
-  Grid->Ymax = Current.GeoData->Ymax;
-  Grid->Zmin = Current.GeoData->Zmin;
-  Grid->Zmax = Current.GeoData->Zmax;
-
-  double x = Grid->Xmax - Grid->Xmin;
-  double y = Grid->Ymax - Grid->Ymin;
-  double z = Grid->Zmax - Grid->Zmin;
-  double diag = sqrt(x * x + y * y + z * z);
-
-  if(diag < 1e-16) {
-    Message::Warning("Bounding box too small %g", diag);
-    Grid->Nx = Grid->Ny = Grid->Nz = 1;
-    Grid->Xmin -= 1;
-    Grid->Xmax += 1;
-    Grid->Ymin -= 1;
-    Grid->Ymax += 1;
-    Grid->Zmin -= 1;
-    Grid->Zmax += 1;
-  }
-  else {
-    const int NBB = 25;
-    Grid->Nx = (int)(x / diag * NBB) + 1;
-    Grid->Ny = (int)(y / diag * NBB) + 1;
-    Grid->Nz = (int)(z / diag * NBB) + 1;
-    // make box 1% bigger
-    const double c = 0.01 * diag;
-    Grid->Xmin -= c * diag;
-    Grid->Xmax += c * diag;
-    Grid->Ymin -= c * diag;
-    Grid->Ymax += c * diag;
-    Grid->Zmin -= c * diag;
-    Grid->Zmax += c * diag;
-  }
-
-  Message::Info("Initializing rapid search grid...");
-
-  Grid->Bricks = List_Create(Grid->Nx * Grid->Ny * Grid->Nz, 10, sizeof(Brick));
-  for(i = 0; i < Grid->Nx * Grid->Ny * Grid->Nz; i++) {
-    for(j = 0; j < 3; j++)
-      Brick.p[j] = List_Create(2, 2, sizeof(struct Geo_Element *));
-    List_Add(Grid->Bricks, &Brick);
-  }
-
-  NbrGeoElements = Geo_GetNbrGeoElements();
+  struct ElementSearch *S = GeoData->ElementSearch = new ElementSearch;
+  struct Element Element;
   Get_InitDofOfElement(&Element);
+  int NbrGeoElements = Geo_GetNbrGeoElements();
+  int Region = Current.Region;
 
-  for(iElm = 0; iElm < NbrGeoElements; iElm++) {
-    Element.GeoElement = Geo_GetGeoElement(iElm);
-    Element.Num = Element.GeoElement->Num;
-    Element.Type = Element.GeoElement->Type;
-    Current.Region = Element.Region = Element.GeoElement->Region;
-
-    if(Element.Region && Element.Type != POINT_ELEMENT) {
+  for(int dim = 2; dim >= 0; dim--) {
+    S->NbrOfDim[dim] = 0;
+    for(int iElm = 0; iElm < NbrGeoElements; iElm++) {
+      Element.GeoElement = Geo_GetGeoElement(iElm);
+      Element.Num = Element.GeoElement->Num;
+      Element.Type = Element.GeoElement->Type;
+      Current.Region = Element.Region = Element.GeoElement->Region;
+      if(!Element.Region || DimensionOfElementType(Element.Type) != dim)
+        continue;
+      struct ElementBox Box;
       Get_NodesCoordinatesOfElement(&Element);
-      ComputeElementBox(&Element, &ElementBox);
-
-      Ix1 = (int)((double)Grid->Nx * (ElementBox.Xmin - Grid->Xmin) /
-                  (Grid->Xmax - Grid->Xmin));
-      Ix2 = (int)((double)Grid->Nx * (ElementBox.Xmax - Grid->Xmin) /
-                  (Grid->Xmax - Grid->Xmin));
-      Iy1 = (int)((double)Grid->Ny * (ElementBox.Ymin - Grid->Ymin) /
-                  (Grid->Ymax - Grid->Ymin));
-      Iy2 = (int)((double)Grid->Ny * (ElementBox.Ymax - Grid->Ymin) /
-                  (Grid->Ymax - Grid->Ymin));
-      Iz1 = (int)((double)Grid->Nz * (ElementBox.Zmin - Grid->Zmin) /
-                  (Grid->Zmax - Grid->Zmin));
-      Iz2 = (int)((double)Grid->Nz * (ElementBox.Zmax - Grid->Zmin) /
-                  (Grid->Zmax - Grid->Zmin));
-
-      Ix1 = (Ix1 < 0) ? 0 : ((Ix1 > Grid->Nx - 1) ? Grid->Nx - 1 : Ix1);
-      Ix2 = (Ix2 < 0) ? 0 : ((Ix2 > Grid->Nx - 1) ? Grid->Nx - 1 : Ix2);
-      Iy1 = (Iy1 < 0) ? 0 : ((Iy1 > Grid->Ny - 1) ? Grid->Ny - 1 : Iy1);
-      Iy2 = (Iy2 < 0) ? 0 : ((Iy2 > Grid->Ny - 1) ? Grid->Ny - 1 : Iy2);
-      Iz1 = (Iz1 < 0) ? 0 : ((Iz1 > Grid->Nz - 1) ? Grid->Nz - 1 : Iz1);
-      Iz2 = (Iz2 < 0) ? 0 : ((Iz2 > Grid->Nz - 1) ? Grid->Nz - 1 : Iz2);
-
-      for(i = Ix1; i <= Ix2; i++) {
-        for(j = Iy1; j <= Iy2; j++) {
-          for(k = Iz1; k <= Iz2; k++) {
-            index = i + j * Grid->Nx + k * Grid->Nx * Grid->Ny;
-            Brick_P = (struct Brick *)List_Pointer(Grid->Bricks, index);
-            switch(Element.GeoElement->Type) {
-            case LINE:
-            case LINE_2:
-            case LINE_3:
-            case LINE_4: List_Add(Brick_P->p[0], &Element.GeoElement); break;
-            case TRIANGLE:
-            case TRIANGLE_2:
-            case TRIANGLE_3:
-            case TRIANGLE_4:
-            case QUADRANGLE:
-            case QUADRANGLE_2:
-            case QUADRANGLE_2_8N:
-            case QUADRANGLE_3:
-            case QUADRANGLE_4:
-              List_Add(Brick_P->p[1], &Element.GeoElement);
-              break;
-            case TETRAHEDRON:
-            case TETRAHEDRON_2:
-            case TETRAHEDRON_3:
-            case TETRAHEDRON_4:
-            case HEXAHEDRON:
-            case HEXAHEDRON_2:
-            case HEXAHEDRON_2_20N:
-            case HEXAHEDRON_3:
-            case HEXAHEDRON_4:
-            case PRISM:
-            case PRISM_2:
-            case PRISM_2_15N:
-            case PRISM_3:
-            case PRISM_4:
-            case PYRAMID:
-            case PYRAMID_2:
-            case PYRAMID_2_13N:
-            case PYRAMID_3: // case PYRAMID_4 :
-              List_Add(Brick_P->p[2], &Element.GeoElement);
-              break;
-            }
-          }
-        }
-      }
+      ComputeElementBox(&Element, &Box);
+      double min[3] = {Box.Xmin, Box.Ymin, Box.Zmin};
+      double max[3] = {Box.Xmax, Box.Ymax, Box.Zmax};
+      S->Tree.add(min, max);
+      S->Elements.push_back(Element.GeoElement);
+      S->NbrOfDim[dim]++;
     }
   }
+  S->Tree.build();
+  Current.Region = Region;
 
-  Grid->Init = 1;
-
-#if 0
-  for (i=0 ; i<List_Nbr(Grid->Bricks) ; i++) {
-    Brick_P = (struct Brick *)List_Pointer(Grid->Bricks, i) ;
-    printf("BRICK %d : ", i) ;
-    for (j=0 ; j<List_Nbr(Brick_P->p[2]) ; j++) {
-      Element.GeoElement = *(struct Geo_Element **)List_Pointer(Brick_P->p[2], j) ;
-      printf("%d ", Element.GeoElement->Num) ;
-    }
-    printf("\n");
-  }
-#endif
-
-  Message::Info("...done: %dx%dx%d", Grid->Nx, Grid->Ny, Grid->Nz);
+  Message::Info("...done: %d elements", S->Tree.size());
 }
 
-void Free_SearchGrid(struct Grid *Grid)
+void Free_ElementSearch(struct GeoData *GeoData)
 {
-  if(!Grid->Init) return;
-  for(int i = 0; i < List_Nbr(Grid->Bricks); i++) {
-    Brick *Brick_P = (struct Brick *)List_Pointer(Grid->Bricks, i);
-    for(int j = 0; j < 3; j++) List_Delete(Brick_P->p[j]);
-  }
-  List_Delete(Grid->Bricks);
-  Grid->Init = 0;
+  LastGeoElement = NULL;
+  if(!GeoData->ElementSearch) return;
+  delete GeoData->ElementSearch;
+  GeoData->ElementSearch = NULL;
 }
 
 /* ------------------------------------------------------------------------ */
-/*  I n W h i c h   X X X                                                   */
+/*  I n W h i c h E l e m e n t                                             */
 /* ------------------------------------------------------------------------ */
 
-static int InWhichBrick(struct Grid *pGrid, double X, double Y, double Z)
-{
-  int Ix, Iy, Iz;
+// Find the element of the mesh that contains the point (x, y, z), among the
+// elements of dimension Dim (DIM_1D, DIM_2D, DIM_3D, or DIM_ALL: a volume if
+// there is one, otherwise a surface, otherwise a curve) that are not in
+// ExcludeRegion_L. On return the element and the coordinates (u, v, w) of the
+// point in it are set, or Element->Num is NO_ELEMENT if there is none.
 
-  if(X > pGrid->Xmax || X < pGrid->Xmin || Y > pGrid->Ymax || Y < pGrid->Ymin ||
-     Z > pGrid->Zmax || Z < pGrid->Zmin) {
-    return (NO_BRICK);
-  }
-
-  Ix =
-    (int)((double)pGrid->Nx * (X - pGrid->Xmin) / (pGrid->Xmax - pGrid->Xmin));
-  Iy =
-    (int)((double)pGrid->Ny * (Y - pGrid->Ymin) / (pGrid->Ymax - pGrid->Ymin));
-  Iz =
-    (int)((double)pGrid->Nz * (Z - pGrid->Zmin) / (pGrid->Zmax - pGrid->Zmin));
-
-  Ix = (Ix < 0) ? 0 : ((Ix > pGrid->Nx - 1) ? pGrid->Nx - 1 : Ix);
-  Iy = (Iy < 0) ? 0 : ((Iy > pGrid->Ny - 1) ? pGrid->Ny - 1 : Iy);
-  Iz = (Iz < 0) ? 0 : ((Iz > pGrid->Nz - 1) ? pGrid->Nz - 1 : Iz);
-
-  return (Ix + Iy * pGrid->Nx + Iz * pGrid->Nx * pGrid->Ny);
-}
-
-void InWhichElement(struct Grid *Grid, List_T *ExcludeRegion_L,
+void InWhichElement(struct GeoData *GeoData, List_T *ExcludeRegion_L,
                     struct Element *Element, int Dim, double x, double y,
                     double z, double *u, double *v, double *w)
 {
   /* Note: Il est garanti en sortie que les fcts de forme geometriques sont
      initialisees en u,v,w */
 
-  struct Brick *Brick_P;
-  int i, dim, lowdim = 0, highdim = 0;
+  if(!GeoData->ElementSearch) Init_ElementSearch(GeoData);
+  struct ElementSearch *S = GeoData->ElementSearch;
+
   double tol;
-
-  if(!Grid->Init) Init_SearchGrid(Grid);
-
-  /* Allow for some extra matches by increasing the size of the
-     bounding box, and even more if we search for elements of
-     dimension smaller than the current dimension. This way we can for
-     example also find 1D elements with points not exactly on them. */
   if((Dim == DIM_1D && Current.GeoData->Dimension == DIM_3D) ||
      (Dim == DIM_1D && Current.GeoData->Dimension == DIM_2D) ||
      (Dim == DIM_2D && Current.GeoData->Dimension == DIM_3D))
@@ -402,60 +322,45 @@ void InWhichElement(struct Grid *Grid, List_T *ExcludeRegion_L,
   else
     tol = Current.GeoData->CharacteristicLength * 1.e-8;
 
-  if(LastGeoElement) {
+  // the boxes are numbered by decreasing dimension: those of the dimension
+  // we look for have the numbers first, ..., last - 1; top is the dimension
+  // of the elements that are tested first
+  int first = 0, last = S->Tree.size();
+  int top = S->NbrOfDim[2] ? 2 : S->NbrOfDim[1] ? 1 : 0;
+  switch(Dim) {
+  case DIM_3D:
+    last = S->NbrOfDim[2];
+    top = 2;
+    break;
+  case DIM_2D:
+    first = S->NbrOfDim[2];
+    last = first + S->NbrOfDim[1];
+    top = 1;
+    break;
+  case DIM_1D:
+    first = S->NbrOfDim[2] + S->NbrOfDim[1];
+    top = 0;
+    break;
+  default: break;
+  }
+
+  // successive points are often in the same element; a surface is not tried
+  // first if there are volumes, since it would hide the volume of the point
+  if(LastGeoElement && DimensionOfElementType(LastGeoElement->Type) == top) {
     Element->GeoElement = LastGeoElement;
     if(PointInElement(Element, ExcludeRegion_L, x, y, z, u, v, w, tol)) {
       return;
     }
   }
 
-  if((i = InWhichBrick(Grid, x, y, z)) == NO_BRICK) {
-    Element->Num = NO_ELEMENT;
-    Element->Region = NO_REGION;
-    return;
-  }
-
-  if(!(Brick_P = (struct Brick *)List_Pointer(Grid->Bricks, i))) {
-    Message::Error("Brick %d not found in Grid", i);
-    Element->Num = NO_ELEMENT;
-    Element->Region = NO_REGION;
-    return;
-  }
-
-  switch(Dim) {
-  case DIM_1D:
-    lowdim = 0;
-    highdim = 0;
-    break;
-  case DIM_2D:
-    lowdim = 1;
-    highdim = 1;
-    break;
-  case DIM_3D:
-    lowdim = 2;
-    highdim = 2;
-    break;
-  case DIM_ALL:
-  default:
-    lowdim = 0;
-    highdim = 2;
-    break;
-  }
-
-  for(dim = highdim; dim >= lowdim; dim--) {
-    for(i = 0; i < List_Nbr(Brick_P->p[dim]); i++) {
-      Element->GeoElement =
-        *(struct Geo_Element **)List_Pointer(Brick_P->p[dim], i);
-      if(PointInElement(Element, ExcludeRegion_L, x, y, z, u, v, w, tol)) {
-        /*
-        Message::Info("xyz(%g,%g,%g) -> Selected Element %d uvw(%g,%g,%g) "
-                      "(%g,%g,%g)->(%g,%g,%g)", x, y, z, Element->Num, *u, *v, *w,
-                      Element->x[0], Element->y[0], Element->z[0],
-                      Element->x[1], Element->y[1], Element->z[1]);
-        */
-        LastGeoElement = Element->GeoElement;
-        return;
-      }
+  static std::vector<int> found;
+  S->Tree.search(x, y, z, found);
+  for(std::size_t i = 0; i < found.size(); i++) {
+    if(found[i] < first || found[i] >= last) continue;
+    Element->GeoElement = S->Elements[found[i]];
+    if(PointInElement(Element, ExcludeRegion_L, x, y, z, u, v, w, tol)) {
+      LastGeoElement = Element->GeoElement;
+      return;
     }
   }
 
@@ -539,6 +444,13 @@ void xyz2uvwInAnElement(struct Element *Element, double x, double y, double z,
       w_new = *w + Element->InvJac.c13 * (x - x_est) +
               Element->InvJac.c23 * (y - y_est) +
               Element->InvJac.c33 * (z - z_est);
+
+      // a surface or a curve only has the coordinates u, v or u: what the
+      // others get is the distance to the element, which does not converge
+      if(Type_Jacobian != JACOBIAN_VOL) {
+        w_new = 0.;
+        if(ChainDim == DIM_1D) v_new = 0.;
+      }
 
       Error = SQU(u_new - *u) + SQU(v_new - *v) + SQU(w_new - *w);
 

@@ -464,7 +464,7 @@ void Geo_InitGeoData(struct GeoData *GeoData_P, int Num, char *Name)
 
   GeoData_P->GroupForPRE = NULL;
 
-  GeoData_P->Grid.Init = 0;
+  GeoData_P->ElementSearch = NULL;
 
   GeoData_P->H = GeoData_P->P = NULL;
 
@@ -508,7 +508,7 @@ void Geo_FreeGeoData(struct GeoData *GeoData_P)
   }
   Tree_Delete(GeoData_P->Normals);
   List_Delete(GeoData_P->GroupForPRE);
-  Free_SearchGrid(&GeoData_P->Grid);
+  Free_ElementSearch(GeoData_P);
   Free(GeoData_P->H);
   Free(GeoData_P->P);
 }

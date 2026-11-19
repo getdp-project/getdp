@@ -10,10 +10,6 @@
 #include "GeoData.h"
 #include "ListUtils.h"
 
-struct Brick {
-  List_T *p[3];
-};
-
 struct ElementBox {
   double Xmin, Xmax;
   double Ymin, Ymax;
@@ -26,11 +22,12 @@ struct PointElement {
   int ElementIndex;
 };
 
-void Free_SearchGrid(struct Grid *Grid);
+void Free_ElementSearch(struct GeoData *GeoData);
 void Pos_SearchInPartitionOfThisRank(bool own);
+int DimensionOfElementType(int Type);
 
-void InWhichElement(struct Grid *Grid, List_T *ExcludeRegion,
-                    struct Element *Element, int Flag, double x, double y,
+void InWhichElement(struct GeoData *GeoData, List_T *ExcludeRegion,
+                    struct Element *Element, int Dim, double x, double y,
                     double z, double *u, double *v, double *w);
 
 int PointInElement(struct Element *Element, List_T *ExcludeRegion_L, double x,

@@ -433,7 +433,7 @@ void Mesh_MovingBand2D(struct Group *Group_P)
 
   Message::Debug("Moving band meshed (area = %e)", MB->Area);
 
-  Free_SearchGrid(&Current.GeoData->Grid);
+  Free_ElementSearch(Current.GeoData);
 }
 
 int Delauny_1234_MB(double x1, double y1, double x2, double y2, double x3,

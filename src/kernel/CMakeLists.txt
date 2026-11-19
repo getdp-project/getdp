@@ -48,7 +48,7 @@ set(SRC
     Pos_FemInterpolation.cpp
     Pos_Formulation.cpp
       Pos_Print.cpp
-        Pos_Element.cpp Pos_Format.cpp Pos_Iso.cpp Pos_Search.cpp
+        Pos_Element.cpp Pos_Format.cpp Pos_Iso.cpp Pos_Search.cpp BoxTree.cpp
 )
 
 file(GLOB HDR RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} *.h)

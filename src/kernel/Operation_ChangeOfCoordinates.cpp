@@ -96,7 +96,7 @@ void Operation_ChangeOfCoordinates(struct Resolution *Resolution_P,
 
   Current.Element = old;
 
-  Free_SearchGrid(&Current.GeoData->Grid);
+  Free_ElementSearch(Current.GeoData);
 }
 
 /* ------------------------------------------------------------------------ */
@@ -277,5 +277,5 @@ void Operation_DeformMesh(struct Resolution *Resolution_P,
   }
 
   Current.GeoData = GeoData_P0 + Operation_P->Case.DeformMesh.GeoDataIndex;
-  Free_SearchGrid(&Current.GeoData->Grid);
+  Free_ElementSearch(Current.GeoData);
 }

@@ -12,13 +12,6 @@
 #include <vector>
 #include <unordered_set>
 
-struct Grid {
-  int Init;
-  List_T *Bricks;
-  double Xmin, Xmax, Ymin, Ymax, Zmin, Zmax;
-  int Nx, Ny, Nz;
-};
-
 struct GeoData {
   int Num;
   char *Name;
@@ -35,7 +28,9 @@ struct GeoData {
   double Xmin, Xmax, Ymin, Ymax, Zmin, Zmax;
   double Dimension, CharacteristicLength;
 
-  struct Grid Grid;
+  // the tree of the boxes of the elements, to find the element that contains
+  // a point (built by the first search, see InWhichElement)
+  struct ElementSearch *ElementSearch;
 
   double *H, *P;
 

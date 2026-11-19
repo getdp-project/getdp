@@ -440,7 +440,7 @@ void Pos_PrintOnElementsOf(struct PostQuantity *NCPQ_P,
           for(iTime = 0; iTime < NbrTimeStep; iTime++) {
             Pos_InitAllSolutions(PSO_P->TimeStep_L, iTime);
             for(iNode = 0; iNode < PE->NbrNodes; iNode++) {
-              InWhichElement(&Current.GeoData->Grid, Region_L, &Element,
+              InWhichElement(Current.GeoData, Region_L, &Element,
                              PSO_P->Dimension, PE->x[iNode], PE->y[iNode],
                              PE->z[iNode], &PE->u[iNode], &PE->v[iNode],
                              &PE->w[iNode]);
@@ -1113,7 +1113,7 @@ void Pos_PrintOnGrid(struct PostQuantity *NCPQ_P, struct PostQuantity *CPQ_P,
 
     double u = 0., v = 0., w = 0.;
     if(other < 0) {
-      InWhichElement(&Current.GeoData->Grid, NULL, &Element, PSO_P->Dimension,
+      InWhichElement(Current.GeoData, NULL, &Element, PSO_P->Dimension,
                      Current.x, Current.y, Current.z, &u, &v, &w);
       if(!print) {
         if(Element.Num == NO_ELEMENT) return; // not in the partition of this rank
@@ -1174,8 +1174,17 @@ void Pos_PrintOnGrid(struct PostQuantity *NCPQ_P, struct PostQuantity *CPQ_P,
       GatherOnFirstRank(types, MPI_INT);
       GatherOnFirstRank(vals, MPI_DOUBLE);
       if(!printHere) break;
+      // a rank without the volume that contains a point can find it in a
+      // surface or a curve close to it: the volumes come first, as without MPI
+      auto dim = [&](int i) {
+        return DimensionOfElementType(
+          Geo_GetGeoElementOfNum(elements[i])->Type);
+      };
       evaluated.assign(point, -1);
-      for(int i = (int)points.size() - 1; i >= 0; i--) evaluated[points[i]] = i;
+      for(int i = (int)points.size() - 1; i >= 0; i--) {
+        int &first = evaluated[points[i]];
+        if(first < 0 || dim(i) >= dim(first)) first = i;
+      }
     }
 #endif
     point = 0;
@@ -1595,7 +1604,7 @@ void Pos_PrintOnRegion(struct PostQuantity *NCPQ_P, struct PostQuantity *CPQ_P,
         if(Group_FunctionType == NODESOF)
           Geo_GetNodesCoordinates(1, &Num_Region, &Current.x, &Current.y,
                                   &Current.z);
-        InWhichElement(&Current.GeoData->Grid, NULL, &Element, PSO_P->Dimension,
+        InWhichElement(Current.GeoData, NULL, &Element, PSO_P->Dimension,
                        Current.x, Current.y, Current.z, &u, &v, &w);
 
         Cal_PostQuantity(PQ_P, DefineQuantity_P0, QuantityStorage_P0, PSO_P->Distributed,
