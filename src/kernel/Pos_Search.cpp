@@ -13,6 +13,7 @@
 #include "Get_Geometry.h"
 #include "Pos_Search.h"
 #include "Get_DofOfElement.h"
+#include "DofData.h"
 #include "Message.h"
 
 #define SQU(a) ((a) * (a))
@@ -20,6 +21,11 @@
 extern struct CurrentData Current;
 
 static struct Geo_Element *LastGeoElement;
+
+// when all the ranks look for the same point, each one in the elements of its
+// mesh partition
+static bool InPartitionOfThisRank = false;
+void Pos_SearchInPartitionOfThisRank(bool own) { InPartitionOfThisRank = own; }
 
 /* ------------------------------------------------------------------------ */
 /*  C o m p u t e E l e m e n t B o x                                       */
@@ -140,6 +146,10 @@ int PointInElement(struct Element *Element, List_T *ExcludeRegion_L, double x,
                    double tol)
 {
   struct ElementBox ElementBox;
+
+  if(InPartitionOfThisRank &&
+     !Dof_IsPartitionOfThisRank(Element->GeoElement->Partition))
+    return (0);
 
   if(ExcludeRegion_L)
     if(List_Search(ExcludeRegion_L, &Element->GeoElement->Region, fcmp_int)) {

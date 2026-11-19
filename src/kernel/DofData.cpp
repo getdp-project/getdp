@@ -610,6 +610,18 @@ static bool Dof_ReadDofBinaryPRE(struct Dof *Dof_P)
 
 void Dof_WriteFilePRE(struct DofData *DofData_P)
 {
+  // the first rank writes the Dofs of all the ranks
+  List_T *own = NULL;
+  if(Dof_UseLocalDofs() && !Dof_GetAllDofsOnFirstRank() &&
+     !DofData_P->DofTree) {
+    List_T *all = Dof_GatherDofsOnFirstRank(DofData_P);
+    if(all) {
+      own = DofData_P->DofList;
+      DofData_P->DofList = all;
+      DofData_P->NbrAnyDof = List_Nbr(all);
+    }
+  }
+
   if(Message::GetIsCommWorld() && Message::GetCommRank()) return;
 
   int i, Nbr_Index;
@@ -658,6 +670,12 @@ void Dof_WriteFilePRE(struct DofData *DofData_P)
   if(Dof_BinaryPRE) fprintf(File_PRE, "\n");
   fprintf(File_PRE, "$EndDofData\n");
   fflush(File_PRE);
+
+  if(own) {
+    List_Delete(DofData_P->DofList);
+    DofData_P->DofList = own;
+    DofData_P->NbrAnyDof = List_Nbr(own);
+  }
 }
 
 /* ------------------------------- */
@@ -1326,12 +1344,22 @@ void Dof_ReadFileRES(List_T *DofData_L, struct DofData *Read_DofData_P,
 /*  D o f _ T r a n s f e r D o f T r e e T o L i s t                       */
 /* ------------------------------------------------------------------------ */
 
-// With -local-dofs, rank 0 receives the Dofs of the other ranks and keeps them
-// all: what runs on rank 0 only (field maps, writing the .pre file, solution
-// transfers) can then work on the whole mesh, at the cost of the memory of one
-// rank. Each Dof is sent by each rank that has it.
-static void Dof_GatherDofsOnRoot(struct DofData *DofData_P)
+// With rank-local Dofs, what the first rank does alone on the whole mesh needs
+// the Dofs of all the ranks: the Prints that are not evaluated by all the ranks
+// and the constraints that they use. The first rank only keeps them all, at the
+// cost of the memory of one rank, if the problem has such a Print (see
+// WhatNeedsAllDofsOnFirstRank); otherwise it gets them when it needs them, to
+// write the .pre file or to transfer a solution that the ranks cannot transfer
+// by themselves.
+static bool AllDofsOnFirstRank = true;
+bool Dof_GetAllDofsOnFirstRank() { return AllDofsOnFirstRank; }
+void Dof_SetAllDofsOnFirstRank(bool all) { AllDofsOnFirstRank = all; }
+
+// Returns the Dofs of all the ranks on the first rank, sorted (NULL on the
+// others). Each Dof is sent by each rank that has it.
+List_T *Dof_GatherDofsOnFirstRank(struct DofData *DofData_P)
 {
+  List_T *all = NULL;
 #if defined(HAVE_MPI)
   const int me = Message::GetCommRank(), np = Message::GetCommSize();
   const long long chunk = 1 << 30;
@@ -1345,7 +1373,7 @@ static void Dof_GatherDofsOnRoot(struct DofData *DofData_P)
       MPI_Send(p, (int)std::min(left, chunk), MPI_BYTE, 0, 0, MPI_COMM_WORLD);
       p += chunk;
     }
-    return;
+    return NULL;
   }
   long long total = 0;
   for(int i = 0; i < np; i++) total += counts[i];
@@ -1360,16 +1388,16 @@ static void Dof_GatherDofsOnRoot(struct DofData *DofData_P)
     }
   }
   if(total) qsort(&buf[0], total, sizeof(struct Dof), fcmp_Dof);
-  List_Delete(DofData_P->DofList);
-  DofData_P->DofList = List_Create(std::max(total, 1LL), 1, sizeof(struct Dof));
+  all = List_Create(std::max(total, 1LL), 1, sizeof(struct Dof));
   struct Dof *last = NULL;
   for(long long i = 0; i < total; i++) {
     struct Dof *d = (struct Dof *)&buf[i * sizeof(struct Dof)];
     if(last && !fcmp_Dof(last, d)) continue;
-    List_Add(DofData_P->DofList, d);
+    List_Add(all, d);
     last = d;
   }
 #endif
+  return all;
 }
 
 void Dof_TransferDofTreeToList(struct DofData *DofData_P)
@@ -1380,7 +1408,13 @@ void Dof_TransferDofTreeToList(struct DofData *DofData_P)
     DofData_P->DofTree = NULL;
     delete DofData_P->DofIndex;
     DofData_P->DofIndex = NULL;
-    if(Dof_UseLocalDofs()) Dof_GatherDofsOnRoot(DofData_P);
+    if(Dof_UseLocalDofs() && AllDofsOnFirstRank) {
+      List_T *all = Dof_GatherDofsOnFirstRank(DofData_P);
+      if(all) {
+        List_Delete(DofData_P->DofList);
+        DofData_P->DofList = all;
+      }
+    }
     DofData_P->NbrAnyDof = List_Nbr(DofData_P->DofList);
   }
 
@@ -1697,6 +1731,52 @@ bool Dof_IsPartitionOfThisRank(int partition)
   int np = Message::GetCommSize();
   return ((partition > 0) ? (partition - 1) % np : np - 1) ==
          Message::GetCommRank();
+}
+
+// Copies the values of the unknowns of a system (in x1) to the same unknowns
+// of another one (in x2). With rank-local Dofs each rank transfers the Dofs
+// that it has in both systems; if a rank only has one of them in the first
+// system, the first rank gets the Dofs of all the ranks and transfers them all.
+void Dof_TransferSolution(struct DofData *DofData1_P, gVector *x1,
+                          struct DofData *DofData2_P, gVector *x2)
+{
+  const bool localDofs = Dof_UseLocalDofs();
+  List_T *from = DofData1_P->DofList, *to = DofData2_P->DofList;
+  for(int pass = 0; pass < 2; pass++) {
+    int missing = 0;
+    for(int i = 0; i < List_Nbr(from); i++) {
+      struct Dof *Dof1_P = (struct Dof *)List_Pointer(from, i);
+      if(Dof1_P->Type != DOF_UNKNOWN) continue;
+      struct Dof *Dof2_P = (struct Dof *)List_PQuery(to, Dof1_P, fcmp_Dof);
+      if(!Dof2_P) {
+        missing++;
+        continue;
+      }
+      gScalar tmp;
+      LinAlg_GetScalarInVector(&tmp, x1, Dof1_P->Case.Unknown.NumDof - 1);
+      if(localDofs)
+        LinAlg_SetScalarInVectorOffProcess(&tmp, x2,
+                                           Dof2_P->Case.Unknown.NumDof - 1);
+      else
+        LinAlg_SetScalarInVector(&tmp, x2, Dof2_P->Case.Unknown.NumDof - 1);
+      Dof2_P->Type = DOF_UNKNOWN;
+    }
+    if(!localDofs || pass) {
+      if(missing) Message::Warning("Unknown Dof in TransferSolution");
+      break;
+    }
+#if defined(HAVE_MPI)
+    MPI_Allreduce(MPI_IN_PLACE, &missing, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
+#endif
+    if(!missing) break;
+    from = Dof_GatherDofsOnFirstRank(DofData1_P);
+    to = Dof_GatherDofsOnFirstRank(DofData2_P);
+  }
+  if(from != DofData1_P->DofList) {
+    List_Delete(from);
+    List_Delete(to);
+  }
+  LinAlg_AssembleVector(x2);
 }
 
 static bool PostOnRootOnly = false;

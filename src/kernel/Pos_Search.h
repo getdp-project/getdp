@@ -27,6 +27,7 @@ struct PointElement {
 };
 
 void Free_SearchGrid(struct Grid *Grid);
+void Pos_SearchInPartitionOfThisRank(bool own);
 
 void InWhichElement(struct Grid *Grid, List_T *ExcludeRegion,
                     struct Element *Element, int Flag, double x, double y,

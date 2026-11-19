@@ -474,6 +474,8 @@ void Geo_InitGeoData(struct GeoData *GeoData_P, int Num, char *Name)
 
   GeoData_P->NodeIndex = new std::vector<int>;
   GeoData_P->NodeIndexSize = -1;
+  GeoData_P->ElementIndex = new std::vector<int>;
+  GeoData_P->ElementIndexSize = -1;
 
   GeoData_P->HasParts = GeoData_P->IsPart = false;
   GeoData_P->EntitiesLevel = 0;
@@ -499,6 +501,7 @@ void Geo_FreeGeoData(struct GeoData *GeoData_P)
   delete GeoData_P->EdgesXNodes;
   delete GeoData_P->FacetsXEdges;
   delete GeoData_P->NodeIndex;
+  delete GeoData_P->ElementIndex;
   if(GeoData_P->NodesXElements) {
     Tree_Action(GeoData_P->NodesXElements, free_E2XE1);
     Tree_Delete(GeoData_P->NodesXElements);
@@ -1508,14 +1511,40 @@ int Geo_GetGeoElementIndex(struct Geo_Element *GeoElement)
 /*  G e o _ G e t G e o E l e m e n t O f N u m                             */
 /* ------------------------------------------------------------------------ */
 
+// The element of a given number: as for the nodes (see Geo_FindNode), the
+// positions of the elements are tabulated if their numbers are dense enough,
+// instead of a binary search (which first sorts the list, each time)
 struct Geo_Element *Geo_GetGeoElementOfNum(int Num_Element)
 {
-  struct Geo_Element elm;
-
-  elm.Num = Num_Element;
-
-  return ((struct Geo_Element *)List_PQuery(CurrentGeoData->Elements, &elm,
-                                            fcmp_Elm));
+  struct GeoData *GeoData_P = CurrentGeoData;
+  std::vector<int> &index = *GeoData_P->ElementIndex;
+  int n = List_Nbr(GeoData_P->Elements);
+  if(GeoData_P->ElementIndexSize != n) {
+    GeoData_P->ElementIndexSize = n;
+    index.clear();
+    int min = 0, max = 0;
+    for(int i = 0; i < n; i++) {
+      int num = ((struct Geo_Element *)List_Pointer(GeoData_P->Elements, i))->Num;
+      min = std::min(min, num);
+      max = std::max(max, num);
+    }
+    if(min >= 0 && max / 4 <= n + 1000) {
+      index.resize(max + 1, -1);
+      for(int i = 0; i < n; i++)
+        index[((struct Geo_Element *)List_Pointer(GeoData_P->Elements, i))->Num] = i;
+    }
+  }
+  if(index.empty()) {
+    struct Geo_Element elm;
+    elm.Num = Num_Element;
+    return (struct Geo_Element *)List_PQuery(GeoData_P->Elements, &elm,
+                                             fcmp_Elm);
+  }
+  if(Num_Element < 0 || Num_Element >= (int)index.size() ||
+     index[Num_Element] < 0)
+    return NULL;
+  return (struct Geo_Element *)List_Pointer(GeoData_P->Elements,
+                                            index[Num_Element]);
 }
 
 /* ------------------------------------------------------------------------ */

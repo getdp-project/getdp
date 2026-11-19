@@ -209,6 +209,11 @@ bool Dof_UseLocalDofs();
 void Dof_SyncPreResolutions(List_T *PreResolutionInfo_L);
 bool Dof_IsPartitionOfThisRank(int partition);
 bool Dof_HasRankPartitions();
+bool Dof_GetAllDofsOnFirstRank();
+void Dof_SetAllDofsOnFirstRank(bool all);
+List_T *Dof_GatherDofsOnFirstRank(struct DofData *DofData_P);
+void Dof_TransferSolution(struct DofData *DofData1_P, gVector *x1,
+                          struct DofData *DofData2_P, gVector *x2);
 bool Dof_GetPostOnRootOnly();
 void Dof_SetPostOnRootOnly(bool rootOnly);
 void Dof_DefineAssociateDof(int E1, int E2, int D1, int D2, int NbrHar,

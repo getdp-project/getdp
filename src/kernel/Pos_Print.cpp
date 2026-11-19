@@ -4,6 +4,7 @@
 // issues on https://gitlab.onelab.info/getdp/getdp/issues.
 
 #include <sstream>
+#include <vector>
 #include <string.h>
 #include <math.h>
 #include "ProData.h"
@@ -25,6 +26,10 @@
 #include "Adapt.h"
 #include "MallocUtils.h"
 #include "Message.h"
+
+#if defined(HAVE_MPI)
+#include <mpi.h>
+#endif
 
 #define SQU(a) ((a) * (a))
 
@@ -1010,71 +1015,30 @@ void Pos_PrintOnSection(struct PostQuantity *NCPQ_P, struct PostQuantity *CPQ_P,
 /*  P o s _ P r i n t O n G r i d                                           */
 /* ------------------------------------------------------------------------ */
 
-#define LETS_PRINT_THE_RESULT                                                  \
-  PE->x[0] = Current.xp = Current.x;                                           \
-  PE->y[0] = Current.yp = Current.y;                                           \
-  PE->z[0] = Current.zp = Current.z;                                           \
-  if(!NCPQ_P) {                                                                \
-    for(ts = 0; ts < NbTimeStep; ts++) {                                       \
-      PE->Value[0] = CumulativeValues[ts];                                     \
-      Format_PostElement(PSO_P, PSO_P->Iso, 0, Current.Time, ts, NbTimeStep,   \
-                         Current.NbrHar, PSO_P->HarmonicToTime, Normal, PE);   \
-    }                                                                          \
-  }                                                                            \
-  else {                                                                       \
-    InWhichElement(&Current.GeoData->Grid, NULL, &Element, PSO_P->Dimension,   \
-                   Current.x, Current.y, Current.z, &u, &v, &w);               \
-    Current.Region = Element.Region;                                           \
-    if(Element.Num != NO_ELEMENT)                                              \
-      PE->Index = Geo_GetGeoElementIndex(Element.GeoElement);                  \
-    else                                                                       \
-      PE->Index = NO_ELEMENT;                                                  \
-    for(ts = 0; ts < NbTimeStep; ts++) {                                       \
-      Pos_InitAllSolutions(PSO_P->TimeStep_L, ts);                             \
-      Cal_PostQuantity(NCPQ_P, DefineQuantity_P0, QuantityStorage_P0,          \
-                       PSO_P->Distributed, NULL, &Element, u, v, w,            \
-                       &PE->Value[0]);                                         \
-      if(CPQ_P)                                                                \
-        Combine_PostQuantity(PSO_P->CombinationType, Order, &PE->Value[0],     \
-                             &CumulativeValues[ts]);                           \
-      Format_PostElement(PSO_P, PSO_P->Iso, 0, Current.Time, ts, NbTimeStep,   \
-                         Current.NbrHar, PSO_P->HarmonicToTime, Normal, PE);   \
-    }                                                                          \
-  }
-
 #define ARRAY(i, j, k, t)                                                      \
   Array[(t)*Current.NbrHar * ((int)N[0] + 1) * ((int)N[1] + 1) +               \
         (k) * ((int)N[0] + 1) * ((int)N[1] + 1) + (j) * ((int)N[0] + 1) + (i)]
 
-#define LETS_STORE_THE_RESULT                                                  \
-  if(!NCPQ_P) {                                                                \
-    if(CumulativeValues[0].Type != SCALAR)                                     \
-      Message::Error(                                                          \
-        "Print OnPlane not designed for non scalars with Depth > 1");          \
-    else                                                                       \
-      for(ts = 0; ts < NbTimeStep; ts++)                                       \
-        for(k = 0; k < Current.NbrHar; k++)                                    \
-          ARRAY(i1, i2, k, ts) = (float)CumulativeValues[ts].Val[MAX_DIM * k]; \
-  }                                                                            \
-  else {                                                                       \
-    InWhichElement(&Current.GeoData->Grid, NULL, &Element, PSO_P->Dimension,   \
-                   Current.x, Current.y, Current.z, &u, &v, &w);               \
-    Current.Region = Element.Region;                                           \
-    for(ts = 0; ts < NbTimeStep; ts++) {                                       \
-      Pos_InitAllSolutions(PSO_P->TimeStep_L, ts);                             \
-      Cal_PostQuantity(NCPQ_P, DefineQuantity_P0, QuantityStorage_P0,          \
-                       PSO_P->Distributed, NULL, &Element, u, v, w,            \
-                       &PE->Value[0]);                                         \
-      if(PE->Value[0].Type != SCALAR)                                          \
-        Message::Error(                                                        \
-          "Print OnPlane not designed for non scalars with Depth > 1");        \
-      if(CPQ_P)                                                                \
-        Combine_PostQuantity(PSO_P->CombinationType, Order, &PE->Value[0],     \
-                             &CumulativeValues[ts]);                           \
-      for(k = 0; k < Current.NbrHar; k++)                                      \
-        ARRAY(i1, i2, k, ts) = (float)PE->Value[0].Val[MAX_DIM * k];           \
-    }                                                                          \
-  }
+#if defined(HAVE_MPI)
+// replaces a vector by the vectors of all the ranks on the first rank (in the
+// order of the ranks), and by nothing on the others
+template <class T>
+static void GatherOnFirstRank(std::vector<T> &v, MPI_Datatype type)
+{
+  int np = Message::GetCommSize(), n = (int)v.size(), total = 0;
+  std::vector<int> counts(np), displs(np, 0);
+  MPI_Gather(&n, 1, MPI_INT, &counts[0], 1, MPI_INT, 0, MPI_COMM_WORLD);
+  if(!Message::GetCommRank())
+    for(int i = 0; i < np; i++) {
+      displs[i] = total;
+      total += counts[i];
+    }
+  std::vector<T> all(total);
+  MPI_Gatherv(v.data(), n, type, all.data(), &counts[0], &displs[0], type, 0,
+              MPI_COMM_WORLD);
+  v.swap(all);
+}
+#endif
 
 void Pos_PrintOnGrid(struct PostQuantity *NCPQ_P, struct PostQuantity *CPQ_P,
                      int Order, struct DefineQuantity *DefineQuantity_P0,
@@ -1082,12 +1046,12 @@ void Pos_PrintOnGrid(struct PostQuantity *NCPQ_P, struct PostQuantity *CPQ_P,
                      struct PostSubOperation *PSO_P)
 {
   struct Element Element;
-  struct Value *CumulativeValues, Value;
+  struct Value *CumulativeValues = NULL, Value;
   struct PostElement *PE, *PE2;
 
   int i1, i2, i3, k, NbTimeStep, ts;
   float *Array = NULL;
-  double u, v, w, Length, Normal[4] = {0., 0., 0., 0.};
+  double Length, Normal[4] = {0., 0., 0., 0.};
   double X[4], Y[4], Z[4], S[4], N[4], tmp[3];
 
   Get_InitDofOfElement(&Element);
@@ -1100,239 +1064,351 @@ void Pos_PrintOnGrid(struct PostQuantity *NCPQ_P, struct PostQuantity *CPQ_P,
                                QuantityStorage_P0, &CumulativeValues);
   }
 
-  Format_PostHeader(PSO_P, NbTimeStep, Order,
-                    PSO_P->Label ? PSO_P->Label :
-                                   (NCPQ_P ? NCPQ_P->Name : NULL),
-                    PSO_P->Label ? NULL : (CPQ_P ? CPQ_P->Name : NULL));
+  // With rank-local Dofs the points are visited twice. All the ranks first
+  // evaluate the points that they find in an element of their mesh partition
+  // (pass 0); the first rank then gets what they computed and prints all the
+  // points (pass 1), those that no rank found as without MPI. A point between
+  // two partitions is taken from the rank with the smallest number.
+  const bool overRanks = Dof_UseLocalDofs();
+  const bool printHere = !overRanks || !Message::GetCommRank();
+  const int nbVal = Current.NbrHar * MAX_DIM; // numbers stored for a value
+  int pass = 0, point = 0; // index of the current point
+  // what this rank evaluated, then (on the first rank) what they all did: the
+  // index of each point, the number of its element and its values (their type
+  // and numbers, for each time step)
+  std::vector<int> points, elements, types;
+  std::vector<double> vals;
+  std::vector<int> evaluated; // where is each point in these vectors (or -1)
+
+  // evaluates the quantity at the current point and prints it, or stores it in
+  // Array (for OnPlane with Depth > 1)
+  auto printPoint = [&](int indexInArray, int sizeOfArray) {
+    const bool print = !overRanks || pass == 1;
+    const int other = (overRanks && pass == 1) ? evaluated[point] : -1;
+    point++;
+    PE->x[0] = Current.xp = Current.x;
+    PE->y[0] = Current.yp = Current.y;
+    PE->z[0] = Current.zp = Current.z;
+
+    auto output = [&](int ts) {
+      if(PSO_P->Depth < 2 || PSO_P->SubType != PRINT_ONGRID_2D)
+        Format_PostElement(PSO_P, PSO_P->Iso, 0, Current.Time, ts, NbTimeStep,
+                           Current.NbrHar, PSO_P->HarmonicToTime, Normal, PE);
+      else if(PE->Value[0].Type != SCALAR)
+        Message::Error(
+          "Print OnPlane not designed for non scalars with Depth > 1");
+      else
+        for(int k = 0; k < Current.NbrHar; k++)
+          Array[(ts * Current.NbrHar + k) * sizeOfArray + indexInArray] =
+            (float)PE->Value[0].Val[MAX_DIM * k];
+    };
+
+    if(!NCPQ_P) { // the same cumulative value at all the points
+      for(int ts = 0; ts < NbTimeStep && print; ts++) {
+        PE->Value[0] = CumulativeValues[ts];
+        output(ts);
+      }
+      return;
+    }
+
+    double u = 0., v = 0., w = 0.;
+    if(other < 0) {
+      InWhichElement(&Current.GeoData->Grid, NULL, &Element, PSO_P->Dimension,
+                     Current.x, Current.y, Current.z, &u, &v, &w);
+      if(!print) {
+        if(Element.Num == NO_ELEMENT) return; // not in the partition of this rank
+        points.push_back(point - 1);
+        elements.push_back(Element.Num);
+      }
+      Current.Region = Element.Region;
+      PE->Index = (Element.Num != NO_ELEMENT) ?
+                    Geo_GetGeoElementIndex(Element.GeoElement) :
+                    NO_ELEMENT;
+    }
+    else {
+      struct Geo_Element *ge = Geo_GetGeoElementOfNum(elements[other]);
+      Current.Region = ge->Region;
+      PE->Index = Geo_GetGeoElementIndex(ge);
+    }
+
+    for(int ts = 0; ts < NbTimeStep; ts++) {
+      Pos_InitAllSolutions(PSO_P->TimeStep_L, ts);
+      if(other < 0) {
+        Cal_PostQuantity(NCPQ_P, DefineQuantity_P0, QuantityStorage_P0,
+                         PSO_P->Distributed, NULL, &Element, u, v, w,
+                         &PE->Value[0]);
+        if(CPQ_P)
+          Combine_PostQuantity(PSO_P->CombinationType, Order, &PE->Value[0],
+                               &CumulativeValues[ts]);
+      }
+      else {
+        PE->Value[0].Type = types[other * NbTimeStep + ts];
+        memcpy(PE->Value[0].Val, &vals[(other * NbTimeStep + ts) * nbVal],
+               nbVal * sizeof(double));
+      }
+      if(print)
+        output(ts);
+      else {
+        types.push_back(PE->Value[0].Type);
+        vals.insert(vals.end(), PE->Value[0].Val, PE->Value[0].Val + nbVal);
+      }
+    }
+  };
+
+  if(printHere)
+    Format_PostHeader(PSO_P, NbTimeStep, Order,
+                      PSO_P->Label ? PSO_P->Label :
+                                     (NCPQ_P ? NCPQ_P->Name : NULL),
+                      PSO_P->Label ? NULL : (CPQ_P ? CPQ_P->Name : NULL));
 
   PE = Create_PostElement(0, POINT_ELEMENT, 1, 0);
 
-  switch(PSO_P->SubType) {
-  case PRINT_ONGRID_0D:
-    Current.x = PSO_P->Case.OnGrid.x[0];
-    Current.y = PSO_P->Case.OnGrid.y[0];
-    Current.z = PSO_P->Case.OnGrid.z[0];
-    Normal[0] = Normal[1] = Normal[2] = 0.0;
-    LETS_PRINT_THE_RESULT;
+  Pos_SearchInPartitionOfThisRank(overRanks);
 
-    if(PSO_P->StoreInRegister >= 0)
-      Cal_StoreInRegister(&PE->Value[0], PSO_P->StoreInRegister);
-    if(PSO_P->StoreInVariable)
-      Cal_StoreInVariable(&PE->Value[0], PSO_P->StoreInVariable);
-    break;
-
-  case PRINT_ONGRID_1D:
-    X[0] = PSO_P->Case.OnGrid.x[0];
-    X[1] = PSO_P->Case.OnGrid.x[1];
-    Y[0] = PSO_P->Case.OnGrid.y[0];
-    Y[1] = PSO_P->Case.OnGrid.y[1];
-    Z[0] = PSO_P->Case.OnGrid.z[0];
-    Z[1] = PSO_P->Case.OnGrid.z[1];
-    N[0] = PSO_P->Case.OnGrid.n[0];
-    Normal[1] = Normal[2] = 0.0;
-    Length = sqrt(SQU(X[1] - X[0]) + SQU(Y[1] - Y[0]) + SQU(Z[1] - Z[0]));
-    for(i1 = 0; i1 <= N[0]; i1++) {
-      S[0] = (double)i1 / (double)(N[0] ? N[0] : 1);
-      Normal[0] = Length * S[0];
-      Current.x = X[0] + (X[1] - X[0]) * S[0];
-      Current.y = Y[0] + (Y[1] - Y[0]) * S[0];
-      Current.z = Z[0] + (Z[1] - Z[0]) * S[0];
-      LETS_PRINT_THE_RESULT;
+  for(pass = 0; pass < (overRanks ? 2 : 1); pass++) {
+    const bool print = !overRanks || pass == 1;
+#if defined(HAVE_MPI)
+    if(overRanks && pass == 1) {
+      GatherOnFirstRank(points, MPI_INT);
+      GatherOnFirstRank(elements, MPI_INT);
+      GatherOnFirstRank(types, MPI_INT);
+      GatherOnFirstRank(vals, MPI_DOUBLE);
+      if(!printHere) break;
+      evaluated.assign(point, -1);
+      for(int i = (int)points.size() - 1; i >= 0; i--) evaluated[points[i]] = i;
     }
-    break;
+#endif
+    point = 0;
 
-  case PRINT_ONGRID_2D:
-    X[0] = PSO_P->Case.OnGrid.x[0];
-    X[1] = PSO_P->Case.OnGrid.x[1];
-    Y[0] = PSO_P->Case.OnGrid.y[0];
-    Y[1] = PSO_P->Case.OnGrid.y[1];
-    Z[0] = PSO_P->Case.OnGrid.z[0];
-    Z[1] = PSO_P->Case.OnGrid.z[1];
-    X[2] = PSO_P->Case.OnGrid.x[2];
-    Y[2] = PSO_P->Case.OnGrid.y[2];
-    Z[2] = PSO_P->Case.OnGrid.z[2];
+    switch(PSO_P->SubType) {
+    case PRINT_ONGRID_0D:
+      Current.x = PSO_P->Case.OnGrid.x[0];
+      Current.y = PSO_P->Case.OnGrid.y[0];
+      Current.z = PSO_P->Case.OnGrid.z[0];
+      Normal[0] = Normal[1] = Normal[2] = 0.0;
+      printPoint(0, 0);
 
-    S[0] = X[1] - X[0];
-    S[1] = Y[1] - Y[0];
-    S[2] = Z[1] - Z[0];
-    N[0] = X[2] - X[0];
-    N[1] = Y[2] - Y[0];
-    N[2] = Z[2] - Z[0];
-    prodvec(S, N, Normal);
-    Length = sqrt(SQU(Normal[0]) + SQU(Normal[1]) + SQU(Normal[2]));
-    if(!Length) {
-      Message::Warning("Bad plane (null normal)");
-      return;
-    }
-    Normal[0] /= Length;
-    Normal[1] /= Length;
-    Normal[2] /= Length;
+      if(print && PSO_P->StoreInRegister >= 0)
+        Cal_StoreInRegister(&PE->Value[0], PSO_P->StoreInRegister);
+      if(print && PSO_P->StoreInVariable)
+        Cal_StoreInVariable(&PE->Value[0], PSO_P->StoreInVariable);
+      break;
 
-    N[0] = PSO_P->Case.OnGrid.n[0];
-    N[1] = PSO_P->Case.OnGrid.n[1];
-
-    if(PSO_P->Depth > 1)
-      Array = (float *)Malloc(NbTimeStep * Current.NbrHar *
-                              (int)((N[0] + 1) * (N[1] + 1)) * sizeof(float));
-
-    for(i1 = 0; i1 <= N[0]; i1++) {
-      S[0] = (double)i1 / (double)(N[0] ? N[0] : 1);
-      for(i2 = 0; i2 <= N[1]; i2++) {
-        S[1] = (double)i2 / (double)(N[1] ? N[1] : 1);
-        Current.x = X[0] + (X[1] - X[0]) * S[0] + (X[2] - X[0]) * S[1];
-        Current.y = Y[0] + (Y[1] - Y[0]) * S[0] + (Y[2] - Y[0]) * S[1];
-        Current.z = Z[0] + (Z[1] - Z[0]) * S[0] + (Z[2] - Z[0]) * S[1];
-        if(PSO_P->Depth > 1) { LETS_STORE_THE_RESULT; }
-        else {
-          LETS_PRINT_THE_RESULT;
-        }
-      }
-      if(PostStream && PSO_P->Depth < 2 && !Flag_BIN) fprintf(PostStream, "\n");
-    }
-
-    if(PSO_P->Depth > 1) {
-      PE2 = Create_PostElement(0, TRIANGLE, 3, 0);
-      PE2->Value[0].Type = PE2->Value[1].Type = PE2->Value[2].Type = SCALAR;
-      for(i1 = 0; i1 < N[0]; i1++) {
+    case PRINT_ONGRID_1D:
+      X[0] = PSO_P->Case.OnGrid.x[0];
+      X[1] = PSO_P->Case.OnGrid.x[1];
+      Y[0] = PSO_P->Case.OnGrid.y[0];
+      Y[1] = PSO_P->Case.OnGrid.y[1];
+      Z[0] = PSO_P->Case.OnGrid.z[0];
+      Z[1] = PSO_P->Case.OnGrid.z[1];
+      N[0] = PSO_P->Case.OnGrid.n[0];
+      Normal[1] = Normal[2] = 0.0;
+      Length = sqrt(SQU(X[1] - X[0]) + SQU(Y[1] - Y[0]) + SQU(Z[1] - Z[0]));
+      for(i1 = 0; i1 <= N[0]; i1++) {
         S[0] = (double)i1 / (double)(N[0] ? N[0] : 1);
-        S[2] = (double)(i1 + 1) / (double)(N[0] ? N[0] : 1);
-        for(i2 = 0; i2 < N[1]; i2++) {
+        Normal[0] = Length * S[0];
+        Current.x = X[0] + (X[1] - X[0]) * S[0];
+        Current.y = Y[0] + (Y[1] - Y[0]) * S[0];
+        Current.z = Z[0] + (Z[1] - Z[0]) * S[0];
+        printPoint(0, 0);
+      }
+      break;
+
+    case PRINT_ONGRID_2D:
+      X[0] = PSO_P->Case.OnGrid.x[0];
+      X[1] = PSO_P->Case.OnGrid.x[1];
+      Y[0] = PSO_P->Case.OnGrid.y[0];
+      Y[1] = PSO_P->Case.OnGrid.y[1];
+      Z[0] = PSO_P->Case.OnGrid.z[0];
+      Z[1] = PSO_P->Case.OnGrid.z[1];
+      X[2] = PSO_P->Case.OnGrid.x[2];
+      Y[2] = PSO_P->Case.OnGrid.y[2];
+      Z[2] = PSO_P->Case.OnGrid.z[2];
+
+      S[0] = X[1] - X[0];
+      S[1] = Y[1] - Y[0];
+      S[2] = Z[1] - Z[0];
+      N[0] = X[2] - X[0];
+      N[1] = Y[2] - Y[0];
+      N[2] = Z[2] - Z[0];
+      prodvec(S, N, Normal);
+      Length = sqrt(SQU(Normal[0]) + SQU(Normal[1]) + SQU(Normal[2]));
+      if(!Length) {
+        Message::Warning("Bad plane (null normal)");
+        Pos_SearchInPartitionOfThisRank(false);
+        return;
+      }
+      Normal[0] /= Length;
+      Normal[1] /= Length;
+      Normal[2] /= Length;
+
+      N[0] = PSO_P->Case.OnGrid.n[0];
+      N[1] = PSO_P->Case.OnGrid.n[1];
+
+      if(PSO_P->Depth > 1 && print)
+        Array = (float *)Malloc(NbTimeStep * Current.NbrHar *
+                                (int)((N[0] + 1) * (N[1] + 1)) * sizeof(float));
+
+      for(i1 = 0; i1 <= N[0]; i1++) {
+        S[0] = (double)i1 / (double)(N[0] ? N[0] : 1);
+        for(i2 = 0; i2 <= N[1]; i2++) {
           S[1] = (double)i2 / (double)(N[1] ? N[1] : 1);
-          S[3] = (double)(i2 + 1) / (double)(N[1] ? N[1] : 1);
-          PE2->x[0] = X[0] + (X[1] - X[0]) * S[0] + (X[2] - X[0]) * S[1];
-          PE2->y[0] = Y[0] + (Y[1] - Y[0]) * S[0] + (Y[2] - Y[0]) * S[1];
-          PE2->z[0] = Z[0] + (Z[1] - Z[0]) * S[0] + (Z[2] - Z[0]) * S[1];
-          PE2->x[1] = X[0] + (X[1] - X[0]) * S[2] + (X[2] - X[0]) * S[1];
-          PE2->y[1] = Y[0] + (Y[1] - Y[0]) * S[2] + (Y[2] - Y[0]) * S[1];
-          PE2->z[1] = Z[0] + (Z[1] - Z[0]) * S[2] + (Z[2] - Z[0]) * S[1];
-          PE2->x[2] = X[0] + (X[1] - X[0]) * S[0] + (X[2] - X[0]) * S[3];
-          PE2->y[2] = Y[0] + (Y[1] - Y[0]) * S[0] + (Y[2] - Y[0]) * S[3];
-          PE2->z[2] = Z[0] + (Z[1] - Z[0]) * S[0] + (Z[2] - Z[0]) * S[3];
-          for(ts = 0; ts < NbTimeStep; ts++) {
-            for(k = 0; k < Current.NbrHar; k++) {
-              PE2->Value[0].Val[MAX_DIM * k] = ARRAY(i1, i2, k, ts);
-              PE2->Value[1].Val[MAX_DIM * k] = ARRAY(i1 + 1, i2, k, ts);
-              PE2->Value[2].Val[MAX_DIM * k] = ARRAY(i1, i2 + 1, k, ts);
-            }
-            Format_PostElement(PSO_P, PSO_P->Iso, 0, Current.Time, ts,
-                               NbTimeStep, Current.NbrHar,
-                               PSO_P->HarmonicToTime, Normal, PE2);
-          }
-          PE2->x[0] = X[0] + (X[1] - X[0]) * S[2] + (X[2] - X[0]) * S[3];
-          PE2->y[0] = Y[0] + (Y[1] - Y[0]) * S[2] + (Y[2] - Y[0]) * S[3];
-          PE2->z[0] = Z[0] + (Z[1] - Z[0]) * S[2] + (Z[2] - Z[0]) * S[3];
-          tmp[0] = PE2->x[1];
-          PE2->x[1] = PE2->x[2];
-          PE2->x[2] = tmp[0];
-          tmp[1] = PE2->y[1];
-          PE2->y[1] = PE2->y[2];
-          PE2->y[2] = tmp[1];
-          tmp[2] = PE2->z[1];
-          PE2->z[1] = PE2->z[2];
-          PE2->z[2] = tmp[2];
-          for(ts = 0; ts < NbTimeStep; ts++) {
-            for(k = 0; k < Current.NbrHar; k++) {
-              PE2->Value[0].Val[MAX_DIM * k] = ARRAY(i1 + 1, i2 + 1, k, ts);
-              PE2->Value[1].Val[MAX_DIM * k] = ARRAY(i1, i2 + 1, k, ts);
-              PE2->Value[2].Val[MAX_DIM * k] = ARRAY(i1 + 1, i2, k, ts);
-            }
-            Format_PostElement(PSO_P, PSO_P->Iso, 0, Current.Time, ts,
-                               NbTimeStep, Current.NbrHar,
-                               PSO_P->HarmonicToTime, Normal, PE2);
-          }
+          Current.x = X[0] + (X[1] - X[0]) * S[0] + (X[2] - X[0]) * S[1];
+          Current.y = Y[0] + (Y[1] - Y[0]) * S[0] + (Y[2] - Y[0]) * S[1];
+          Current.z = Z[0] + (Z[1] - Z[0]) * S[0] + (Z[2] - Z[0]) * S[1];
+          printPoint(i2 * ((int)N[0] + 1) + i1,
+                     ((int)N[0] + 1) * ((int)N[1] + 1));
         }
-      }
-      Destroy_PostElement(PE2);
-      Free(Array);
-    }
-    break;
-
-  case PRINT_ONGRID_3D:
-    X[0] = PSO_P->Case.OnGrid.x[0];
-    X[1] = PSO_P->Case.OnGrid.x[1];
-    Y[0] = PSO_P->Case.OnGrid.y[0];
-    Y[1] = PSO_P->Case.OnGrid.y[1];
-    Z[0] = PSO_P->Case.OnGrid.z[0];
-    Z[1] = PSO_P->Case.OnGrid.z[1];
-    X[2] = PSO_P->Case.OnGrid.x[2];
-    X[3] = PSO_P->Case.OnGrid.x[3];
-    Y[2] = PSO_P->Case.OnGrid.y[2];
-    Y[3] = PSO_P->Case.OnGrid.y[3];
-    Z[2] = PSO_P->Case.OnGrid.z[2];
-    Z[3] = PSO_P->Case.OnGrid.z[3];
-    N[0] = PSO_P->Case.OnGrid.n[0];
-    N[1] = PSO_P->Case.OnGrid.n[1];
-    N[2] = PSO_P->Case.OnGrid.n[2];
-    Normal[0] = Normal[1] = Normal[2] = 0.0;
-    for(i1 = 0; i1 <= N[0]; i1++) {
-      S[0] = (double)i1 / (double)(N[0] ? N[0] : 1);
-      for(i2 = 0; i2 <= N[1]; i2++) {
-        S[1] = (double)i2 / (double)(N[1] ? N[1] : 1);
-        for(i3 = 0; i3 <= N[2]; i3++) {
-          S[2] = (double)i3 / (double)(N[2] ? N[2] : 1);
-          Current.x = X[0] + (X[1] - X[0]) * S[0] + (X[2] - X[0]) * S[1] +
-                      (X[3] - X[0]) * S[2];
-          Current.y = Y[0] + (Y[1] - Y[0]) * S[0] + (Y[2] - Y[0]) * S[1] +
-                      (Y[3] - Y[0]) * S[2];
-          Current.z = Z[0] + (Z[1] - Z[0]) * S[0] + (Z[2] - Z[0]) * S[1] +
-                      (Z[3] - Z[0]) * S[2];
-          LETS_PRINT_THE_RESULT;
-        }
-        if(PostStream && !Flag_BIN) fprintf(PostStream, "\n");
-      }
-      if(PostStream && !Flag_BIN) fprintf(PostStream, "\n\n");
-      /*  two blanks lines for -index in gnuplot  */
-    }
-    break;
-
-  case PRINT_ONGRID_PARAM:
-    for(i1 = 0; i1 < List_Nbr(PSO_P->Case.OnParamGrid.ParameterValue[0]);
-        i1++) {
-      List_Read(PSO_P->Case.OnParamGrid.ParameterValue[0], i1, &Current.a);
-      for(i2 = 0; i2 < List_Nbr(PSO_P->Case.OnParamGrid.ParameterValue[1]);
-          i2++) {
-        List_Read(PSO_P->Case.OnParamGrid.ParameterValue[1], i2, &Current.b);
-        for(i3 = 0; i3 < List_Nbr(PSO_P->Case.OnParamGrid.ParameterValue[2]);
-            i3++) {
-          List_Read(PSO_P->Case.OnParamGrid.ParameterValue[2], i3, &Current.c);
-          Get_ValueOfExpressionByIndex(
-            PSO_P->Case.OnParamGrid.ExpressionIndex[0], NULL, 0., 0., 0.,
-            &Value);
-          Current.x = Value.Val[0];
-          Get_ValueOfExpressionByIndex(
-            PSO_P->Case.OnParamGrid.ExpressionIndex[1], NULL, 0., 0., 0.,
-            &Value);
-          Current.y = Value.Val[0];
-          Get_ValueOfExpressionByIndex(
-            PSO_P->Case.OnParamGrid.ExpressionIndex[2], NULL, 0., 0., 0.,
-            &Value);
-          Current.z = Value.Val[0];
-          Normal[0] = Current.a;
-          Normal[1] = Current.b;
-          Normal[2] = Current.c;
-          LETS_PRINT_THE_RESULT;
-        }
-        if(PostStream &&
-           List_Nbr(PSO_P->Case.OnParamGrid.ParameterValue[2]) > 1 && !Flag_BIN)
+        if(print && PostStream && PSO_P->Depth < 2 && !Flag_BIN)
           fprintf(PostStream, "\n");
       }
-      if(PostStream &&
-         List_Nbr(PSO_P->Case.OnParamGrid.ParameterValue[1]) > 1 && !Flag_BIN)
-        fprintf(PostStream, "\n\n");
-      /*  two blanks lines for -index in gnuplot  */
+
+      if(PSO_P->Depth > 1 && print) {
+        PE2 = Create_PostElement(0, TRIANGLE, 3, 0);
+        PE2->Value[0].Type = PE2->Value[1].Type = PE2->Value[2].Type = SCALAR;
+        for(i1 = 0; i1 < N[0]; i1++) {
+          S[0] = (double)i1 / (double)(N[0] ? N[0] : 1);
+          S[2] = (double)(i1 + 1) / (double)(N[0] ? N[0] : 1);
+          for(i2 = 0; i2 < N[1]; i2++) {
+            S[1] = (double)i2 / (double)(N[1] ? N[1] : 1);
+            S[3] = (double)(i2 + 1) / (double)(N[1] ? N[1] : 1);
+            PE2->x[0] = X[0] + (X[1] - X[0]) * S[0] + (X[2] - X[0]) * S[1];
+            PE2->y[0] = Y[0] + (Y[1] - Y[0]) * S[0] + (Y[2] - Y[0]) * S[1];
+            PE2->z[0] = Z[0] + (Z[1] - Z[0]) * S[0] + (Z[2] - Z[0]) * S[1];
+            PE2->x[1] = X[0] + (X[1] - X[0]) * S[2] + (X[2] - X[0]) * S[1];
+            PE2->y[1] = Y[0] + (Y[1] - Y[0]) * S[2] + (Y[2] - Y[0]) * S[1];
+            PE2->z[1] = Z[0] + (Z[1] - Z[0]) * S[2] + (Z[2] - Z[0]) * S[1];
+            PE2->x[2] = X[0] + (X[1] - X[0]) * S[0] + (X[2] - X[0]) * S[3];
+            PE2->y[2] = Y[0] + (Y[1] - Y[0]) * S[0] + (Y[2] - Y[0]) * S[3];
+            PE2->z[2] = Z[0] + (Z[1] - Z[0]) * S[0] + (Z[2] - Z[0]) * S[3];
+            for(ts = 0; ts < NbTimeStep; ts++) {
+              for(k = 0; k < Current.NbrHar; k++) {
+                PE2->Value[0].Val[MAX_DIM * k] = ARRAY(i1, i2, k, ts);
+                PE2->Value[1].Val[MAX_DIM * k] = ARRAY(i1 + 1, i2, k, ts);
+                PE2->Value[2].Val[MAX_DIM * k] = ARRAY(i1, i2 + 1, k, ts);
+              }
+              Format_PostElement(PSO_P, PSO_P->Iso, 0, Current.Time, ts,
+                                 NbTimeStep, Current.NbrHar,
+                                 PSO_P->HarmonicToTime, Normal, PE2);
+            }
+            PE2->x[0] = X[0] + (X[1] - X[0]) * S[2] + (X[2] - X[0]) * S[3];
+            PE2->y[0] = Y[0] + (Y[1] - Y[0]) * S[2] + (Y[2] - Y[0]) * S[3];
+            PE2->z[0] = Z[0] + (Z[1] - Z[0]) * S[2] + (Z[2] - Z[0]) * S[3];
+            tmp[0] = PE2->x[1];
+            PE2->x[1] = PE2->x[2];
+            PE2->x[2] = tmp[0];
+            tmp[1] = PE2->y[1];
+            PE2->y[1] = PE2->y[2];
+            PE2->y[2] = tmp[1];
+            tmp[2] = PE2->z[1];
+            PE2->z[1] = PE2->z[2];
+            PE2->z[2] = tmp[2];
+            for(ts = 0; ts < NbTimeStep; ts++) {
+              for(k = 0; k < Current.NbrHar; k++) {
+                PE2->Value[0].Val[MAX_DIM * k] = ARRAY(i1 + 1, i2 + 1, k, ts);
+                PE2->Value[1].Val[MAX_DIM * k] = ARRAY(i1, i2 + 1, k, ts);
+                PE2->Value[2].Val[MAX_DIM * k] = ARRAY(i1 + 1, i2, k, ts);
+              }
+              Format_PostElement(PSO_P, PSO_P->Iso, 0, Current.Time, ts,
+                                 NbTimeStep, Current.NbrHar,
+                                 PSO_P->HarmonicToTime, Normal, PE2);
+            }
+          }
+        }
+        Destroy_PostElement(PE2);
+        Free(Array);
+        Array = NULL;
+      }
+      break;
+
+    case PRINT_ONGRID_3D:
+      X[0] = PSO_P->Case.OnGrid.x[0];
+      X[1] = PSO_P->Case.OnGrid.x[1];
+      Y[0] = PSO_P->Case.OnGrid.y[0];
+      Y[1] = PSO_P->Case.OnGrid.y[1];
+      Z[0] = PSO_P->Case.OnGrid.z[0];
+      Z[1] = PSO_P->Case.OnGrid.z[1];
+      X[2] = PSO_P->Case.OnGrid.x[2];
+      X[3] = PSO_P->Case.OnGrid.x[3];
+      Y[2] = PSO_P->Case.OnGrid.y[2];
+      Y[3] = PSO_P->Case.OnGrid.y[3];
+      Z[2] = PSO_P->Case.OnGrid.z[2];
+      Z[3] = PSO_P->Case.OnGrid.z[3];
+      N[0] = PSO_P->Case.OnGrid.n[0];
+      N[1] = PSO_P->Case.OnGrid.n[1];
+      N[2] = PSO_P->Case.OnGrid.n[2];
+      Normal[0] = Normal[1] = Normal[2] = 0.0;
+      for(i1 = 0; i1 <= N[0]; i1++) {
+        S[0] = (double)i1 / (double)(N[0] ? N[0] : 1);
+        for(i2 = 0; i2 <= N[1]; i2++) {
+          S[1] = (double)i2 / (double)(N[1] ? N[1] : 1);
+          for(i3 = 0; i3 <= N[2]; i3++) {
+            S[2] = (double)i3 / (double)(N[2] ? N[2] : 1);
+            Current.x = X[0] + (X[1] - X[0]) * S[0] + (X[2] - X[0]) * S[1] +
+                        (X[3] - X[0]) * S[2];
+            Current.y = Y[0] + (Y[1] - Y[0]) * S[0] + (Y[2] - Y[0]) * S[1] +
+                        (Y[3] - Y[0]) * S[2];
+            Current.z = Z[0] + (Z[1] - Z[0]) * S[0] + (Z[2] - Z[0]) * S[1] +
+                        (Z[3] - Z[0]) * S[2];
+            printPoint(0, 0);
+          }
+          if(print && PostStream && !Flag_BIN) fprintf(PostStream, "\n");
+        }
+        if(print && PostStream && !Flag_BIN) fprintf(PostStream, "\n\n");
+        /*  two blanks lines for -index in gnuplot  */
+      }
+      break;
+
+    case PRINT_ONGRID_PARAM:
+      for(i1 = 0; i1 < List_Nbr(PSO_P->Case.OnParamGrid.ParameterValue[0]);
+          i1++) {
+        List_Read(PSO_P->Case.OnParamGrid.ParameterValue[0], i1, &Current.a);
+        for(i2 = 0; i2 < List_Nbr(PSO_P->Case.OnParamGrid.ParameterValue[1]);
+            i2++) {
+          List_Read(PSO_P->Case.OnParamGrid.ParameterValue[1], i2, &Current.b);
+          for(i3 = 0; i3 < List_Nbr(PSO_P->Case.OnParamGrid.ParameterValue[2]);
+              i3++) {
+            List_Read(PSO_P->Case.OnParamGrid.ParameterValue[2], i3, &Current.c);
+            Get_ValueOfExpressionByIndex(
+              PSO_P->Case.OnParamGrid.ExpressionIndex[0], NULL, 0., 0., 0.,
+              &Value);
+            Current.x = Value.Val[0];
+            Get_ValueOfExpressionByIndex(
+              PSO_P->Case.OnParamGrid.ExpressionIndex[1], NULL, 0., 0., 0.,
+              &Value);
+            Current.y = Value.Val[0];
+            Get_ValueOfExpressionByIndex(
+              PSO_P->Case.OnParamGrid.ExpressionIndex[2], NULL, 0., 0., 0.,
+              &Value);
+            Current.z = Value.Val[0];
+            Normal[0] = Current.a;
+            Normal[1] = Current.b;
+            Normal[2] = Current.c;
+            printPoint(0, 0);
+          }
+          if(print && PostStream &&
+             List_Nbr(PSO_P->Case.OnParamGrid.ParameterValue[2]) > 1 && !Flag_BIN)
+            fprintf(PostStream, "\n");
+        }
+        if(print && PostStream &&
+           List_Nbr(PSO_P->Case.OnParamGrid.ParameterValue[1]) > 1 && !Flag_BIN)
+          fprintf(PostStream, "\n\n");
+        /*  two blanks lines for -index in gnuplot  */
+      }
+      break;
     }
-    break;
+
   }
+
+  Pos_SearchInPartitionOfThisRank(false);
 
   Destroy_PostElement(PE);
 
-  Format_PostFooter(PSO_P, 0);
+  if(printHere) Format_PostFooter(PSO_P, 0);
 
   if(CPQ_P) Free(CumulativeValues);
 }
 
-#undef LETS_PRINT_THE_RESULT
-#undef LETS_STORE_THE_RESULT
 #undef ARRAY
 
 /* ------------------------------------------------------------------------ */

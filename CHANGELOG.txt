@@ -4,8 +4,9 @@ performance and memory use of matrix assembly, in particular with MPI (exact
 matrix preallocation, each element assembled by a single process, which only
 defines the degrees of freedom of its mesh partition unless -all-dofs); improved
 support for high-order meshes; Gmsh post-processing files are mesh-based by
-default (-list-based for the previous format), and in parallel field maps are
-computed by all the processes and written with MPI-IO; added
+default (-list-based for the previous format), and in parallel field maps and
+evaluations at points are computed by all the processes, the field maps being
+written with MPI-IO; added
 support for 2nd order edge elements on quadrangles; new resolution operation
 (ReadTable); new current variable ($KSPConvergedReason); new integration type
 (Collocation); new built-in functions (GetRank, ValueFromMap, ValueFromFile,

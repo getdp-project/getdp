@@ -782,7 +782,7 @@ void Treatment_Operation(struct Resolution *Resolution_P, List_T *Operation_L,
   struct DefineSystem *DefineSystem_P;
   struct DofData *DofData_P, *DofData2_P;
   struct Solution *Solution_P, Solution_S;
-  struct Dof Dof, *Dof_P;
+  struct Dof *Dof_P;
   struct Value Value;
 
   int N;
@@ -2669,11 +2669,9 @@ void Treatment_Operation(struct Resolution *Resolution_P, List_T *Operation_L,
            espace fonctionnel. */
         DofData2_P = DofData_P0 + DefineSystem_P->DestinationSystemIndex;
 
-        // with -local-dofs only rank 0 has all the Dofs of the two systems,
-        // and it sets the values of all the ranks
-        const bool localDofs = Dof_UseLocalDofs();
-        const bool transferHere = !localDofs || !Message::GetCommRank();
-        if(transferHere && DofData_P->NbrAnyDof != DofData2_P->NbrAnyDof) {
+        // with rank-local Dofs a rank only knows the number of unknowns
+        if(Dof_UseLocalDofs() ? (DofData_P->NbrDof != DofData2_P->NbrDof) :
+                                (DofData_P->NbrAnyDof != DofData2_P->NbrAnyDof)) {
           Message::Error("Dimensions do not match for TransferSolution");
           break;
         }
@@ -2690,34 +2688,8 @@ void Treatment_Operation(struct Resolution *Resolution_P, List_T *Operation_L,
         if(List_Nbr(DofData_P->Solutions)) {
           Solution_P = (struct Solution *)List_Pointer(
             DofData_P->Solutions, List_Nbr(DofData_P->Solutions) - 1);
-          for(int i = 0; i < DofData_P->NbrAnyDof; i++) {
-            Dof = *(struct Dof *)List_Pointer(DofData_P->DofList, i);
-            if(Dof.Type == DOF_UNKNOWN) {
-              LinAlg_GetScalarInVector(&tmp, &Solution_P->x,
-                                       Dof.Case.Unknown.NumDof - 1);
-
-              if((Dof_P = (struct Dof *)List_PQuery(DofData2_P->DofList, &Dof,
-                                                    fcmp_Dof))) {
-                if(localDofs) {
-                  if(transferHere)
-                    LinAlg_SetScalarInVectorOffProcess(
-                      &tmp, &Solution_S.x, Dof_P->Case.Unknown.NumDof - 1);
-                }
-                else
-                  LinAlg_SetScalarInVector(&tmp, &Solution_S.x,
-                                           Dof_P->Case.Unknown.NumDof - 1);
-                Dof_P->Type = DOF_UNKNOWN;
-              }
-              else if(transferHere) {
-                Message::Warning("Unknown Dof in TransferSolution");
-              }
-            }
-            else {
-              // Message::Warning("Trying to transfer a non symmetrical Dof
-              // (type %d)", Dof.Type);
-            }
-          }
-          LinAlg_AssembleVector(&Solution_S.x);
+          Dof_TransferSolution(DofData_P, &Solution_P->x, DofData2_P,
+                               &Solution_S.x);
 
           if(!DofData2_P->Solutions)
             DofData2_P->Solutions =

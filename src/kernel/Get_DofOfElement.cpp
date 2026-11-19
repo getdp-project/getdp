@@ -596,7 +596,8 @@ void Get_CodesOfElement(struct FunctionSpace *FunctionSpace_P,
       // with -local-dofs a missing Dof must not be mistaken for a Dof that does
       // not exist, which would silently give a wrong value
       if(!CodeExist && TreatmentStatus == STATUS_POS && Dof_UseLocalDofs() &&
-         Message::GetCommRank() && Current.Element && Current.Element->GeoElement &&
+         (Message::GetCommRank() || !Dof_GetAllDofsOnFirstRank()) &&
+         Current.Element && Current.Element->GeoElement &&
          !Dof_IsPartitionOfThisRank(Current.Element->GeoElement->Partition)) {
         Message::Error("Rank-local Dofs (use -all-dofs): rank %d evaluates a quantity on element %d "
                        "of another rank", Message::GetCommRank(),

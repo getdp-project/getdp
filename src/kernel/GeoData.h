@@ -50,6 +50,9 @@ struct GeoData {
   // search (see Geo_FindNode); NodeIndexSize is the number of nodes it covers
   std::vector<int> *NodeIndex;
   int NodeIndexSize;
+  // the same for the elements (see Geo_GetGeoElementOfNum)
+  std::vector<int> *ElementIndex;
+  int ElementIndexSize;
 
   // In parallel, with rank-local Dofs, only the first rank reads the mesh: it
   // sends to each other rank the part of the mesh this rank needs

@@ -8,6 +8,8 @@
 //   Ruth Sabariego
 
 #include <algorithm>
+#include <set>
+#include <string>
 #include <string.h>
 #include "ProData.h"
 #include "GeoData.h"
@@ -645,6 +647,56 @@ static const char *WhatNeedsAllDofs()
   return NULL;
 }
 
+// With rank-local Dofs, what the first rank does alone on the whole mesh, for
+// which it keeps the Dofs of all the ranks (see Dof_GetAllDofsOnFirstRank): a
+// Print that is not evaluated by all the ranks, in the post-operations that can
+// be run (those of the command line and those of the resolutions).
+static std::set<std::string> PostOperationNames;
+
+static const char *WhatNeedsAllDofsOnFirstRank()
+{
+  PostOperationNames.clear();
+  for(int i = 0; Flag_POS && i < NBR_MAX_POS && Name_PostOperation[i]; i++)
+    PostOperationNames.insert(Name_PostOperation[i]);
+
+  for(int i = 0; i < List_Nbr(Problem_S.Resolution); i++) {
+    struct Resolution *r =
+      (struct Resolution *)List_Pointer(Problem_S.Resolution, i);
+    AnyOperation(r->Operation, [](struct Operation *o) {
+      List_T *names = NULL, *errors = NULL;
+      if(o->Type == OPERATION_POSTOPERATION)
+        names = o->Case.PostOperation.PostOperations;
+      else if(o->Type == OPERATION_TIMELOOPADAPTIVE)
+        errors = o->Case.TimeLoopAdaptive.TimeLoopAdaptivePOs_L;
+      else if(o->Type == OPERATION_ITERATIVELOOPADVANCED)
+        errors = o->Case.IterativeLoop.IterativeLoopPOs_L;
+      for(int j = 0; j < List_Nbr(names); j++)
+        PostOperationNames.insert(*(char **)List_Pointer(names, j));
+      for(int j = 0; j < List_Nbr(errors); j++)
+        PostOperationNames.insert(
+          ((struct LoopErrorPostOperation *)List_Pointer(errors, j))
+            ->PostOperationName);
+      return false;
+    });
+  }
+
+  for(int i = 0; i < List_Nbr(Problem_S.PostOperation); i++) {
+    struct PostOperation *po =
+      (struct PostOperation *)List_Pointer(Problem_S.PostOperation, i);
+    if(!PostOperationNames.count(po->Name)) continue;
+    struct Formulation *f = (struct Formulation *)List_Pointer(
+      Problem_S.Formulation,
+      ((struct PostProcessing *)List_Pointer(Problem_S.PostProcessing,
+                                             po->PostProcessingIndex))
+        ->FormulationIndex);
+    for(int j = 0; j < List_Nbr(po->PostSubOperation); j++)
+      if(Pos_IsOnFirstRankOnly(
+           f, (struct PostSubOperation *)List_Pointer(po->PostSubOperation, j)))
+        return "a Print that is not evaluated by all the ranks";
+  }
+  return NULL;
+}
+
 void SolvingAnalyse()
 {
   struct Resolution *Resolution_P, *Resolution2_P;
@@ -679,6 +731,13 @@ void SolvingAnalyse()
                     what);
       Flag_LOCAL_DOFS = 0;
     }
+  }
+  if(Dof_UseLocalDofs()) {
+    const char *what = WhatNeedsAllDofsOnFirstRank();
+    if(what)
+      Message::Info("The first rank gets all the Dofs (the problem has %s)",
+                    what);
+    Dof_SetAllDofsOnFirstRank(what != NULL);
   }
 
   /* -------------------- */

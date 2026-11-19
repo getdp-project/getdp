@@ -380,6 +380,44 @@ void Pos_ResampleTime(struct PostOperation *PostOperation_P)
 /*  P o s _ F o r m u l a t i o n                                           */
 /* ------------------------------------------------------------------------ */
 
+// With rank-local Dofs the quantities on regions are integrated by all the
+// ranks, each one on the elements of its mesh partition, and the Prints at
+// given points (OnPoint, OnLine, OnPlane, OnGrid) are evaluated by all the
+// ranks, each one at the points that are in its mesh partition. A mesh-based
+// Gmsh view of a single local quantity is also evaluated by all the ranks, each
+// one on the elements of its mesh partition, and written by all of them in the
+// file (with or without rank-local Dofs).
+bool Pos_IsParallelView(struct Formulation *Formulation_P,
+                        struct PostSubOperation *PostSubOperation_P)
+{
+  return PostSubOperation_P->Type == POP_PRINT &&
+         Format_CanGmshParallel(PostSubOperation_P) &&
+         PostSubOperation_P->PostQuantityIndex[0] >= 0 &&
+         PostSubOperation_P->PostQuantitySupport[0] < 0 &&
+         PostSubOperation_P->PostQuantityIndex[1] < 0 &&
+         Formulation_P->Type == FEMEQUATION;
+}
+
+// The other Prints on the mesh are evaluated by the first rank alone, which
+// needs the Dofs of all the ranks for that: the others have nothing to do. A
+// Distributed Print on the mesh is therefore written whole by the first rank,
+// as without Distributed: the other ranks must not open (and truncate) the
+// file.
+bool Pos_IsOnFirstRankOnly(struct Formulation *Formulation_P,
+                           struct PostSubOperation *PostSubOperation_P)
+{
+  if(!Dof_UseLocalDofs() || PostSubOperation_P->Type != POP_PRINT) return false;
+  switch(PostSubOperation_P->SubType) {
+  case PRINT_ONREGION:
+  case PRINT_ONGRID_0D:
+  case PRINT_ONGRID_1D:
+  case PRINT_ONGRID_2D:
+  case PRINT_ONGRID_3D:
+  case PRINT_ONGRID_PARAM: return false;
+  default: return !Pos_IsParallelView(Formulation_P, PostSubOperation_P);
+  }
+}
+
 void Pos_Formulation(struct Formulation *Formulation_P,
                      struct PostProcessing *PostProcessing_P,
                      struct PostSubOperation *PostSubOperation_P)
@@ -408,26 +446,14 @@ void Pos_Formulation(struct Formulation *Formulation_P,
     return;
   }
 
-  // With -local-dofs only rank 0 has the Dofs of the whole mesh: it alone
-  // evaluates what it prints on the mesh, without help from the other ranks,
-  // and the others have nothing to do since only rank 0 prints. The quantities
-  // on regions are integrated by all the ranks on their own elements. A
-  // Distributed Print on the mesh is therefore written whole by rank 0, as
-  // without Distributed: the other ranks must not open (and truncate) the file.
-  //
-  // A mesh-based Gmsh view of a single local quantity is the exception: all
-  // the ranks evaluate it, each one on the elements of its mesh partition, and
-  // the first rank writes what they computed in the file (with or without
-  // -local-dofs).
-  bool parallelView = PostSubOperation_P->Type == POP_PRINT &&
-                      Format_CanGmshParallel(PostSubOperation_P) &&
-                      PostSubOperation_P->PostQuantityIndex[0] >= 0 &&
-                      PostSubOperation_P->PostQuantitySupport[0] < 0 &&
-                      PostSubOperation_P->PostQuantityIndex[1] < 0 &&
-                      Formulation_P->Type == FEMEQUATION;
+  bool parallelView = Pos_IsParallelView(Formulation_P, PostSubOperation_P);
   Format_SetGmshParallel(parallelView);
-  bool rootOnly = Dof_UseLocalDofs() && PostSubOperation_P->Type == POP_PRINT &&
-                  PostSubOperation_P->SubType != PRINT_ONREGION && !parallelView;
+  bool rootOnly = Pos_IsOnFirstRankOnly(Formulation_P, PostSubOperation_P);
+  if(rootOnly && !Dof_GetAllDofsOnFirstRank()) {
+    Message::Error("This Print needs all the Dofs on the first rank (use "
+                   "-all-dofs)");
+    return;
+  }
 
   if(PostSubOperation_P->FileOut) {
     strcpy(PostFileName,
@@ -547,7 +573,8 @@ void Pos_Formulation(struct Formulation *Formulation_P,
     }
   }
 
-  if(rootOnly &&
+  if(Dof_UseLocalDofs() && PostSubOperation_P->Type == POP_PRINT &&
+     PostSubOperation_P->SubType != PRINT_ONREGION &&
      (PostSubOperation_P->StoreInField >= 0 ||
       PostSubOperation_P->StoreInMeshBasedField >= 0 ||
       PostSubOperation_P->StoreInRegister >= 0 ||

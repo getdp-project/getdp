@@ -591,8 +591,9 @@ void Treatment_FemFormulation(struct Formulation *Formulation_P)
   Message::ResetProgressMeter();
 
   const bool localDofs = Dof_UseLocalDofs();
-  const bool rootTreatsAll =
-    localDofs && TreatmentStatus == STATUS_CST && !Message::GetCommRank();
+  const bool rootTreatsAll = localDofs && TreatmentStatus == STATUS_CST &&
+                             !Message::GetCommRank() &&
+                             Dof_GetAllDofsOnFirstRank();
   // in parallel each element is assembled by one rank, which adds all its
   // contributions (see Dof_IsPartitionOfThisRank)
   const bool oneRankPerElement =
