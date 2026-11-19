@@ -64,8 +64,6 @@
 
 extern struct CurrentData Current;
 
-extern void _fillseq(Vec &V, Vec &Vseq); // from LinAlg_PETsc.cpp
-
 static void _try(int ierr)
 {
   CHKERRCONTINUE(ierr);
@@ -123,6 +121,37 @@ static PetscErrorCode _myPepMonitor(PEP pep, PetscInt its, PetscInt nconv,
 
 #endif
 
+// Copies a vector computed by SLEPc (its real and imaginary parts xr and xi in
+// real arithmetic) in a solution vector: each rank sets the entries that it
+// owns in xr and xi.
+static void _storeVector(Vec xr, Vec xi, gVector *x)
+{
+  PetscInt lo, hi;
+  _try(VecGetOwnershipRange(xr, &lo, &hi));
+  const PetscScalar *tmpr, *tmpi = NULL;
+  _try(VecGetArrayRead(xr, &tmpr));
+  if(xi) _try(VecGetArrayRead(xi, &tmpi));
+  int incr = (Current.NbrHar == 2) ? gCOMPLEX_INCREMENT : 1;
+  for(PetscInt l = lo; l < hi; l++) {
+    if(l % incr) continue;
+#if defined(PETSC_USE_COMPLEX)
+    PetscScalar v = tmpr[l - lo];
+    if(Current.NbrHar != 2) v = PetscRealPart(v);
+    _try(VecSetValues(x->V, 1, &l, &v, INSERT_VALUES));
+#else
+    PetscScalar v = tmpr[l - lo];
+    _try(VecSetValues(x->V, 1, &l, &v, INSERT_VALUES));
+    if(Current.NbrHar == 2) {
+      PetscInt l1 = l + 1;
+      v = tmpi ? tmpi[l - lo] : 0.;
+      _try(VecSetValues(x->V, 1, &l1, &v, INSERT_VALUES));
+    }
+#endif
+  }
+  _try(VecRestoreArrayRead(xr, &tmpr));
+  if(xi) _try(VecRestoreArrayRead(xi, &tmpi));
+}
+
 static void _storeEigenVectors(struct DofData *DofData_P, PetscInt nconv, EPS eps,
 #if(PETSC_VERSION_MAJOR == 3) && (PETSC_VERSION_MINOR < 5)
                                QEP qep,
@@ -148,14 +177,6 @@ static void _storeEigenVectors(struct DofData *DofData_P, PetscInt nconv, EPS ep
   else {
     _try(MatCreateVecs(DofData_P->M7.M, PETSC_NULL, &xr));
     _try(MatCreateVecs(DofData_P->M7.M, PETSC_NULL, &xi));
-  }
-  // temporary sequential vectors to transfer eigenvectors to getdp
-  Vec xr_seq, xi_seq;
-  if(Message::GetCommSize() > 1) {
-    PetscInt n;
-    _try(VecGetSize(xr, &n));
-    _try(VecCreateSeq(PETSC_COMM_SELF, n, &xr_seq));
-    _try(VecCreateSeq(PETSC_COMM_SELF, n, &xi_seq));
   }
 
   Message::Info("               %-24s%-24s%-12s", "Re", "Im", "Relative error");
@@ -286,44 +307,7 @@ static void _storeEigenVectors(struct DofData *DofData_P, PetscInt nconv, EPS ep
     DofData_P->CurrentSolution->TimeFunctionValues = NULL;
     DofData_P->CurrentSolution->SolutionExist = 1;
 
-    // store eigenvector
-    PetscScalar *tmpr, *tmpi;
-    if(Message::GetCommSize() == 1) {
-      _try(VecGetArray(xr, &tmpr));
-      _try(VecGetArray(xi, &tmpi));
-    }
-    else {
-      _fillseq(xr, xr_seq);
-      _fillseq(xi, xi_seq);
-      _try(VecGetArray(xr_seq, &tmpr));
-      _try(VecGetArray(xi_seq, &tmpi));
-    }
-
-    int incr = (Current.NbrHar == 2) ? gCOMPLEX_INCREMENT : 1;
-    for(int l = 0; l < DofData_P->NbrDof; l += incr) {
-#if defined(PETSC_USE_COMPLEX)
-      double var_r = (double)PetscRealPart(tmpr[l]);
-      double var_i = (double)PetscImaginaryPart(tmpr[l]);
-#else
-      double var_r = (double)tmpr[l];
-      double var_i = (double)tmpi[l];
-#endif
-      if(Current.NbrHar == 2)
-        LinAlg_SetComplexInVector(var_r, var_i, &DofData_P->CurrentSolution->x,
-                                  l, l + 1);
-      else
-        LinAlg_SetDoubleInVector(var_r, &DofData_P->CurrentSolution->x, l);
-    }
-
-    if(Message::GetCommSize() == 1) {
-      _try(VecRestoreArray(xr, &tmpr));
-      _try(VecRestoreArray(xi, &tmpi));
-    }
-    else {
-      _try(VecRestoreArray(xr_seq, &tmpr));
-      _try(VecRestoreArray(xi_seq, &tmpi));
-    }
-
+    _storeVector(xr, xi, &DofData_P->CurrentSolution->x);
     LinAlg_AssembleVector(&DofData_P->CurrentSolution->x);
 
     // SLEPc returns eigenvectors normalized in L-2 norm. Renormalize them in
@@ -342,17 +326,9 @@ static void _storeEigenVectors(struct DofData *DofData_P, PetscInt nconv, EPS ep
 #if(PETSC_VERSION_MAJOR == 3) && (PETSC_VERSION_MINOR >= 2)
   _try(VecDestroy(&xr));
   _try(VecDestroy(&xi));
-  if(Message::GetCommSize() > 1) {
-    _try(VecDestroy(&xr_seq));
-    _try(VecDestroy(&xi_seq));
-  }
 #else
   _try(VecDestroy(xr));
   _try(VecDestroy(xi));
-  if(Message::GetCommSize() > 1) {
-    _try(VecDestroy(xr_seq));
-    _try(VecDestroy(xi_seq));
-  }
 #endif
 }
 
@@ -364,13 +340,6 @@ static void _storeExpansion(struct DofData *DofData_P,
   Vec x;
   _try(MatCreateVecs(DofData_P->M7.M, PETSC_NULL, &x));
 
-  // temporary sequential vectors to transfer eigenvectors to getdp
-  Vec x_seq;
-  if(Message::GetCommSize() > 1) {
-    PetscInt n;
-    _try(VecGetSize(x, &n));
-    _try(VecCreateSeq(PETSC_COMM_SELF, n, &x_seq));
-  }
 
   bool newsol = true;
   // char fname[100];
@@ -403,30 +372,7 @@ static void _storeExpansion(struct DofData *DofData_P,
     DofData_P->CurrentSolution->TimeFunctionValues = NULL;
     DofData_P->CurrentSolution->SolutionExist = 1;
 
-    // store eigenvector
-    PetscScalar *tmp;
-    if(Message::GetCommSize() == 1) { _try(VecGetArray(x, &tmp)); }
-    else {
-      _fillseq(x, x_seq);
-      _try(VecGetArray(x_seq, &tmp));
-    }
-
-    int incr = (Current.NbrHar == 2) ? gCOMPLEX_INCREMENT : 1;
-    for(int l = 0; l < DofData_P->NbrDof; l += incr) {
-      double var_r = (double)PetscRealPart(tmp[l]);
-      double var_i = (double)PetscImaginaryPart(tmp[l]);
-      if(Current.NbrHar == 2)
-        LinAlg_SetComplexInVector(var_r, var_i, &DofData_P->CurrentSolution->x,
-                                  l, l + 1);
-      else
-        LinAlg_SetDoubleInVector(var_r, &DofData_P->CurrentSolution->x, l);
-    }
-
-    if(Message::GetCommSize() == 1) { _try(VecRestoreArray(x, &tmp)); }
-    else {
-      _try(VecRestoreArray(x_seq, &tmp));
-    }
-
+    _storeVector(x, NULL, &DofData_P->CurrentSolution->x);
     LinAlg_AssembleVector(&DofData_P->CurrentSolution->x);
 
     // increment the global timestep counter so that a future
@@ -435,7 +381,6 @@ static void _storeExpansion(struct DofData *DofData_P,
   }
   // _try(PetscViewerDestroy(&myviewer));
   _try(VecDestroy(&x));
-  if(Message::GetCommSize() > 1) { _try(VecDestroy(&x_seq)); }
 }
 
 static void _linearEVP(struct DofData *DofData_P, int numEigenValues,

@@ -3,7 +3,8 @@ improved parsing speed of .pro files with many functions and groups; improved
 performance and memory use of matrix assembly, in particular with MPI (exact
 matrix preallocation, each element assembled by a single process, which only
 defines the degrees of freedom of its mesh partition unless -all-dofs or the
-problem needs them all; a mesh without one partition per process is partitioned
+problem needs them all, and only keeps the values of the vectors for these
+degrees of freedom; a mesh without one partition per process is partitioned
 when it is read); improved support for high-order meshes; Gmsh post-processing
 files of field maps on the elements of the mesh are mesh-based by default
 (-list-based for the previous format), and in parallel field maps and

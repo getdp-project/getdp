@@ -559,7 +559,12 @@ void LinAlg_AssembleMatrix(gMatrix *M) {}
 
 void LinAlg_AssembleVector(gVector *V) {}
 
-void LinAlg_UpdateSequentialVectors() {}
+void LinAlg_UpdateGhosts() {}
+void LinAlg_GetVectorOnFirstRank(gVector *V, std::vector<gScalar> &values)
+{
+  values.resize(V->N);
+  for(int i = 0; i < V->N; i++) values[i].s = V->V[i];
+}
 void LinAlg_StartElementCache() {}
 void LinAlg_FlushElementCache() {}
 

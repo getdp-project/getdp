@@ -6,6 +6,7 @@
 #ifndef LIN_ALG_H
 #define LIN_ALG_H
 
+#include <vector>
 #include <stdio.h>
 #include <map>
 #include <string>
@@ -59,9 +60,12 @@ typedef struct {
 typedef struct {
   Mat M;
 } gMatrix;
+// a vector: the entries owned by the rank (V) and, if it is distributed, the
+// entries of the other ranks that the rank reads (Vseq, described by G)
+struct gGhosts;
 typedef struct {
   Vec V, Vseq;
-  int haveSeq;
+  struct gGhosts *G;
 } gVector;
 typedef struct {
   KSP ksp[10];
@@ -201,7 +205,10 @@ void LinAlg_VectorNormInf(gVector *V1, double *norm);
 
 void LinAlg_AssembleMatrix(gMatrix *M);
 void LinAlg_AssembleVector(gVector *V);
-void LinAlg_UpdateSequentialVectors();
+// update the entries of the other ranks that the ranks read (their ghosts)
+void LinAlg_UpdateGhosts();
+// all the entries of a vector, on the first rank (called by all the ranks)
+void LinAlg_GetVectorOnFirstRank(gVector *V, std::vector<gScalar> &values);
 void LinAlg_StartElementCache();
 void LinAlg_FlushElementCache();
 

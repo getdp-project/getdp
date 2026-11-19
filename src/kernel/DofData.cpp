@@ -1064,25 +1064,29 @@ void Dof_WriteFileRES_MHtoTime(char *Name_File, struct DofData *DofData_P,
 void Dof_WriteFileRES(char *Name_File, struct DofData *DofData_P, int Format,
                       double Val_Time, double Val_TimeImag, int Val_TimeStep)
 {
-  if(Message::GetIsCommWorld() && Message::GetCommRank()) return;
+  // the first rank writes the file, with the entries that the others send it
+  const bool write = !(Message::GetIsCommWorld() && Message::GetCommRank());
 
   if(!DofData_P->CurrentSolution) {
-    Message::Warning("No solution to save");
+    if(write) Message::Warning("No solution to save");
     return;
   }
 
-  Dof_OpenFile(DOF_RES, Name_File, (char *)(Format ? "ab" : "a"));
+  if(write) {
+    Dof_OpenFile(DOF_RES, Name_File, (char *)(Format ? "ab" : "a"));
+    fprintf(File_RES, "$Solution  /* DofData #%d */\n", DofData_P->Num);
+    fprintf(File_RES, "%d %.16g %.16g %d\n", DofData_P->Num, Val_Time,
+            Val_TimeImag, Val_TimeStep);
+  }
 
-  fprintf(File_RES, "$Solution  /* DofData #%d */\n", DofData_P->Num);
-  fprintf(File_RES, "%d %.16g %.16g %d\n", DofData_P->Num, Val_Time,
-          Val_TimeImag, Val_TimeStep);
+  FILE *file = write ? File_RES : NULL;
+  Format ? LinAlg_WriteVector(file, &DofData_P->CurrentSolution->x) :
+           LinAlg_PrintVector(file, &DofData_P->CurrentSolution->x);
 
-  Format ? LinAlg_WriteVector(File_RES, &DofData_P->CurrentSolution->x) :
-           LinAlg_PrintVector(File_RES, &DofData_P->CurrentSolution->x);
-
-  fprintf(File_RES, "$EndSolution\n");
-
-  Dof_CloseFile(DOF_RES);
+  if(write) {
+    fprintf(File_RES, "$EndSolution\n");
+    Dof_CloseFile(DOF_RES);
+  }
 }
 
 /* ------------------------------------------------------------------------ */
@@ -1735,6 +1739,7 @@ void Dof_TransferSolution(struct DofData *DofData1_P, gVector *x1,
 {
   const bool localDofs = Dof_UseLocalDofs();
   List_T *from = DofData1_P->DofList, *to = DofData2_P->DofList;
+  std::vector<gScalar> all; // the entries of x1, on the first rank
   for(int pass = 0; pass < 2; pass++) {
     int missing = 0;
     for(int i = 0; i < List_Nbr(from); i++) {
@@ -1746,7 +1751,10 @@ void Dof_TransferSolution(struct DofData *DofData1_P, gVector *x1,
         continue;
       }
       gScalar tmp;
-      LinAlg_GetScalarInVector(&tmp, x1, Dof1_P->Case.Unknown.NumDof - 1);
+      if(pass)
+        tmp = all[Dof1_P->Case.Unknown.NumDof - 1];
+      else
+        LinAlg_GetScalarInVector(&tmp, x1, Dof1_P->Case.Unknown.NumDof - 1);
       if(localDofs)
         LinAlg_SetScalarInVectorOffProcess(&tmp, x2,
                                            Dof2_P->Case.Unknown.NumDof - 1);
@@ -1764,6 +1772,7 @@ void Dof_TransferSolution(struct DofData *DofData1_P, gVector *x1,
     if(!missing) break;
     from = Dof_GatherDofsOnFirstRank(DofData1_P);
     to = Dof_GatherDofsOnFirstRank(DofData2_P);
+    LinAlg_GetVectorOnFirstRank(x1, all);
   }
   if(from != DofData1_P->DofList) {
     List_Delete(from);

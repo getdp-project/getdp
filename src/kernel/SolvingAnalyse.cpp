@@ -622,7 +622,27 @@ static const char *WhatNeedsAllDofs()
        }))
       return "CopyDegreesOfFreedom, FourierTransform, DeformMesh, SetCommSelf "
              "or a moving band operation";
+    // operations that read all the entries of a vector, on a rank that only
+    // has those of its Dofs
+    if(AnyOperation(r->Operation, [](struct Operation *o) {
+         return o->Type == OPERATION_SAVESOLUTIONEXTENDEDMH ||
+                o->Type == OPERATION_SAVESOLUTIONMHTOTIME ||
+                o->Type == OPERATION_SAVESOLUTION_WITH_ENTITY_NUM ||
+                ((o->Type == OPERATION_PRINT || o->Type == OPERATION_WRITE) &&
+                 o->Case.Print.DofNumber) ||
+                ((o->Type == OPERATION_COPYSOLUTION ||
+                  o->Type == OPERATION_COPYRHS ||
+                  o->Type == OPERATION_COPYRESIDUAL ||
+                  o->Type == OPERATION_COPYINCREMENT) &&
+                 o->Case.Copy.useList);
+       }))
+      return "an operation on all the entries of a vector";
   }
+
+  for(int i = 0; i < List_Nbr(Problem_S.PostOperation); i++)
+    if(((struct PostOperation *)List_Pointer(Problem_S.PostOperation, i))
+         ->ResampleTime)
+      return "a post-operation with ResampleTime";
 
   // a Print on the mesh is evaluated by the first rank alone, and what it
   // stores would be missing on the others

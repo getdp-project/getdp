@@ -280,10 +280,10 @@ void Generate_System(struct DefineSystem *DefineSystem_P,
 {
   // the solution may have been changed by arithmetic vector operations since
   // the start of the current operation (e.g. the trial solutions of a line
-  // search or the stages of a Runge-Kutta scheme): gather the sequential
-  // copies of the distributed vectors before the assembly reads them (all
-  // ranks are here)
-  LinAlg_UpdateSequentialVectors();
+  // search or the stages of a Runge-Kutta scheme): update the entries that the
+  // ranks read from each other before the assembly reads them (all ranks are
+  // here)
+  LinAlg_UpdateGhosts();
 
   int Nbr_Formulation, Index_Formulation, i_TimeStep, iMat;
   struct Solution *Solution_P, Solution_S;
@@ -551,10 +551,10 @@ void ReGenerate_System(struct DefineSystem *DefineSystem_P,
 {
   // the solution may have been changed by arithmetic vector operations since
   // the start of the current operation (e.g. the trial solutions of a line
-  // search or the stages of a Runge-Kutta scheme): gather the sequential
-  // copies of the distributed vectors before the assembly reads them (all
-  // ranks are here)
-  LinAlg_UpdateSequentialVectors();
+  // search or the stages of a Runge-Kutta scheme): update the entries that the
+  // ranks read from each other before the assembly reads them (all ranks are
+  // here)
+  LinAlg_UpdateGhosts();
 
   int Nbr_Formulation, Index_Formulation;
   struct Formulation *Formulation_P;
@@ -828,9 +828,10 @@ void Treatment_Operation(struct Resolution *Resolution_P, List_T *Operation_L,
 
     if(Message::GetOnelabAction() == "stop" || Message::GetErrorCount()) break;
 
-    // all ranks are here: gather the values of the distributed vectors that
-    // the previous operations changed, before this one reads any of them
-    LinAlg_UpdateSequentialVectors();
+    // all ranks are here: update the entries that the ranks read from each
+    // other in the distributed vectors that the previous operations changed,
+    // before this one reads any of them
+    LinAlg_UpdateGhosts();
 
     switch(Operation_P->Type) {
       /*  -->  S y s t e m C o m m a n d              */
@@ -3749,7 +3750,7 @@ void Treatment_Operation(struct Resolution *Resolution_P, List_T *Operation_L,
   }
 
   // for the post-processing that follows the resolution
-  LinAlg_UpdateSequentialVectors();
+  LinAlg_UpdateGhosts();
 
   Message::Barrier();
 }

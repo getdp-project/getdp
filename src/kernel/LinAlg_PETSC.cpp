@@ -133,20 +133,12 @@ void LinAlg_InitializeSolver(int *argc, char ***argv)
   }
 }
 
-#if(PETSC_VERSION_MAJOR == 3) && (PETSC_VERSION_MINOR >= 2)
-// The scatter contexts that gather the distributed vectors, by layout (global
-// size and local range): creating one allocates (and zeroes) a sequential
-// vector of the global size, which costs as much as the gather itself
-static std::map<std::vector<PetscInt>, VecScatter> _toAll;
-#endif
+static void _clearGhosts();
 
 void LinAlg_FinalizeSolver()
 {
   if(SolverInitialized) {
-#if(PETSC_VERSION_MAJOR == 3) && (PETSC_VERSION_MINOR >= 2)
-    for(auto &s : _toAll) VecScatterDestroy(&s.second);
-    _toAll.clear();
-#endif
+    _clearGhosts();
 #if defined(HAVE_SLEPC)
     SlepcFinalize();
 #endif
@@ -541,16 +533,106 @@ void LinAlg_FlushElementCache()
   _elementCache = false;
 }
 
-// sequential copies of the distributed vectors (see _fillseq below)
+// A distributed vector is read one entry at a time, by the number of an
+// unknown, by the ranks that have this unknown among their Dofs. A rank owns a
+// range of entries, stored in V; the entries of the other ranks that it reads,
+// its "ghosts", are copied in the sequential vector Vseq. The ghosts of a rank
+// are the unknowns of its Dofs that it does not own: all the others if it has
+// all the Dofs (the first rank when it evaluates Prints alone, all the ranks
+// with -all-dofs), otherwise those on the boundary of its part of the mesh.
+struct gGhosts {
+  PetscInt lo, hi; // range of entries owned by the rank
+  bool all; // all the other entries are ghosts, in increasing order
+  std::vector<PetscInt> num; // otherwise their sorted numbers
+  VecScatter scatter; // copies the ghosts from V to Vseq
+  int users; // number of vectors that use it (plus one if it is the current one)
+  std::vector<PetscInt> key; // what it was built for (see _getGhosts)
+};
+
+// the ghosts of the vectors of each system
+static std::map<struct DofData *, gGhosts *> _ghosts;
+
+static void _releaseGhosts(gGhosts *g)
+{
+  if(--g->users) return;
+  if(g->scatter) _try(VecScatterDestroy(&g->scatter));
+  delete g;
+}
+
+static void _clearGhosts()
+{
+  for(auto &g : _ghosts) _releaseGhosts(g.second);
+  _ghosts.clear();
+}
+
+// Returns the ghosts of a vector V of the current system (Current.DofData).
+// They are computed again when the Dofs of a rank have changed, by all the
+// ranks, as they share the scatter.
+static gGhosts *_getGhosts(Vec V)
+{
+  struct DofData *D = Current.DofData;
+  PetscInt n, lo, hi;
+  _try(VecGetSize(V, &n));
+  _try(VecGetOwnershipRange(V, &lo, &hi));
+  List_T *dofs = D->DofList;
+  if(!dofs && D->DofTree) dofs = Tree2List(D->DofTree);
+  std::vector<PetscInt> key = {n, lo, hi, (PetscInt)List_Nbr(dofs)};
+  auto it = _ghosts.find(D);
+  int same = (it != _ghosts.end() && it->second->key == key), all = same;
+  MPI_Allreduce(&same, &all, 1, MPI_INT, MPI_MIN, PetscObjectComm((PetscObject)V));
+  if(!all) {
+    if(it != _ghosts.end()) _releaseGhosts(it->second);
+    gGhosts *g = new gGhosts;
+    g->lo = lo;
+    g->hi = hi;
+    g->scatter = NULL;
+    g->users = 1;
+    g->key = key;
+    // a vector that is not indexed by the unknowns of the system has them all
+    g->all = (D->NbrDof != n || !dofs);
+    for(int i = 0; !g->all && i < List_Nbr(dofs); i++) {
+      struct Dof *d = (struct Dof *)List_Pointer(dofs, i);
+      if(d->Type != DOF_UNKNOWN && d->Type != DOF_UNKNOWN_INIT &&
+         d->Type != DOF_FIXEDWITHASSOCIATE &&
+         d->Type != DOF_FIXEDWITHASSOCIATE_SOLVE)
+        continue;
+      PetscInt num = d->Case.Unknown.NumDof - 1;
+      if(num >= 0 && num < n && (num < lo || num >= hi)) g->num.push_back(num);
+    }
+    std::sort(g->num.begin(), g->num.end());
+    g->num.erase(std::unique(g->num.begin(), g->num.end()), g->num.end());
+    if((PetscInt)g->num.size() == n - (hi - lo)) g->all = true;
+    if(g->all) g->num.clear();
+    Message::Debug("Vectors of %d entries: %d owned and %d from other ranks",
+                   (int)n, (int)(hi - lo), (int)(g->all ? n - (hi - lo) : g->num.size()));
+    _ghosts[D] = g;
+  }
+  if(dofs != D->DofList) List_Delete(dofs);
+  gGhosts *g = _ghosts[D];
+  g->users++;
+  return g;
+}
+
+static PetscInt _getNumGhosts(Vec V, const gGhosts *g)
+{
+  if(!g->all) return g->num.size();
+  PetscInt n;
+  _try(VecGetSize(V, &n));
+  return n - (g->hi - g->lo);
+}
+
+// the vectors with ghosts, identified by Vseq (see _fillseq below)
 static long _seqCount = 0;
 static std::map<Vec, long> _seqNum; // Vseq -> creation number
-static std::map<long, std::pair<Vec, Vec> > _seqStale; // number -> (V, Vseq)
+static std::map<long, gVector> _seqStale; // number -> vector
 
 void LinAlg_CreateVector(gVector *V, gSolver *Solver, int n, bool sequential)
 {
+  V->Vseq = NULL;
+  V->G = NULL;
+
   if(sequential) {
     _try(VecCreateSeq(PETSC_COMM_SELF, n, &V->V));
-    V->haveSeq = 0; // no Vseq is created!
     return;
   }
 
@@ -568,78 +650,46 @@ void LinAlg_CreateVector(gVector *V, gSolver *Solver, int n, bool sequential)
   // database (if any)
   _try(VecSetFromOptions(V->V));
 
-  // create sequential vector that will contain all the values on all
-  // the procs
   if(Message::GetCommSize() > 1 && MyComm != PETSC_COMM_SELF) {
-    _try(VecCreateSeq(PETSC_COMM_SELF, n, &V->Vseq));
-    V->haveSeq = 1;
+    V->G = _getGhosts(V->V);
+    _try(VecCreateSeq(PETSC_COMM_SELF, _getNumGhosts(V->V, V->G), &V->Vseq));
     _seqNum[V->Vseq] = _seqCount++;
   }
-  else {
-    V->haveSeq = 0;
-  }
 }
 
-#if(PETSC_VERSION_MAJOR == 3) && (PETSC_VERSION_MINOR >= 2)
-
-static VecScatter _getToAll(Vec &V)
-{
-  PetscInt n, lo, hi;
-  _try(VecGetSize(V, &n));
-  _try(VecGetOwnershipRange(V, &lo, &hi));
-  std::vector<PetscInt> key = {n, lo, hi};
-  auto it = _toAll.find(key);
-  // the creation is collective: create a context unless all ranks have one
-  int have = (it != _toAll.end()), all = have;
-  MPI_Allreduce(&have, &all, 1, MPI_INT, MPI_MIN, PetscObjectComm((PetscObject)V));
-  if(all) return it->second;
-  if(have) _try(VecScatterDestroy(&it->second));
-  VecScatter ctx;
-  _try(VecScatterCreateToAll(V, &ctx, NULL));
-  _toAll[key] = ctx;
-  return ctx;
-}
-#endif
-
-void _fillseq(Vec &V, Vec &Vseq)
-{
-  // collect all the values from the parallel petsc vector into a sequential
-  // vector on each processor
-#if(PETSC_VERSION_MAJOR == 3) && (PETSC_VERSION_MINOR >= 2)
-  VecScatter ctx = _getToAll(V);
-  _try(VecScatterBegin(ctx, V, Vseq, INSERT_VALUES, SCATTER_FORWARD));
-  _try(VecScatterEnd(ctx, V, Vseq, INSERT_VALUES, SCATTER_FORWARD));
-#else
-  VecScatter ctx;
-  VecScatterCreateToAll(V, &ctx, NULL);
-#if(PETSC_VERSION_MAJOR == 2) && (PETSC_VERSION_MINOR == 3) &&                 \
-  (PETSC_VERSION_SUBMINOR < 3)
-  VecScatterBegin(V, Vseq, INSERT_VALUES, SCATTER_FORWARD, ctx);
-  VecScatterEnd(V, Vseq, INSERT_VALUES, SCATTER_FORWARD, ctx);
-#else
-  VecScatterBegin(ctx, V, Vseq, INSERT_VALUES, SCATTER_FORWARD);
-  VecScatterEnd(ctx, V, Vseq, INSERT_VALUES, SCATTER_FORWARD);
-#endif
-  VecScatterDestroy(ctx);
-#endif
-}
-
-// The sequential copy Vseq of a distributed vector is gathered at once after
-// an assembly or a solve, but only marked as out of date after the arithmetic
-// operations: LinAlg_UpdateSequentialVectors(), called by all ranks at the
-// start of each resolution operation, then gathers all the stale copies. (The
-// gathering cannot be done when Vseq is read, as the reading functions need
-// not be called on all ranks.) gVectors are copied by value, so the copies are
-// identified by their Vseq, and gathered in the order of their creation, which
-// is the same on all ranks.
+// Copies the ghosts of a vector from the ranks that own them.
 static void _fillseq(gVector *V)
 {
-  if(!V->haveSeq) return;
-  _fillseq(V->V, V->Vseq);
+  gGhosts *g = V->G;
+  if(!g) return;
+  if(!g->scatter) {
+    IS is;
+    if(g->all) {
+      PetscInt n = _getNumGhosts(V->V, g);
+      std::vector<PetscInt> num(n);
+      for(PetscInt i = 0; i < n; i++) num[i] = (i < g->lo) ? i : i + g->hi - g->lo;
+      _try(ISCreateGeneral(PETSC_COMM_SELF, n, num.data(), PETSC_COPY_VALUES, &is));
+    }
+    else
+      _try(ISCreateGeneral(PETSC_COMM_SELF, g->num.size(), g->num.data(),
+                           PETSC_COPY_VALUES, &is));
+    _try(VecScatterCreate(V->V, is, V->Vseq, NULL, &g->scatter));
+    _try(ISDestroy(&is));
+  }
+  _try(VecScatterBegin(g->scatter, V->V, V->Vseq, INSERT_VALUES, SCATTER_FORWARD));
+  _try(VecScatterEnd(g->scatter, V->V, V->Vseq, INSERT_VALUES, SCATTER_FORWARD));
   auto it = _seqNum.find(V->Vseq);
   if(it != _seqNum.end()) _seqStale.erase(it->second);
 }
 
+// The ghosts of a vector are copied at once after an assembly or a solve, but
+// only marked as out of date after the arithmetic operations:
+// LinAlg_UpdateGhosts(), called by all ranks at the start of each
+// resolution operation, then copies all the stale ones. (The copy cannot be
+// done when a ghost is read, as the reading functions need not be called on
+// all ranks.) gVectors are copied by value, so the vectors are identified by
+// their Vseq, and updated in the order of their creation, which is the same on
+// all ranks.
 static bool _isStaleSeq(gVector *V)
 {
   auto it = _seqNum.find(V->Vseq);
@@ -649,25 +699,107 @@ static bool _isStaleSeq(gVector *V)
 static void _setStaleSeq(gVector *V, bool stale)
 {
   auto it = _seqNum.find(V->Vseq);
-  if(it == _seqNum.end()) {
-    if(stale) _fillseq(V->V, V->Vseq); // not registered: gather now
-    return;
-  }
+  if(it == _seqNum.end()) return;
   if(stale)
-    _seqStale[it->second] = std::make_pair(V->V, V->Vseq);
+    _seqStale[it->second] = *V;
   else
     _seqStale.erase(it->second);
 }
 
 static void _markseq(gVector *V)
 {
-  if(V->haveSeq) _setStaleSeq(V, true);
+  if(V->G) _setStaleSeq(V, true);
 }
 
-void LinAlg_UpdateSequentialVectors()
+void LinAlg_UpdateGhosts()
 {
-  for(auto &s : _seqStale) _fillseq(s.second.first, s.second.second);
+  std::map<long, gVector> stale = _seqStale;
+  for(auto &s : stale) _fillseq(&s.second);
   _seqStale.clear();
+}
+
+// Returns the entry i of a vector, owned by the rank or one of its ghosts.
+static PetscScalar _getValue(gVector *V, PetscInt i)
+{
+  Vec VV = V->V;
+  const gGhosts *g = V->G;
+  if(g) {
+    if(i >= g->lo && i < g->hi)
+      i -= g->lo;
+    else {
+      VV = V->Vseq;
+      if(g->all) {
+        if(i >= g->hi) i -= g->hi - g->lo;
+      }
+      else {
+        auto it = std::lower_bound(g->num.begin(), g->num.end(), i);
+        if(it == g->num.end() || *it != i) {
+          Message::Error("The value of unknown %d is not available on rank %d "
+                         "(use -all-dofs)", (int)i + 1, Message::GetCommRank());
+          return 0.;
+        }
+        i = it - g->num.begin();
+      }
+    }
+  }
+  const PetscScalar *a = _readArray(VV);
+  PetscScalar s = a[i];
+  _doneArray(VV, a);
+  return s;
+}
+
+// Gets all the entries of a vector on the first rank (all the ranks if
+// onAllRanks is set), where it returns true. All the ranks have to call it for
+// a distributed vector.
+static bool _gather(gVector *V, std::vector<PetscScalar> &all,
+                    bool onAllRanks = false)
+{
+  PetscInt n, nloc;
+  _try(VecGetSize(V->V, &n));
+  _try(VecGetLocalSize(V->V, &nloc));
+  all.resize(n);
+  const PetscScalar *a;
+  if(!V->G) {
+    _try(VecGetArrayRead(V->V, &a));
+    std::copy(a, a + n, all.begin());
+    _try(VecRestoreArrayRead(V->V, &a));
+    return true;
+  }
+  if(MyComm == PETSC_COMM_SELF) {
+    // the ranks work on their own (SetCommSelf): each one has all the entries
+    for(PetscInt i = 0; i < n; i++) all[i] = _getValue(V, i);
+    return true;
+  }
+  MPI_Comm comm = PetscObjectComm((PetscObject)V->V);
+  PetscMPIInt np;
+  MPI_Comm_size(comm, &np);
+  const PetscInt *ranges;
+  _try(VecGetOwnershipRanges(V->V, &ranges));
+  std::vector<int> counts(np), displs(np);
+  for(int r = 0; r < np; r++) {
+    counts[r] = ranges[r + 1] - ranges[r];
+    displs[r] = ranges[r];
+  }
+  _try(VecGetArrayRead(V->V, &a));
+  if(onAllRanks)
+    MPI_Allgatherv(a, nloc, MPIU_SCALAR, all.data(), counts.data(),
+                   displs.data(), MPIU_SCALAR, comm);
+  else
+    MPI_Gatherv(a, nloc, MPIU_SCALAR, all.data(), counts.data(), displs.data(),
+                MPIU_SCALAR, 0, comm);
+  _try(VecRestoreArrayRead(V->V, &a));
+  if(onAllRanks || !Message::GetCommRank()) return true;
+  all.clear();
+  return false;
+}
+
+void LinAlg_GetVectorOnFirstRank(gVector *V, std::vector<gScalar> &values)
+{
+  std::vector<PetscScalar> all;
+  values.clear();
+  if(!_gather(V, all)) return;
+  values.resize(all.size());
+  for(std::size_t i = 0; i < all.size(); i++) values[i].s = all[i];
 }
 
 void LinAlg_CreateMatrix(gMatrix *M, gSolver *Solver, int n, int m)
@@ -735,19 +867,20 @@ void LinAlg_DestroySolver(gSolver *Solver)
 void LinAlg_DestroyVector(gVector *V)
 {
   _dropVecBuf(V->V);
-  if(V->haveSeq) {
+  if(V->G) {
     auto it = _seqNum.find(V->Vseq);
     if(it != _seqNum.end()) {
       _seqStale.erase(it->second);
       _seqNum.erase(it);
     }
+    _releaseGhosts(V->G);
   }
 #if(PETSC_VERSION_MAJOR == 3) && (PETSC_VERSION_MINOR >= 2)
   _try(VecDestroy(&V->V));
-  if(V->haveSeq) _try(VecDestroy(&V->Vseq));
+  if(V->G) _try(VecDestroy(&V->Vseq));
 #else
   _try(VecDestroy(V->V));
-  if(V->haveSeq) _try(VecDestroy(V->Vseq));
+  if(V->G) _try(VecDestroy(V->Vseq));
 #endif
 }
 
@@ -766,24 +899,27 @@ void LinAlg_CopyScalar(gScalar *S1, gScalar *S2) { S1->s = S2->s; }
 void LinAlg_CopyVector(gVector *V1, gVector *V2)
 {
   _try(VecCopy(V1->V, V2->V));
-  if(V1->haveSeq) {
-    if(_isStaleSeq(V1))
-      _setStaleSeq(V2, true);
-    else {
-      _try(VecCopy(V1->Vseq, V2->Vseq));
-      _setStaleSeq(V2, false);
-    }
+  if(!V2->G) return;
+  if(V1->G != V2->G || _isStaleSeq(V1))
+    _setStaleSeq(V2, true);
+  else {
+    _try(VecCopy(V1->Vseq, V2->Vseq));
+    _setStaleSeq(V2, false);
   }
 }
 
 void LinAlg_SwapVector(gVector *V1, gVector *V2)
 {
   _try(VecSwap(V1->V, V2->V));
-  if(V1->haveSeq) {
+  if(V1->G && V1->G == V2->G) {
     _try(VecSwap(V1->Vseq, V2->Vseq));
     bool stale1 = _isStaleSeq(V1), stale2 = _isStaleSeq(V2);
     _setStaleSeq(V1, stale2);
     _setStaleSeq(V2, stale1);
+  }
+  else {
+    _markseq(V1);
+    _markseq(V2);
   }
 }
 
@@ -809,7 +945,7 @@ void LinAlg_ZeroVector(gVector *V)
 
   _dropVecBuf(V->V);
   _try(VecSet(V->V, zero));
-  if(V->haveSeq) {
+  if(V->G) {
     _try(VecSet(V->Vseq, zero));
     _setStaleSeq(V, false);
   }
@@ -836,8 +972,9 @@ void LinAlg_ScanScalar(FILE *file, gScalar *S)
 
 void LinAlg_ScanVector(FILE *file, gVector *V)
 {
-  PetscInt n;
+  PetscInt n, lo, hi;
   _try(VecGetSize(V->V, &n));
+  _try(VecGetOwnershipRange(V->V, &lo, &hi));
   for(PetscInt i = 0; i < n; i++) {
     PetscScalar tmp;
 #if defined(PETSC_USE_COMPLEX)
@@ -851,7 +988,9 @@ void LinAlg_ScanVector(FILE *file, gVector *V)
       Message::Error("Could not read data in vector");
     tmp = a;
 #endif
-    _try(VecSetValues(V->V, 1, &i, &tmp, INSERT_VALUES));
+    // each rank reads the whole vector and keeps the entries that it owns
+    if(i >= lo && i < hi)
+      _try(VecSetValues(V->V, 1, &i, &tmp, INSERT_VALUES));
   }
   LinAlg_AssembleVector(V);
 }
@@ -868,18 +1007,23 @@ void LinAlg_ReadScalar(FILE *file, gScalar *S)
 
 void LinAlg_ReadVector(FILE *file, gVector *V)
 {
-  PetscInt n;
+  // each rank reads the entries that it owns
+  PetscInt n, lo, hi;
   _try(VecGetSize(V->V, &n));
-  PetscScalar *tmp = (PetscScalar *)Malloc(n * sizeof(PetscScalar));
-  if(!fread(tmp, sizeof(PetscScalar), n, file)) {
+  _try(VecGetOwnershipRange(V->V, &lo, &hi));
+  std::vector<PetscScalar> tmp(hi - lo);
+  std::vector<PetscInt> num(hi - lo);
+  for(PetscInt i = lo; i < hi; i++) num[i - lo] = i;
+  long start = ftell(file);
+  if(fseek(file, start + (long)lo * sizeof(PetscScalar), SEEK_SET) ||
+     fread(tmp.data(), sizeof(PetscScalar), hi - lo, file) !=
+       (std::size_t)(hi - lo) ||
+     fseek(file, start + (long)n * sizeof(PetscScalar), SEEK_SET)) {
     Message::Error("Could not read vector");
     return;
   }
-  for(PetscInt i = 0; i < n; i++) {
-    _try(VecSetValues(V->V, 1, &i, &tmp[i], INSERT_VALUES));
-  }
+  _try(VecSetValues(V->V, hi - lo, num.data(), tmp.data(), INSERT_VALUES));
   LinAlg_AssembleVector(V);
-  Free(tmp);
 }
 
 void LinAlg_ReadMatrix(FILE *file, gMatrix *M)
@@ -900,12 +1044,9 @@ void LinAlg_PrintVector(FILE *file, gVector *V, bool matlab,
                         const char *fileName, const char *varName)
 {
   if(!matlab) {
-    PetscInt n;
-    _try(VecGetSize(V->V, &n));
-    Vec VV = V->haveSeq ? V->Vseq : V->V;
-    PetscScalar *tmp;
-    _try(VecGetArray(VV, &tmp));
-    for(int i = 0; i < n; i++) {
+    std::vector<PetscScalar> tmp;
+    if(!_gather(V, tmp) || !file) return;
+    for(std::size_t i = 0; i < tmp.size(); i++) {
 #if defined(PETSC_USE_COMPLEX)
       fprintf(file, "%.16g %.16g\n", real(tmp[i]), imag(tmp[i]));
 #else
@@ -913,7 +1054,6 @@ void LinAlg_PrintVector(FILE *file, gVector *V, bool matlab,
 #endif
     }
     fflush(file);
-    _try(VecRestoreArray(VV, &tmp));
   }
   else {
     PetscViewer fd;
@@ -984,14 +1124,10 @@ void LinAlg_WriteScalar(FILE *file, gScalar *S)
 
 void LinAlg_WriteVector(FILE *file, gVector *V)
 {
-  PetscInt n;
-  _try(VecGetSize(V->V, &n));
-  Vec VV = V->haveSeq ? V->Vseq : V->V;
-  PetscScalar *tmp;
-  _try(VecGetArray(VV, &tmp));
-  fwrite(tmp, sizeof(PetscScalar), n, file);
+  std::vector<PetscScalar> tmp;
+  if(!_gather(V, tmp) || !file) return;
+  fwrite(tmp.data(), sizeof(PetscScalar), tmp.size(), file);
   fprintf(file, "\n");
-  _try(VecRestoreArray(VV, &tmp));
 }
 
 void LinAlg_WriteMatrix(FILE *file, gMatrix *M)
@@ -1071,48 +1207,29 @@ void LinAlg_GetComplexInScalar(double *d1, double *d2, gScalar *S)
 
 void LinAlg_GetScalarInVector(gScalar *S, gVector *V, int i)
 {
-  Vec VV = V->haveSeq ? V->Vseq : V->V;
-  const PetscScalar *tmp = _readArray(VV);
-  S->s = tmp[i];
-  _doneArray(VV, tmp);
+  S->s = _getValue(V, i);
 }
 
 void LinAlg_GetDoubleInVector(double *d, gVector *V, int i)
 {
-  Vec VV = V->haveSeq ? V->Vseq : V->V;
-  const PetscScalar *tmp = _readArray(VV);
-#if defined(PETSC_USE_COMPLEX)
-  *d = real(tmp[i]);
-#else
-  *d = tmp[i];
-#endif
-  _doneArray(VV, tmp);
+  *d = PetscRealPart(_getValue(V, i));
 }
 
 void LinAlg_GetAbsDoubleInVector(double *d, gVector *V, int i)
 {
-  Vec VV = V->haveSeq ? V->Vseq : V->V;
-  const PetscScalar *tmp = _readArray(VV);
-#if defined(PETSC_USE_COMPLEX)
-  *d = fabs(real(tmp[i]));
-#else
-  *d = fabs(tmp[i]);
-#endif
-  _doneArray(VV, tmp);
+  *d = fabs(PetscRealPart(_getValue(V, i)));
 }
 
 void LinAlg_GetComplexInVector(double *d1, double *d2, gVector *V, int i, int j)
 {
-  Vec VV = V->haveSeq ? V->Vseq : V->V;
-  const PetscScalar *tmp = _readArray(VV);
 #if defined(PETSC_USE_COMPLEX)
-  *d1 = real(tmp[i]);
-  *d2 = imag(tmp[i]);
+  PetscScalar s = _getValue(V, i);
+  *d1 = real(s);
+  *d2 = imag(s);
 #else
-  *d1 = (double)tmp[i];
-  *d2 = (double)tmp[j];
+  *d1 = _getValue(V, i);
+  *d2 = _getValue(V, j);
 #endif
-  _doneArray(VV, tmp);
 }
 
 void LinAlg_GetScalarInMatrix(gScalar *S, gMatrix *M, int i, int j)
@@ -1167,7 +1284,7 @@ void LinAlg_SetVector(gVector *V, double *v)
 {
   PetscScalar tmp = *v;
   _try(VecSet(V->V, tmp));
-  if(V->haveSeq) {
+  if(V->G) {
     _try(VecSet(V->Vseq, tmp));
     _setStaleSeq(V, false);
   }
@@ -2010,8 +2127,7 @@ static void _setupAMS(PC pc, Mat A)
 // computed by walking the tree from the nodes outside G (psi = 0 there, e.g.
 // on Dirichlet boundaries). The curl is unchanged, and the result is the
 // solution of the problem gauged by the tree. Every rank has the whole
-// solution in Vseq after the solve, so all compute the same psi (or the first
-// rank alone, see below).
+// solution, so all compute the same psi (or the first rank alone, see below).
 static void _gaugeOnTreeForAMS(PC pc, gVector *X)
 {
   char name[256];
@@ -2032,7 +2148,7 @@ static void _gaugeOnTreeForAMS(PC pc, gVector *X)
     return;
   }
   // when the ranks only have a part of the mesh, the first one, which has it
-  // all (and the whole solution), walks the tree and corrects all the rows
+  // all (and gets the whole solution), walks the tree and corrects all the rows
   const bool onlyFirst = CurrentGeoData->IsPart || CurrentGeoData->HasParts;
   if(!Group_P->ExtendedList) Generate_ExtendedGroup(Group_P);
   std::set<int> tree;
@@ -2045,9 +2161,9 @@ static void _gaugeOnTreeForAMS(PC pc, gVector *X)
   AMSEdges a;
   if(!_getAMSEdges(a)) return;
   if(onlyFirst && Message::GetCommRank()) a.edges.clear();
-  Vec VV = X->haveSeq ? X->Vseq : X->V;
-  const PetscScalar *x;
-  _try(VecGetArrayRead(VV, &x));
+  std::vector<PetscScalar> xall;
+  _gather(X, xall, !onlyFirst);
+  const PetscScalar *x = xall.data();
   // tree adjacency, then psi by breadth-first walks from the nodes outside G
   std::vector<std::vector<int> > adj(a.nodes.size());
   for(std::size_t e = 0; e < a.edges.size(); e++) {
@@ -2101,7 +2217,6 @@ static void _gaugeOnTreeForAMS(PC pc, gVector *X)
     rows.push_back(ed.row);
     vals.push_back(v);
   }
-  _try(VecRestoreArrayRead(VV, &x));
   _try(VecSetValues(X->V, rows.size(), rows.data(), vals.data(), INSERT_VALUES));
   _try(VecAssemblyBegin(X->V));
   _try(VecAssemblyEnd(X->V));
@@ -2398,9 +2513,9 @@ static PetscErrorCode _NLFormFunction(SNES snes, Vec x, Vec f, void *mctx)
 {
   gVector gx, gf;
   gx.V = x;
-  gx.haveSeq = 0;
+  gx.G = NULL;
   gf.V = f;
-  gf.haveSeq = 0;
+  gf.G = NULL;
   Generate_Residual(&gx, &gf);
 
   PetscScalar *ff;
@@ -2420,7 +2535,7 @@ static PetscErrorCode _NLFormJacobian(SNES snes, Vec x, Mat *J, Mat *PC,
 {
   gVector gx;
   gx.V = x;
-  gx.haveSeq = 0;
+  gx.G = NULL;
   gMatrix gJ;
   gJ.M = *J;
   Generate_FullJacobian(&gx, &gJ);
@@ -2441,7 +2556,7 @@ static PetscErrorCode _NLFormJacobian(SNES snes, Vec x, Mat J, Mat PC,
 {
   gVector gx;
   gx.V = x;
-  gx.haveSeq = 0;
+  gx.G = NULL;
   gMatrix gJ;
   Generate_FullJacobian(&gx, &gJ);
   // J = gJ.M;
