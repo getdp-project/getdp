@@ -1219,16 +1219,39 @@ find_package(Python3 COMPONENTS Interpreter)
 find_program(GMSH gmsh)
 
 if(${Python3_FOUND} AND GMSH)
+  set(RUN_TEST ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/utils/misc/run_test.py
+      --gmsh ${GMSH} --getdp $<TARGET_FILE:getdp>)
+
+  # In a build with MPI each test is also run on several ranks, and its results
+  # are compared with those of the run without MPI (see utils/misc/run_test.py)
+  set(TEST_MPI_RANKS "2,3" CACHE STRING
+      "Numbers of MPI ranks of the parallel tests (empty for none)")
+  if(HAVE_MPI AND MPIEXEC_EXECUTABLE AND TEST_MPI_RANKS)
+    set(TEST_MPI TRUE)
+  endif()
+  function(test_mpi name dir gmsh_opts getdp_opts)
+    if(TEST_MPI)
+      add_test(NAME ${name}_mpi
+               COMMAND ${RUN_TEST}
+               --mpiexec ${MPIEXEC_EXECUTABLE} --ranks "${TEST_MPI_RANKS}"
+               --workdir ${CMAKE_SOURCE_DIR}/${dir}
+               --name "${name}_mpi"
+               --gmsh-options "${gmsh_opts}"
+               --getdp-options "${getdp_opts}")
+      set_tests_properties(${name}_mpi PROPERTIES PROCESSORS 3)
+    endif()
+  endfunction()
+
   function(test_tuto name dir file opts)
     add_test(NAME tutorial_${name}
-             COMMAND ${Python3_EXECUTABLE}
-             ${CMAKE_SOURCE_DIR}/utils/misc/run_test.py
-             --gmsh ${GMSH}
-             --getdp $<TARGET_FILE:getdp>
+             COMMAND ${RUN_TEST}
              --workdir ${CMAKE_SOURCE_DIR}/tutorials/${dir}
              --name "${name}"
              --gmsh-options "${file}.geo -3 ${opts} -bin"
              --getdp-options "${file}.pro -solve \#1 -pos \#1 -bin ${opts}")
+    test_mpi(tutorial_${name} tutorials/${dir}
+             "${file}.geo -3 ${opts} -bin"
+             "${file}.pro -solve \#1 -pos \#1 ${opts}")
   endfunction()
   test_tuto(01a 01-Electrostatics "microstrip" "")
   test_tuto(02a 02-Thermal "radiator" "")
@@ -1257,6 +1280,16 @@ if(${Python3_FOUND} AND GMSH)
   test_tuto(09c 09-Template_library "transfo" "-setnumber LoadType 2")
   test_tuto(10a 10-Gauging "transfo" "")
   test_tuto(10b 10-Gauging "transfo" "-setnumber GaugeType 1")
+
+  # what is done differently on several ranks (see tests/parallel.pro)
+  test_mpi(parallel_points tests "parallel.geo -2"
+           "parallel.pro -solve Laplace -pos Points")
+  test_mpi(parallel_elements tests "parallel.geo -2"
+           "parallel.pro -solve Laplace -pos Elements")
+  test_mpi(parallel_transfer tests "parallel.geo -2"
+           "parallel.pro -solve Transfer")
+  test_mpi(parallel_periodic tests "parallel.geo -2"
+           "parallel.pro -solve Periodic -pos Periodic")
 endif()
 
 if(ENABLE_COVERAGE)

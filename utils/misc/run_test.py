@@ -82,14 +82,34 @@ you set it via ``set(VAR a b c)'' (a CMake list, semicolon-joined), the
 expansion will pass each token as a separate argument and only the first
 will be picked up by ``--gmsh-options''.
 
+Parallel tests: with --mpiexec and --ranks the getdp step is run once without
+MPI and once per rank count in a copy of the run directory (``mpiexec -n N
+getdp ...'', on the same mesh), and the numbers of all the text files that
+the sequential run wrote (.txt, .dat, .pos) are compared with those of each
+parallel run. The test fails if a file is missing, if two files do not hold
+the same number of values or if they differ by more than --tolerance,
+relative to the largest value of the file. No reference solution is stored:
+the sequential run of the same executable is the reference, so the test
+does not depend on the machine or on the version of the solver.
+
+    add_test(NAME tutorial_electrostatics_mpi
+      COMMAND ${Python3_EXECUTABLE} /path/to/run_test.py
+        --gmsh ${GMSH}
+        --getdp $<TARGET_FILE:getdp>
+        --mpiexec ${MPIEXEC_EXECUTABLE} --ranks 2,3
+        --workdir ${CMAKE_SOURCE_DIR}/tutorials/01-Electrostatics
+        --gmsh-options "microstrip.geo -2"
+        --getdp-options "microstrip.pro -solve Ele -pos Map")
+
+The post-processing files must be written in text format for the comparison
+(no ``-bin'' in the getdp options).
+
 Future extensions:
   * Output-quantity checks (e.g. compare values from a ``Format Table''
     PostOperation against expected ranges). Add a ``--check'' option that
     accepts a spec like ``file:column:expected:tolerance'' and validate it
     after the getdp step.
   * Per-step timeouts via ``subprocess.run(..., timeout=...)''.
-  * Comparison against reference solutions (``.pos'' files), e.g. via a
-    Gmsh-based diff script invoked after getdp.
 """
 
 import argparse
@@ -186,7 +206,100 @@ def setup_temp_workdir(source_workdir, extra_files, name):
     return temp_root, run_dir
 
 
-def run_step(label, executable, args, workdir):
+_NUMBER = re.compile(r'[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?')
+
+
+def read_numbers(path):
+    """Return the list of the numbers of a text file, or None if it is binary.
+
+    The values of a mesh-based Gmsh view ($ElementNodeData sections) are
+    returned sorted by view, time step and element, without the mesh: in
+    parallel each rank writes the section of its own elements, so they do not
+    come in the order of the sequential file.
+    """
+    with open(path, 'rb') as f:
+        raw = f.read()
+    if b'\0' in raw:
+        return None
+    lines = raw.decode('utf-8', errors='replace').split('\n')
+    if '$ElementNodeData' not in lines:
+        return [float(x) for x in _NUMBER.findall('\n'.join(lines))]
+    values = {}
+    i = 0
+    while i < len(lines):
+        if lines[i] != '$ElementNodeData':
+            i += 1
+            continue
+        nb_strings = int(lines[i + 1])
+        view = lines[i + 2] if nb_strings else ''
+        i += 2 + nb_strings
+        i += 1 + int(lines[i])  # real tags (the time)
+        nb_tags = int(lines[i])
+        tags = [int(x) for x in lines[i + 1:i + 1 + nb_tags]]
+        i += 1 + nb_tags
+        step, nb_elements = tags[0], tags[2]
+        for line in lines[i:i + nb_elements]:
+            words = line.split()
+            values[(view, step, int(words[0]))] = [float(x) for x in words[2:]]
+        i += nb_elements
+    return [x for key in sorted(values) for x in values[key]]
+
+
+def compare_dirs(reference, other, tolerance):
+    """Compare the numbers of the text result files of two run directories.
+
+    Returns the number of files that are missing or differ by more than
+    ``tolerance'' (relative to the largest value of the reference file).
+    """
+    nb_files = nb_failed = 0
+    for root, _, files in sorted(os.walk(reference)):
+        for name in sorted(files):
+            if not name.lower().endswith(('.txt', '.dat', '.pos')):
+                continue
+            ref = os.path.join(root, name)
+            rel = os.path.relpath(ref, reference)
+            a = read_numbers(ref)
+            if a is None:
+                print('[compare] {}: binary file, skipped'.format(rel))
+                continue
+            nb_files += 1
+            if not os.path.exists(os.path.join(other, rel)):
+                print('[compare] {}: FAILED, missing'.format(rel))
+                nb_failed += 1
+                continue
+            b = read_numbers(os.path.join(other, rel))
+            if b is None or len(a) != len(b):
+                print('[compare] {}: FAILED, {} values instead of {}'.format(
+                    rel, 'binary file' if b is None else len(b), len(a)))
+                nb_failed += 1
+                continue
+            scale = max([abs(x) for x in a] + [1e-300])
+            diff = max([abs(x - y) for x, y in zip(a, b)] + [0.]) / scale
+            ok = diff <= tolerance  # False for a NaN
+            print('[compare] {}: {} values, max relative difference {:.1e}{}'
+                  .format(rel, len(a), diff, '' if ok else ' FAILED'))
+            if not ok:
+                nb_failed += 1
+    if not nb_files:
+        print('[compare] FAILED, no result file to compare')
+        nb_failed = 1
+    sys.stdout.flush()
+    return nb_failed
+
+
+def mpi_environment():
+    """Environment for mpiexec in a test: Open MPI refuses by default to run
+    as root (as in a Docker container) or with more ranks than cores."""
+    env = dict(os.environ)
+    env.setdefault('OMPI_ALLOW_RUN_AS_ROOT', '1')
+    env.setdefault('OMPI_ALLOW_RUN_AS_ROOT_CONFIRM', '1')
+    env.setdefault('OMPI_MCA_rmaps_base_oversubscribe', 'true')  # Open MPI 4
+    env.setdefault('PRTE_MCA_rmaps_default_mapping_policy',
+                   ':oversubscribe')  # Open MPI 5
+    return env
+
+
+def run_step(label, executable, args, workdir, env=None):
     """Run one external command (gmsh or getdp). Returns its exit code.
 
     stdout and stderr are inherited from the parent, so output appears
@@ -199,7 +312,7 @@ def run_step(label, executable, args, workdir):
     print('[{}] cmd: {}'.format(label, _format_cmd(cmd)), flush=True)
     start = time.monotonic()
     try:
-        proc = subprocess.run(cmd, cwd=workdir, check=False)
+        proc = subprocess.run(cmd, cwd=workdir, check=False, env=env)
         rc = proc.returncode
     except FileNotFoundError:
         print('[{}] ERROR: executable not found: {}'.format(
@@ -250,7 +363,24 @@ def main(argv=None):
              'interpreted relative to --workdir and copied to the same '
              'position relative to the temp run directory, so includes like '
              '"../Lib.pro" resolve correctly. May be given multiple times.')
+    parser.add_argument(
+        '--mpiexec', metavar='PATH', default='',
+        help='Path to mpiexec: with --ranks, also run getdp in parallel and '
+             'compare its results with those of the run without MPI.')
+    parser.add_argument(
+        '--ranks', metavar='LIST', default='',
+        help='Comma-separated numbers of MPI ranks of the parallel runs '
+             '(e.g. "2,3").')
+    parser.add_argument(
+        '--tolerance', metavar='VALUE', type=float, default=1e-5,
+        help='Largest accepted difference between a parallel and the '
+             'sequential run, relative to the largest value of each file '
+             '(default: 1e-5).')
     args = parser.parse_args(argv)
+    ranks = [int(n) for n in args.ranks.split(',') if n.strip()]
+    if ranks and not args.mpiexec:
+        sys.stderr.write('ERROR: --ranks needs --mpiexec\n')
+        return 2
 
     source_workdir = args.workdir or os.getcwd()
     if not os.path.isdir(source_workdir):
@@ -288,10 +418,34 @@ def main(argv=None):
             if rc != 0:
                 failing_step = 'gmsh'
 
+        # The parallel runs start from a copy of the meshed run directory,
+        # next to it in the temp tree (so that ``..'' includes still resolve).
+        parallel_dirs = []
+        if rc == 0 and getdp_args:
+            for n in ranks:
+                copy = os.path.join(temp_root, 'mpi{}'.format(n))
+                shutil.copytree(temp_root, copy,
+                                ignore=shutil.ignore_patterns('mpi[0-9]*'))
+                parallel_dirs.append(
+                    (n, os.path.join(copy, os.path.basename(run_dir))))
+
         if rc == 0 and getdp_args:
             rc = run_step('getdp', args.getdp, getdp_args, run_dir)
             if rc != 0:
                 failing_step = 'getdp'
+
+        for n, parallel_dir in parallel_dirs:
+            if rc != 0:
+                break
+            step = 'getdp on {} ranks'.format(n)
+            rc = run_step(step, args.mpiexec,
+                          ['-n', str(n), args.getdp] + getdp_args,
+                          parallel_dir, mpi_environment())
+            if rc == 0:
+                step = 'comparison of {} ranks with the run without MPI'.format(n)
+                rc = compare_dirs(run_dir, parallel_dir, args.tolerance)
+            if rc != 0:
+                failing_step = step
     finally:
         if rc == 0:
             shutil.rmtree(temp_root, ignore_errors=True)
