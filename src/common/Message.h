@@ -59,7 +59,7 @@ private:
 public:
   Message() {}
   static void Initialize(int argc, char **argv);
-  static void Finalize();
+  static void Finalize(bool finalizeMPI = true);
   static void Exit(int level);
   static int GetCommRank() { return _commRank; }
   static int GetCommSize() { return _commSize; }

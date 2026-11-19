@@ -69,7 +69,8 @@ static bool IsIntInList(List_T *List, int Entity)
 {
   int n = List_Nbr(List);
   if(n < 64) return List_Search(List, &Entity, fcmp_int);
-  int *a = (int *)List_Pointer(List, 0);
+  // (without marking the list as unsorted: List_Search would sort it again)
+  int *a = (int *)List_Pointer_NoChange(List, 0);
   if(List != LastEntityList || !LastEntityBitmap) {
     LastEntityList = List;
     LastEntityBitmap = &EntityBitmaps[List];
@@ -181,7 +182,7 @@ void Generate_TreesOnFirstRank()
 
 void Generate_ExtendedGroup(struct Group *Group_P)
 {
-  // with -local-dofs only the ranks having an element that needs it get here
+  // with rank-local Dofs only the ranks having an element that needs it get here
   MessageLocalCpu localCpu(Dof_UseLocalDofs());
 
   ClearEntityBitmaps();

@@ -284,7 +284,7 @@ static double Get_VolumeOfElement(struct Element &Element)
 
 // SurfaceArea[], GetVolume[] and GetNumElements[] sum over all the elements of
 // some regions. When the ranks only have a part of the mesh
-// (Geo_DistributeMesh) they cannot do it alone: before the pre-processing each
+// (Geo_SendParts) they cannot do it alone: before the pre-processing each
 // rank computes the area, the volume and the number of elements of each region
 // in its own mesh partition, and these are summed over the ranks.
 struct RegionMeasure {

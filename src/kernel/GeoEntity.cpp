@@ -507,7 +507,7 @@ void Geo_CreateEntitiesOfElement(
 //
 // The edges and facets are numbered in the order of their creation, and these
 // numbers identify their Dofs: in parallel all the ranks must have the same
-// ones. When the ranks only have a part of the mesh (Geo_DistributeMesh), the
+// ones. When the ranks only have a part of the mesh (Geo_SendParts), the
 // first rank, which has it all, numbers them, and each other rank asks it for
 // the numbers of the edges and facets of its own elements.
 void Geo_CreateEdgesAndFacets(bool facets)

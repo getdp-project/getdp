@@ -174,19 +174,28 @@ struct Geo_TreeNodesInTree {
   }
 };
 
-// ... or, without a sliding surface, in an array indexed by node number
+// ... or, without a sliding surface, in an array indexed by node number (or
+// in a hash table if the node numbers are too sparse for an array)
 struct Geo_TreeNodesInArray {
+  bool dense;
   std::vector<int> index;
+  std::unordered_map<int, int> hash;
   Geo_TreeNodesInArray()
   {
-    int max = 0;
-    for(int i = 0; i < Geo_GetNbrGeoNodes(); i++)
-      max = std::max(max, Geo_GetGeoNode(i)->Num);
-    index.resize(max + 1, -1);
+    int n = Geo_GetNbrGeoNodes(), max = 0;
+    for(int i = 0; i < n; i++) max = std::max(max, Geo_GetGeoNode(i)->Num);
+    dense = (max / 4 <= n + 1000);
+    if(dense) index.resize(max + 1, -1);
   }
-  int *find(int num) { return index[num] < 0 ? NULL : &index[num]; }
+  int *find(int num)
+  {
+    if(dense) return index[num] < 0 ? NULL : &index[num];
+    auto it = hash.find(num);
+    return (it == hash.end()) ? NULL : &it->second;
+  }
   int *add(int num, int i)
   {
+    if(!dense) return &(hash[num] = i);
     index[num] = i;
     return &index[num];
   }

@@ -196,35 +196,12 @@ static void Broadcast_StoredValues(struct PostSubOperation *PostSubOperation_P,
   int rootRank = i_POP % Message::GetCommSize();
   if(PostSubOperation_P->StoreInVariable)
     Cal_BroadcastValueInVariable(PostSubOperation_P->StoreInVariable, rootRank);
-  int register_ID = -1;
-  if(PostSubOperation_P->StoreInRegister >= 0) {
-    register_ID = PostSubOperation_P->StoreInRegister;
-  }
-  else if(PostSubOperation_P->StoreMinInRegister >= 0) {
-    register_ID = PostSubOperation_P->StoreMinInRegister;
-  }
-  else if(PostSubOperation_P->StoreMaxInRegister >= 0) {
-    register_ID = PostSubOperation_P->StoreMaxInRegister;
-  }
-  else if(PostSubOperation_P->StoreMinXinRegister >= 0) {
-    register_ID = PostSubOperation_P->StoreMinXinRegister;
-  }
-  else if(PostSubOperation_P->StoreMinYinRegister >= 0) {
-    register_ID = PostSubOperation_P->StoreMinYinRegister;
-  }
-  else if(PostSubOperation_P->StoreMinZinRegister >= 0) {
-    register_ID = PostSubOperation_P->StoreMinZinRegister;
-  }
-  else if(PostSubOperation_P->StoreMaxXinRegister >= 0) {
-    register_ID = PostSubOperation_P->StoreMaxXinRegister;
-  }
-  else if(PostSubOperation_P->StoreMaxYinRegister >= 0) {
-    register_ID = PostSubOperation_P->StoreMaxYinRegister;
-  }
-  else if(PostSubOperation_P->StoreMaxZinRegister >= 0) {
-    register_ID = PostSubOperation_P->StoreMaxZinRegister;
-  }
-  if(register_ID >= 0) Cal_BroadcastValueInRegister(register_ID, rootRank);
+  const struct PostSubOperation *p = PostSubOperation_P;
+  for(int r : {p->StoreInRegister, p->StoreMinInRegister, p->StoreMaxInRegister,
+               p->StoreMinXinRegister, p->StoreMinYinRegister,
+               p->StoreMinZinRegister, p->StoreMaxXinRegister,
+               p->StoreMaxYinRegister, p->StoreMaxZinRegister})
+    if(r >= 0) Cal_BroadcastValueInRegister(r, rootRank);
 #endif
 }
 
@@ -318,11 +295,12 @@ void Treatment_PostOperation(struct Resolution *Resolution_P,
 
   Nbr_PostSubOperation = List_Nbr(PostOperation_P->PostSubOperation);
 
-  // With -local-dofs a rank only has the Dofs of its own partition (rank 0 has
-  // them all): a Print on the mesh is evaluated by rank 0, and a quantity on a
-  // region is integrated by each rank on its partition and summed. Handing a
-  // whole sub-operation to one rank (Distributed) fits neither, so the
-  // post-operation runs as without Distributed.
+  // With rank-local Dofs a rank only has the Dofs of its own partition (the
+  // first rank gets them all if a Print needs them): a Print is evaluated by
+  // all the ranks, each one on its partition, or by the first rank alone, and
+  // a quantity on a region is integrated by each rank on its partition and
+  // summed. Handing a whole sub-operation to one rank (Distributed) fits none
+  // of these, so the post-operation runs as without Distributed.
   if(Dof_UseLocalDofs()) {
     bool wasDistributed = PostOperation_P->Distributed;
     PostOperation_P->Distributed = false;
@@ -625,9 +603,12 @@ static const char *WhatNeedsAllDofs()
                 o->Type == OPERATION_FOURIERTRANSFORM2 ||
                 o->Type == OPERATION_GENERATE_MH_MOVING ||
                 o->Type == OPERATION_GENERATE_MH_MOVING_S ||
-                o->Type == OPERATION_INIT_MOVINGBAND2D;
+                o->Type == OPERATION_INIT_MOVINGBAND2D ||
+                o->Type == OPERATION_DEFORMMESH ||
+                o->Type == OPERATION_SETCOMMSELF;
        }))
-      return "CopyDegreesOfFreedom, FourierTransform or a moving band operation";
+      return "CopyDegreesOfFreedom, FourierTransform, DeformMesh, SetCommSelf "
+             "or a moving band operation";
   }
 
   // a Print on the mesh is evaluated by the first rank alone, and what it
@@ -640,7 +621,11 @@ static const char *WhatNeedsAllDofs()
         (struct PostSubOperation *)List_Pointer(po->PostSubOperation, j);
       if(p->Type == POP_PRINT && p->SubType != PRINT_ONREGION &&
          (p->StoreInField >= 0 || p->StoreInMeshBasedField >= 0 ||
-          p->StoreInRegister >= 0 || p->StoreInVariable))
+          p->StoreInRegister >= 0 || p->StoreInVariable ||
+          p->StoreMinInRegister >= 0 || p->StoreMaxInRegister >= 0 ||
+          p->StoreMinXinRegister >= 0 || p->StoreMaxXinRegister >= 0 ||
+          p->StoreMinYinRegister >= 0 || p->StoreMaxYinRegister >= 0 ||
+          p->StoreMinZinRegister >= 0 || p->StoreMaxZinRegister >= 0))
         return "a Print that stores its result";
     }
   }
@@ -867,7 +852,8 @@ void SolvingAnalyse()
                       Nbr_PreResolution);
     }
 
-    // with -local-dofs rank 0 only has all the Dofs after this
+    // with rank-local Dofs the first rank only has the Dofs of the other
+    // ranks (if it needs them, see Dof_GetAllDofsOnFirstRank) after this
     if(Dof_UseLocalDofs())
       for(i = 0; i < Nbr_DefineSystem; i++)
         Dof_TransferDofTreeToList(DofData_P0 + i);

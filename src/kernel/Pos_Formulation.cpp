@@ -489,7 +489,9 @@ void Pos_Formulation(struct Formulation *Formulation_P,
     if(!strlen(PostFileName) ||
        (Message::GetIsCommWorld() && Message::GetCommRank() &&
         (!PostSubOperation_P->Distributed || rootOnly))) {
-      // in parallel mode (SetCommWorld), only rank 0 prints output (unless explicitly distributed post-operations)
+      // in parallel (SetCommWorld) only the first rank writes to the file,
+      // unless the post-operation is Distributed (a view computed by all the
+      // ranks is written by Format_PostFooter, see Format_CanGmshParallel)
       PostStream = NULL;
     }
     else if(!PostSubOperation_P->CatFile) {

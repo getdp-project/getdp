@@ -88,41 +88,30 @@ static void Geo_Bisect(struct GeoData *GeoData_P, const std::vector<double> x[3]
   Geo_Bisect(GeoData_P, x, e, mid, end, first + n / 2, n - n / 2);
 }
 
+// The node of a given number: its position in the list of the nodes is
+// tabulated (see Geo_NumberIndex), which replaces a binary search for each
+// node of each element by a direct access.
+static struct Geo_Node *Geo_FindNode(struct GeoData *GeoData_P, int Num)
+{
+  struct Geo_NumberIndex &index = *GeoData_P->NodeIndex;
+  int n = List_Nbr(GeoData_P->Nodes);
+  if(index.size != n) {
+    // the positions must not change afterwards: a search sorts the list
+    List_Sort(GeoData_P->Nodes, fcmp_Nod);
+    struct Geo_Node *nodes =
+      n ? (struct Geo_Node *)List_Pointer(GeoData_P->Nodes, 0) : NULL;
+    index.build(n, [&](int i) { return nodes[i].Num; });
+  }
+  int i = index.find(Num);
+  return (i < 0) ? NULL : (struct Geo_Node *)List_Pointer(GeoData_P->Nodes, i);
+}
+
 // In parallel each mesh element is assembled by the rank of its mesh partition,
 // and the Dofs are numbered by partition, so that a rank owns most of the rows
 // of its elements. If the mesh does not come with one partition for each rank,
 // its elements are thus partitioned here, by recursive coordinate bisection (or
 // by merging its partitions, if their number is a multiple of the number of
 // ranks). Partitioning the mesh with Gmsh gives better partitions.
-// The node of a given number. The nodes are sorted by number: if the numbers
-// are dense enough (the usual case) their positions are tabulated, which
-// replaces a binary search for each node of each element by a direct access.
-static struct Geo_Node *Geo_FindNode(struct GeoData *GeoData_P, int Num)
-{
-  std::vector<int> &index = *GeoData_P->NodeIndex;
-  int n = List_Nbr(GeoData_P->Nodes);
-  if(GeoData_P->NodeIndexSize != n) {
-    GeoData_P->NodeIndexSize = n;
-    index.clear();
-    // the positions must not change afterwards: a search sorts the list
-    List_Sort(GeoData_P->Nodes, fcmp_Nod);
-    int min = n ? ((struct Geo_Node *)List_Pointer(GeoData_P->Nodes, 0))->Num : 0;
-    int max = n ? ((struct Geo_Node *)List_Pointer(GeoData_P->Nodes, n - 1))->Num : 0;
-    if(min >= 0 && max / 4 <= n + 1000) {
-      index.resize(max + 1, -1);
-      for(int i = 0; i < n; i++)
-        index[((struct Geo_Node *)List_Pointer(GeoData_P->Nodes, i))->Num] = i;
-    }
-  }
-  if(index.empty()) {
-    struct Geo_Node node;
-    node.Num = Num;
-    return (struct Geo_Node *)List_PQuery(GeoData_P->Nodes, &node, fcmp_Nod);
-  }
-  if(Num < 0 || Num >= (int)index.size() || index[Num] < 0) return NULL;
-  return (struct Geo_Node *)List_Pointer(GeoData_P->Nodes, index[Num]);
-}
-
 static void Geo_SetPartitions(struct GeoData *GeoData_P)
 {
   int np = Message::GetCommSize(), n = List_Nbr(GeoData_P->Elements);
@@ -472,10 +461,8 @@ void Geo_InitGeoData(struct GeoData *GeoData_P, int Num, char *Name)
 
   GeoData_P->HasMovingBand = false;
 
-  GeoData_P->NodeIndex = new std::vector<int>;
-  GeoData_P->NodeIndexSize = -1;
-  GeoData_P->ElementIndex = new std::vector<int>;
-  GeoData_P->ElementIndexSize = -1;
+  GeoData_P->NodeIndex = new Geo_NumberIndex;
+  GeoData_P->ElementIndex = new Geo_NumberIndex;
 
   GeoData_P->HasParts = GeoData_P->IsPart = false;
   GeoData_P->EntitiesLevel = 0;
@@ -1512,39 +1499,21 @@ int Geo_GetGeoElementIndex(struct Geo_Element *GeoElement)
 /* ------------------------------------------------------------------------ */
 
 // The element of a given number: as for the nodes (see Geo_FindNode), the
-// positions of the elements are tabulated if their numbers are dense enough,
-// instead of a binary search (which first sorts the list, each time)
+// positions of the elements are tabulated, instead of a binary search (which
+// first sorts the list, each time)
 struct Geo_Element *Geo_GetGeoElementOfNum(int Num_Element)
 {
   struct GeoData *GeoData_P = CurrentGeoData;
-  std::vector<int> &index = *GeoData_P->ElementIndex;
+  struct Geo_NumberIndex &index = *GeoData_P->ElementIndex;
   int n = List_Nbr(GeoData_P->Elements);
-  if(GeoData_P->ElementIndexSize != n) {
-    GeoData_P->ElementIndexSize = n;
-    index.clear();
-    int min = 0, max = 0;
-    for(int i = 0; i < n; i++) {
-      int num = ((struct Geo_Element *)List_Pointer(GeoData_P->Elements, i))->Num;
-      min = std::min(min, num);
-      max = std::max(max, num);
-    }
-    if(min >= 0 && max / 4 <= n + 1000) {
-      index.resize(max + 1, -1);
-      for(int i = 0; i < n; i++)
-        index[((struct Geo_Element *)List_Pointer(GeoData_P->Elements, i))->Num] = i;
-    }
+  if(index.size != n) {
+    struct Geo_Element *elements =
+      n ? (struct Geo_Element *)List_Pointer(GeoData_P->Elements, 0) : NULL;
+    index.build(n, [&](int i) { return elements[i].Num; });
   }
-  if(index.empty()) {
-    struct Geo_Element elm;
-    elm.Num = Num_Element;
-    return (struct Geo_Element *)List_PQuery(GeoData_P->Elements, &elm,
-                                             fcmp_Elm);
-  }
-  if(Num_Element < 0 || Num_Element >= (int)index.size() ||
-     index[Num_Element] < 0)
-    return NULL;
-  return (struct Geo_Element *)List_Pointer(GeoData_P->Elements,
-                                            index[Num_Element]);
+  int i = index.find(Num_Element);
+  return (i < 0) ? NULL :
+                   (struct Geo_Element *)List_Pointer(GeoData_P->Elements, i);
 }
 
 /* ------------------------------------------------------------------------ */

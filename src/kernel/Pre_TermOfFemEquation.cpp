@@ -326,9 +326,9 @@ void Pre_GlobalTermOfFemEquation(int Num_Region,
     switch(QuantityStorageEqu_P->BasisFunction[0].Constraint) {
     case NONE:
       // Global-quantity dofs (GlobalTerm/GlobalEquation) have no owning mesh
-      // partition: PartitionOrNonLocal = -1 numbers them last, in the
-      // trailing "non-local" PartitionSplit segment that SolvingOperations.cpp
-      // attributes wholesale to the last rank for RAS.
+      // partition: PartitionOrNonLocal = -1 numbers them after the Dofs of
+      // the partitions (see Dof_NumberUnknownDof), and marks their equations
+      // as non-local.
       Dof_DefineUnknownDof(
         QuantityStorageEqu_P->BasisFunction[0].CodeBasisFunction,
         QuantityStorageEqu_P->BasisFunction[0].CodeEntity, Current.NbrHar,

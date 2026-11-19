@@ -114,7 +114,9 @@ void Message::Initialize(int argc, char **argv)
   _startTime = GetTimeOfDay();
   _errorCount = 0;
 #if defined(HAVE_PETSC)
-  MPI_Init(&argc, &argv);
+  int initialized;
+  MPI_Initialized(&initialized);
+  if(!initialized) MPI_Init(&argc, &argv);
   MPI_Comm_rank(MPI_COMM_WORLD, &_commRank);
   MPI_Comm_size(MPI_COMM_WORLD, &_commSize);
   MPI_Comm_set_errhandler(MPI_COMM_WORLD, MPI_ERRORS_RETURN);
@@ -147,15 +149,16 @@ void Message::Initialize(int argc, char **argv)
   std::setlocale(LC_NUMERIC, "C");
 }
 
-void Message::Finalize()
+void Message::Finalize(bool finalizeMPI)
 {
 #if defined(HAVE_PETSC)
   // also on a single rank: mpirun reports an error if a process that called
-  // MPI_Init exits without calling MPI_Finalize
+  // MPI_Init exits without calling MPI_Finalize; but not if GetDP will run
+  // again in this process (MPI cannot be initialized a second time)
   int initialized, finalized;
   MPI_Initialized(&initialized);
   MPI_Finalized(&finalized);
-  if(initialized && !finalized) MPI_Finalize();
+  if(finalizeMPI && initialized && !finalized) MPI_Finalize();
 #endif
   FinalizeSocket();
   FinalizeOnelab();

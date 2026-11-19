@@ -1548,7 +1548,7 @@ void Pos_PrintOnRegion(struct PostQuantity *NCPQ_P, struct PostQuantity *CPQ_P,
           sstream << "_" << Num_Region;
         }
         sstream << PSO_P->Comma;
-        fprintf(PostStream, "%s", sstream.str().c_str());
+        if(PostStream) fprintf(PostStream, "%s", sstream.str().c_str());
       }
     }
     else if(Group_P->FunctionType == NODESOF) {
@@ -1564,7 +1564,7 @@ void Pos_PrintOnRegion(struct PostQuantity *NCPQ_P, struct PostQuantity *CPQ_P,
   }
   else {
     Nbr_Region = 1;
-    if(!PSO_P->NoTitle && PSO_P->Format == FORMAT_VALUE_ONLY) {
+    if(PostStream && !PSO_P->NoTitle && PSO_P->Format == FORMAT_VALUE_ONLY) {
       fprintf(PostStream, "%s%s", (PSO_P->ValueName ? PSO_P->ValueName :
                                    PQ_P->Name), PSO_P->Comma);
     }

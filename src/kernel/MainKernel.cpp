@@ -169,9 +169,6 @@ static void Get_Options(int argc, char *argv[], int *sargc, char **sargv,
         Flag_LOCAL_DOFS = 0;
         i++;
       }
-      else if(!strcmp(argv[i] + 1, "local-dofs")) { // the default
-        i++;
-      }
       else if(!strcmp(argv[i] + 1, "bin")) {
         Flag_BIN = 1;
         i++;
@@ -821,7 +818,7 @@ int MainKernel(int argc, char *argv[])
 
   Free_GlobalVariables();
   Free(sargv);
-  Message::Finalize();
+  Message::Finalize(!Flag_CALLED_WITH_ONELAB_SERVER);
   return Message::GetErrorCount();
 }
 
@@ -844,7 +841,7 @@ int getdp(const std::vector<std::string> &args, void *ptr)
   } catch(...) {
     int errors = Message::GetErrorCount() ? Message::GetErrorCount() : 1;
     Free_GlobalVariables();
-    Message::Finalize();
+    Message::Finalize(!Flag_CALLED_WITH_ONELAB_SERVER);
     return errors;
   }
 }

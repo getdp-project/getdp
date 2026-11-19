@@ -9,8 +9,49 @@
 #include "ListUtils.h"
 #include "TreeUtils.h"
 #include <map>
+#include <unordered_map>
 #include <vector>
+#include <algorithm>
 #include <unordered_set>
+
+// The position in a list of the item (node, element) of each number: a table
+// indexed by the number if the numbers are dense enough (the usual case), and
+// otherwise (e.g. in a part of a mesh, which has few of the numbers of the
+// whole mesh) a hash table.
+struct Geo_NumberIndex {
+  int size = -1; // number of items in the list when the index was built
+  bool dense = true;
+  std::vector<int> table;
+  std::unordered_map<int, int> hash;
+  // builds the index of the n items whose numbers are given by num(i)
+  template <class Num> void build(int n, Num num)
+  {
+    size = n;
+    table.clear();
+    hash.clear();
+    int min = 0, max = 0;
+    for(int i = 0; i < n; i++) {
+      min = std::min(min, num(i));
+      max = std::max(max, num(i));
+    }
+    dense = (min >= 0 && max / 4 <= n + 1000);
+    if(dense) {
+      table.resize(max + 1, -1);
+      for(int i = 0; i < n; i++) table[num(i)] = i;
+    }
+    else {
+      hash.reserve(n);
+      for(int i = 0; i < n; i++) hash[num(i)] = i;
+    }
+  }
+  // the position of the item of a given number, or -1 if there is none
+  int find(int num) const
+  {
+    if(dense) return (num < 0 || num >= (int)table.size()) ? -1 : table[num];
+    auto it = hash.find(num);
+    return (it == hash.end()) ? -1 : it->second;
+  }
+};
 
 struct GeoData {
   int Num;
@@ -42,16 +83,13 @@ struct GeoData {
   bool HasMovingBand;
 
   // position in Nodes of the node of each number, to find a node without a
-  // search (see Geo_FindNode); NodeIndexSize is the number of nodes it covers
-  std::vector<int> *NodeIndex;
-  int NodeIndexSize;
-  // the same for the elements (see Geo_GetGeoElementOfNum)
-  std::vector<int> *ElementIndex;
-  int ElementIndexSize;
+  // search (see Geo_FindNode), and the same for the elements (see
+  // Geo_GetGeoElementOfNum)
+  struct Geo_NumberIndex *NodeIndex, *ElementIndex;
 
   // In parallel, with rank-local Dofs, only the first rank reads the mesh: it
   // sends to each other rank the part of the mesh this rank needs
-  // (Geo_DistributeMesh). HasParts is set on the first rank and IsPart on the
+  // (Geo_SendParts, Geo_ReceivePart). HasParts is set on the first rank and IsPart on the
   // others; EntitiesLevel tells which entities of the elements of the parts
   // have been numbered by the first rank (1: edges, 2: edges and facets).
   bool HasParts, IsPart;

@@ -3596,7 +3596,7 @@ void Treatment_Operation(struct Resolution *Resolution_P, List_T *Operation_L,
       Current.DTime = Save_DTime;
       break;
 
-      /*  -->  I t e r a t i v e L o o p N            */
+      /*  -->  I t e r a t i v e L o o p A d v a n c e d */
       /*  ------------------------------------------  */
 
     case OPERATION_ITERATIVELOOPADVANCED:

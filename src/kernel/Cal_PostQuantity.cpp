@@ -350,10 +350,11 @@ void Pos_GlobalQuantity(struct PostQuantity *PostQuantity_P,
       i_Element = elements[i];
       if(i_Element < 0) break;
 
-      // if partitioned, the elements of the support are split over the ranks
-      // in a round-robin fashion, so that they are evenly distributed even
-      // when the support is unevenly distributed over the mesh partitions
-      // (with -local-dofs each rank only has the Dofs of its mesh partition)
+      // if partitioned, each rank takes the elements of the support that are
+      // in its mesh partition (with rank-local Dofs it only has their Dofs);
+      // with all the Dofs on all the ranks the elements are split over the
+      // ranks in a round-robin fashion, so that they are evenly distributed
+      // even when the support is unevenly distributed over the partitions
       if(partitioned) {
         if(Dof_UseLocalDofs()) {
           if(!Dof_IsPartitionOfThisRank(Geo_GetGeoElement(i_Element)->Partition))

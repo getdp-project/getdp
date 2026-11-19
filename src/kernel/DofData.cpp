@@ -1837,13 +1837,13 @@ static void GetLocalUnknownDofs(void *a, void *b)
   }
 }
 
-// Numbers the unknown Dofs with -local-dofs, when each rank has only defined
-// the Dofs of its mesh partition. The Dofs are sent to a "home" rank chosen from
+// Numbers the unknown Dofs with rank-local Dofs, when each rank has only
+// defined the Dofs of its mesh partition. The Dofs are sent to a "home" rank chosen from
 // their entity, which keeps the entities of neighboring numbers together.
 //
 // The home rank knows all the ranks that have a Dof: this gives it one owner.
-// As for the numbering by partition without -local-dofs, the equations of each
-// partition are consecutive, and the global Dofs come last. The numbers only
+// As for the numbering by partition with all the Dofs on all the ranks, the
+// equations of each partition are consecutive, and the global Dofs come last. The numbers only
 // depend on the blocks counted on each home rank, so that they can be computed
 // there and sent back without a second exchange.
 //
@@ -1868,8 +1868,8 @@ static void Dof_NumberUnknownDofLocal(void)
   }
 
   // The associated Dofs of global quantities have already been numbered, first
-  // (see Dof_DefineAssociateDof), and they belong to the first rank as without
-  // -local-dofs. All the ranks treat the global terms, in the same order, so
+  // (see Dof_DefineAssociateDof), and they belong to the first rank as with
+  // all the Dofs on all the ranks. All the ranks treat the global terms, in the same order, so
   // that they must all have given the same numbers.
   int base[2] = {CurrentDofData->NbrDof, -CurrentDofData->NbrDof};
   MPI_Allreduce(MPI_IN_PLACE, base, 2, MPI_INT, MPI_MIN, MPI_COMM_WORLD);

@@ -250,8 +250,8 @@ template <class T> static bool _addsRow(T *MV, int i)
 // storage the nonzero pattern is built on the fly by each assembly, the PETSc
 // matrix is preallocated exactly, and its rows are set in one call each.
 //
-// In parallel the rows of the storage that belong to another rank (-local-dofs)
-// and the non-local rows (see above) are first sent to their owner.
+// In parallel the rows of the storage that belong to another rank and the
+// non-local rows (see above) are first sent to their owner.
 struct _Assembly {
   SparseRows<PetscScalar, PetscInt> rows;
   bool isNew = false; // the PETSc matrix was just created: preallocate it
@@ -685,7 +685,7 @@ void LinAlg_CreateMatrix(gMatrix *M, gSolver *Solver, int n, int m, bool silent)
   // the matrix is preallocated when it is assembled for the first time, once
   // its nonzero pattern is known (see _handOver)
   bool seq = (Message::GetCommSize() == 1 || MyComm == PETSC_COMM_SELF);
-  PetscInt nloc = seq ? n : _getLocalSize();
+  PetscInt nloc = seq ? n : _getLocalSize(n);
   PetscInt mloc = seq ? m : nloc;
   _try(MatCreate(seq ? PETSC_COMM_SELF : MyComm, &M->M));
   _try(MatSetSizes(M->M, nloc, mloc, n, m));
@@ -1430,6 +1430,7 @@ void LinAlg_AddProdVectorDoubleProdVectorDouble(double alpha, gVector *V1,
   PetscScalar alpha1 = alpha, beta1 = beta;
   PetscScalar gamma1 = 0.0;
   _try(VecAXPBYPCZ(V3->V, alpha1, beta1, gamma1, V1->V, V2->V));
+  _markseq(V3);
 }
 
 // Nonzero structure of X relative to Y (collective): SAME_NONZERO_PATTERN if X
@@ -1872,7 +1873,7 @@ static bool _getAMSEdges(AMSEdges &a)
       return false;
     }
   }
-  // with -local-dofs the rows of the other ranks' edges are not known here
+  // with rank-local Dofs the rows of the other ranks' edges are not known here
   std::unordered_map<int, int> rows;
   const bool localDofs = Dof_UseLocalDofs();
   if(localDofs) {
@@ -2355,6 +2356,7 @@ static void _solve(gMatrix *A, gVector *B, gSolver *Solver, gVector *X,
 #endif
   _try(KSPSolve(Solver->ksp[kspIndex], B->V, X->V));
 
+#if defined(PETSC_HAVE_MUMPS)
   if(stype && !strcmp(stype, "mumps")) {
     Mat mat;
     PCFactorGetMatrix(pc, &mat);
@@ -2380,6 +2382,7 @@ static void _solve(gMatrix *A, gVector *B, gSolver *Solver, gVector *X,
       Message::Warning("MUMPS warning %d", ival);
     }
   }
+#endif
 
   // copy result on all procs
   _fillseq(X);
@@ -2401,7 +2404,8 @@ static void _solve(gMatrix *A, gVector *B, gSolver *Solver, gVector *X,
   _try(KSPGetConvergedReason(Solver->ksp[kspIndex], &reason));
   Current.KSPConvergedReason = (double)reason;
 
-  if(reason < 0) {
+  // an iterative solver that did not converge has not failed
+  if(reason < 0 && reason != KSP_DIVERGED_ITS && reason != KSP_DIVERGED_DTOL) {
     // A solver that failed is not used again: e.g. PETSc skips the numerical
     // factorizations of MUMPS as long as MUMPS reports an error, i.e. until a
     // new symbolic factorization. If the failed solve reused the matrix of a

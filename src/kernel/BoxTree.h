@@ -9,16 +9,16 @@
 #include <vector>
 
 // Search structure for the boxes that contain a point: a binary tree of
-// bounding boxes (a "bounding volume hierarchy"), as in Gmsh (Octree.cpp).
+// bounding boxes (a "bounding volume hierarchy"), as in Octree.cpp of Gmsh.
 //
 // The boxes are sorted along a space-filling curve (a Z-order curve through
 // their centers), so that boxes that follow each other are close in space.
 // The tree is then made by cutting this sequence in two halves again and
 // again, down to leaves of a few boxes; each node stores the bounding box of
 // all the boxes below it. A search goes down from the root and skips every
-// node whose bounding box does not contain the point: it looks at a number
-// of nodes that grows like the logarithm of the number of boxes, whatever
-// their sizes and their distribution in space.
+// node whose bounding box does not contain the point: for the elements of a
+// mesh, which overlap little, it looks at a number of nodes that grows like
+// the logarithm of the number of boxes, whatever the sizes of the elements.
 //
 // To stay small on large meshes (about 20 bytes per box) the tree only keeps
 // the boxes of its nodes, in single precision (rounded outwards), and not

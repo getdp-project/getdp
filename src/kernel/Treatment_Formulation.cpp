@@ -467,7 +467,7 @@ static bool IsElementOnLinkRegion(int i_Element)
 
 void Treatment_FemFormulation(struct Formulation *Formulation_P)
 {
-  // with -local-dofs the messages of the element loop (e.g. the addition of a
+  // with rank-local Dofs the messages of the element loop (e.g. the addition of a
   // pre-resolution) are only printed by the ranks having the relevant elements
   MessageLocalCpu localCpu(Dof_UseLocalDofs());
 

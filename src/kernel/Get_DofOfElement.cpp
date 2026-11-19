@@ -593,8 +593,8 @@ void Get_CodesOfElement(struct FunctionSpace *FunctionSpace_P,
         ((Dof_P = Dof_GetDofStruct(FunctionSpace_P->DofData, Code_BasisFunction,
                                    abs(Num_Entity[i_Entity]), 0)) != NULL);
 
-      // with -local-dofs a missing Dof must not be mistaken for a Dof that does
-      // not exist, which would silently give a wrong value
+      // with rank-local Dofs a missing Dof must not be mistaken for a Dof that
+      // does not exist, which would silently give a wrong value
       if(!CodeExist && TreatmentStatus == STATUS_POS && Dof_UseLocalDofs() &&
          (Message::GetCommRank() || !Dof_GetAllDofsOnFirstRank()) &&
          Current.Element && Current.Element->GeoElement &&

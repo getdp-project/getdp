@@ -83,14 +83,19 @@ static int CurrentPartitionNumber = 0;
 // elements of the mesh, identified by their number ($ElementNodeData), or
 // "list-based", i.e. as lists of independent elements given by the coordinates
 // of their nodes. A Print on the elements of the mesh is mesh-based (unless
-// -list-based); all the others, which create their own elements (cuts, grids, skins,
-// ...), are list-based.
+// -list-based); all the others, which create their own elements (cuts, grids,
+// skins, iso-values, values at Gauss points, ...), move the nodes or need what
+// only the list-based format has (several values per time step, legends),
+// are list-based.
 bool Format_GmshMeshBased(struct PostSubOperation *PSO_P)
 {
   if(PSO_P->StoreInMeshBasedField >= 0) return true;
   return !Flag_GMSH_LIST_BASED && PSO_P->Type == POP_PRINT &&
          PSO_P->SubType == PRINT_ONELEMENTSOF && PSO_P->Depth == 1 &&
-         PSO_P->StoreInField < 0;
+         PSO_P->StoreInField < 0 && !PSO_P->Skin && !PSO_P->Iso &&
+         !PSO_P->DecomposeInSimplex && !PSO_P->Gauss &&
+         PSO_P->HarmonicToTime <= 1 && PSO_P->ChangeOfCoordinates[0] < 0 &&
+         PSO_P->Legend == LEGEND_NONE;
 }
 
 static void Gmsh_ResetStaticLists()
@@ -164,8 +169,8 @@ bool Format_CanGmshParallel(struct PostSubOperation *PSO_P)
          PSO_P->Format == FORMAT_GMSH && Format_GmshMeshBased(PSO_P) &&
          PSO_P->FileOut && PSO_P->StoreInMeshBasedField < 0 &&
          PSO_P->StoreInRegister < 0 && !PSO_P->StoreInVariable &&
-         !PSO_P->Distributed && !PSO_P->Smoothing && !PSO_P->Skin &&
-         !PSO_P->Adapt && !PSO_P->Sort && !PSO_P->Iso &&
+         !PSO_P->Distributed && !PSO_P->Smoothing && !PSO_P->Adapt &&
+         !PSO_P->Sort &&
          PSO_P->StoreMinInRegister < 0 && PSO_P->StoreMaxInRegister < 0 &&
          PSO_P->StoreMinXinRegister < 0 && PSO_P->StoreMaxXinRegister < 0 &&
          PSO_P->StoreMinYinRegister < 0 && PSO_P->StoreMaxYinRegister < 0 &&
