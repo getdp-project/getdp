@@ -210,20 +210,25 @@ _NUMBER = re.compile(r'[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?')
 
 
 def read_numbers(path):
-    """Return the list of the numbers of a text file, or None if it is binary.
+    """Return the numbers of a text file, as one list for each of its lines
+    that has numbers, or None if the file is binary or has a NaN or an Inf.
 
     The values of a mesh-based Gmsh view ($ElementNodeData sections) are
-    returned sorted by view, time step and element, without the mesh: in
-    parallel each rank writes the section of its own elements, so they do not
-    come in the order of the sequential file.
+    returned as one list for each element, sorted by view, time step and
+    element, without the mesh: in parallel each rank writes the section of its
+    own elements, so they do not come in the order of the sequential file.
     """
     with open(path, 'rb') as f:
         raw = f.read()
     if b'\0' in raw:
         return None
-    lines = raw.decode('utf-8', errors='replace').split('\n')
+    text = raw.decode('utf-8', errors='replace').replace('\r', '')
+    if re.search(r'(?<![\w.])[-+]?(nan|inf)(?![\w.])', text, re.IGNORECASE):
+        return None
+    lines = text.split('\n')
     if '$ElementNodeData' not in lines:
-        return [float(x) for x in _NUMBER.findall('\n'.join(lines))]
+        rows = [[float(x) for x in _NUMBER.findall(line)] for line in lines]
+        return [row for row in rows if row]
     values = {}
     i = 0
     while i < len(lines):
@@ -240,16 +245,47 @@ def read_numbers(path):
         step, nb_elements = tags[0], tags[2]
         for line in lines[i:i + nb_elements]:
             words = line.split()
-            values[(view, step, int(words[0]))] = [float(x) for x in words[2:]]
+            key = (view, step, int(words[0]))
+            if key in values:  # an element written twice (by two ranks)
+                return None
+            values[key] = [float(x) for x in words[2:]]
         i += nb_elements
-    return [x for key in sorted(values) for x in values[key]]
+    return [values[key] for key in sorted(values)]
 
 
-def compare_dirs(reference, other, tolerance):
-    """Compare the numbers of the text result files of two run directories.
+def compare_numbers(a, b):
+    """Return the largest relative difference between two lists of lines of
+    numbers, or None if they do not have the same numbers of numbers.
 
-    Returns the number of files that are missing or differ by more than
-    ``tolerance'' (relative to the largest value of the reference file).
+    A file mixes numbers of different sizes (the coordinates of a point and
+    the value of a small field at this point, for example). The numbers are
+    thus compared column by column: a difference is relative to the largest
+    number of the reference at the same position in the lines of the same
+    length. A column of numbers that are all negligible (at most 1e-6 times
+    the largest number of the file: rounding errors around zero) is compared
+    with this threshold instead.
+    """
+    if [len(row) for row in a] != [len(row) for row in b]:
+        return None
+    largest = max([max(map(abs, row)) for row in a] + [1e-300])
+    # the lines of each length, as columns
+    lengths = sorted(set(len(row) for row in a))
+    diff = 0.
+    for n in lengths:
+        columns_a = zip(*[row for row in a if len(row) == n])
+        columns_b = zip(*[row for row in b if len(row) == n])
+        for x, y in zip(columns_a, columns_b):
+            scale = max(max(map(abs, x)), 1e-6 * largest)
+            diff = max(diff, max(map(abs, map(float.__sub__, x, y))) / scale)
+    return diff
+
+
+def compare_dirs(reference, other, tolerance, ignored=()):
+    """Compare the numbers of the text result files of two run directories,
+    except the files whose name is in ``ignored''.
+
+    Returns 1 if a file is missing or differs by more than ``tolerance'' (see
+    compare_numbers), and 0 otherwise.
     """
     nb_files = nb_failed = 0
     for root, _, files in sorted(os.walk(reference)):
@@ -258,25 +294,33 @@ def compare_dirs(reference, other, tolerance):
                 continue
             ref = os.path.join(root, name)
             rel = os.path.relpath(ref, reference)
-            a = read_numbers(ref)
-            if a is None:
-                print('[compare] {}: binary file, skipped'.format(rel))
+            if name in ignored:
+                print('[compare] {}: ignored'.format(rel))
                 continue
+            with open(ref, 'rb') as f:
+                if b'\0' in f.read():
+                    print('[compare] {}: binary file, skipped'.format(rel))
+                    continue
             nb_files += 1
             if not os.path.exists(os.path.join(other, rel)):
                 print('[compare] {}: FAILED, missing'.format(rel))
                 nb_failed += 1
                 continue
+            a = read_numbers(ref)
             b = read_numbers(os.path.join(other, rel))
-            if b is None or len(a) != len(b):
-                print('[compare] {}: FAILED, {} values instead of {}'.format(
-                    rel, 'binary file' if b is None else len(b), len(a)))
+            if a is None or b is None:
+                print('[compare] {}: FAILED, NaN, Inf or unreadable values'
+                      .format(rel))
                 nb_failed += 1
                 continue
-            scale = max([abs(x) for x in a] + [1e-300])
-            diff = max([abs(x - y) for x, y in zip(a, b)] + [0.]) / scale
-            ok = diff <= tolerance  # False for a NaN
-            print('[compare] {}: {} values, max relative difference {:.1e}{}'
+            diff = compare_numbers(a, b)
+            if diff is None:
+                print('[compare] {}: FAILED, not the same numbers of values'
+                      .format(rel))
+                nb_failed += 1
+                continue
+            ok = diff <= tolerance
+            print('[compare] {}: {} lines, max relative difference {:.1e}{}'
                   .format(rel, len(a), diff, '' if ok else ' FAILED'))
             if not ok:
                 nb_failed += 1
@@ -284,7 +328,7 @@ def compare_dirs(reference, other, tolerance):
         print('[compare] FAILED, no result file to compare')
         nb_failed = 1
     sys.stdout.flush()
-    return nb_failed
+    return 1 if nb_failed else 0
 
 
 def mpi_environment():
@@ -355,7 +399,9 @@ def main(argv=None):
         '--getdp-options', metavar='STRING', default='',
         help='Shell-style string of arguments for getdp (e.g. '
              '"microstrip.pro -solve Ele -pos Map"). Empty (the default) '
-             'skips the getdp step.')
+             'skips the getdp step. Several getdp commands, run one after '
+             'the other, are separated by " ; " (e.g. "a.pro -pre Ele ; '
+             'a.pro -cal -pos Map").')
     parser.add_argument(
         '--extra-files', metavar='PATH', action='append', default=[],
         help='Extra file or directory to copy into the temp working tree '
@@ -373,9 +419,13 @@ def main(argv=None):
              '(e.g. "2,3").')
     parser.add_argument(
         '--tolerance', metavar='VALUE', type=float, default=1e-5,
-        help='Largest accepted difference between a parallel and the '
-             'sequential run, relative to the largest value of each file '
+        help='Largest accepted relative difference between a parallel and '
+             'the sequential run, column by column in each file '
              '(default: 1e-5).')
+    parser.add_argument(
+        '--ignore', metavar='FILE', action='append', default=[],
+        help='Name of a result file that is not compared (a result that is '
+             'not unique, for example). May be given multiple times.')
     args = parser.parse_args(argv)
     ranks = [int(n) for n in args.ranks.split(',') if n.strip()]
     if ranks and not args.mpiexec:
@@ -389,7 +439,15 @@ def main(argv=None):
         return 2
 
     gmsh_args = _split_options(args.gmsh_options)
-    getdp_args = _split_options(args.getdp_options)
+    # the arguments of each getdp command
+    getdp_commands = [[]]
+    for word in _split_options(args.getdp_options):
+        if word == ';':
+            getdp_commands.append([])
+        else:
+            getdp_commands[-1].append(word)
+    getdp_commands = [c for c in getdp_commands if c]
+    getdp_args = getdp_commands[0] if getdp_commands else []
     if not gmsh_args and not getdp_args:
         sys.stderr.write(
             'ERROR: at least one of --gmsh-options or --getdp-options '
@@ -429,8 +487,10 @@ def main(argv=None):
                 parallel_dirs.append(
                     (n, os.path.join(copy, os.path.basename(run_dir))))
 
-        if rc == 0 and getdp_args:
-            rc = run_step('getdp', args.getdp, getdp_args, run_dir)
+        for command in getdp_commands:
+            if rc != 0:
+                break
+            rc = run_step('getdp', args.getdp, command, run_dir)
             if rc != 0:
                 failing_step = 'getdp'
 
@@ -438,12 +498,16 @@ def main(argv=None):
             if rc != 0:
                 break
             step = 'getdp on {} ranks'.format(n)
-            rc = run_step(step, args.mpiexec,
-                          ['-n', str(n), args.getdp] + getdp_args,
-                          parallel_dir, mpi_environment())
+            for command in getdp_commands:
+                if rc != 0:
+                    break
+                rc = run_step(step, args.mpiexec,
+                              ['-n', str(n), args.getdp] + command,
+                              parallel_dir, mpi_environment())
             if rc == 0:
                 step = 'comparison of {} ranks with the run without MPI'.format(n)
-                rc = compare_dirs(run_dir, parallel_dir, args.tolerance)
+                rc = compare_dirs(run_dir, parallel_dir, args.tolerance,
+                                  args.ignore)
             if rc != 0:
                 failing_step = step
     finally:
@@ -458,7 +522,7 @@ def main(argv=None):
     if rc != 0:
         print('=== {} FAILED at {} step ==='.format(label, failing_step),
               flush=True)
-        return rc
+        return 1  # (an exit code that is a multiple of 256 would read as 0)
 
     elapsed = time.monotonic() - overall_start
     print('=== {} PASSED in {:.2f}s ==='.format(label, elapsed), flush=True)

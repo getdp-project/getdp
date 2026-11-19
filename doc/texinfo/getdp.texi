@@ -485,7 +485,8 @@ Caches lump element circuit computations to disk.
 
 In parallel (with MPI), defines all the degrees of freedom on all the
 processes. By default each process only defines the degrees of freedom of its
-partition of the mesh, when the problem allows it.
+partition of the mesh, when the problem allows it (see @ref{Running GetDP in
+parallel}).
 
 @item -bin
 
@@ -547,6 +548,64 @@ Displays the version number.
 Displays a message listing basic usage and available options.
 
 @end ftable
+
+@anchor{Running GetDP in parallel}
+@heading Running GetDP in parallel
+
+@cindex Parallel computations
+@cindex MPI
+
+When GetDP is built with MPI (and PETSc), it runs in parallel when launched
+with the MPI launcher, e.g. on 8 processes:
+
+@example
+> mpiexec -n 8 getdp @var{filename} -solve @var{resolution-id} -pos @var{post-operation-id}
+@end example
+
+The elements of the mesh are split in as many partitions as there are
+processes, and each process assembles the elements of its partition. A mesh
+partitioned with Gmsh (in a number of partitions equal to, or a multiple of,
+the number of processes) is used as it is; other meshes are partitioned by
+GetDP when they are read, with a simple geometrical method that usually gives
+partitions of lesser quality.
+
+By default each process only defines the degrees of freedom of its partition
+and, if the pre-processing and the processing are done in the same run of
+GetDP, only holds its part of the mesh (the first process still reads the
+whole mesh and keeps it). Some features need all the degrees of freedom on
+all the processes: GetDP then defines them all, as with the @code{-all-dofs}
+option, and says so in an information message. This is the case for a moving
+band, global basis functions, integral quantities, constraints of type
+@code{AssignFromResolution}, quantities evaluated at given coordinates or on
+another mesh, the @code{CopyDegreesOfFreedom}, @code{FourierTransform},
+@code{DeformMesh} and @code{SetCommSelf} operations, and @code{Print}
+operations that store their result or that evaluate a quantity at the nodes
+of a region. The memory used by each process then grows with the size of the
+whole problem.
+
+The post-processing operations are done as follows:
+
+@itemize @bullet
+@item
+a @code{Print} on the elements of the mesh in the default (mesh-based) Gmsh
+format is computed by all the processes, each one for its partition, and
+written in a single file;
+@item
+a @code{Print} at given points (@code{OnPoint}, @code{OnLine},
+@code{OnPlane}, @code{OnGrid}) is computed by all the processes, each one for
+the points in its partition, and written by the first process;
+@item
+a global or integral quantity (@code{OnRegion}, @code{OnGlobal}) is summed
+over the processes;
+@item
+the other @code{Print} operations (other formats on the elements of the mesh,
+@code{OnSection}, @code{Depth} other than 1, @code{Skin}, @code{Smoothing},
+...) are done by the first process alone, which then gets all the degrees of
+freedom.
+@end itemize
+
+The linear solver is selected with the PETSc options given on the command
+line or with the @code{-solver} option; the default is a direct solver.
 
 @c =========================================================================
 @c GetDP problem definition language
@@ -5057,7 +5116,9 @@ Distributes the post-processing suboperations over all MPI processes
 case, each suboperation is executed on a single, different MPI
 process. Default value is 0, meaning that all suboperations are executed
 on all MPI processes, with integral quantities distributed over all
-processes. Do not use this option if
+processes. This option is ignored unless all the degrees of freedom are
+defined on all the processes (see @ref{Running GetDP in parallel}). Do not
+use this option if
 @code{PostOperation} to be used for error estimation in
 @code{TimeLoopAdaptive} or @code{IterativeLoopAdvanced}. This is an
 expert-only option. An optional @var{expression-cst} can be given to

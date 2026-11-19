@@ -38,10 +38,6 @@
 
 extern int Flag_LOCAL_DOFS;
 
-// define this to revert to the old numbering of Dofs, that does not take mesh
-// partitions into account
-//#define OLD_DOF_NUMBERING
-
 #define TWO_PI 6.2831853071795865
 
 extern struct Problem Problem_S;
@@ -927,7 +923,6 @@ void Dof_ReadFilePRE(struct DofData *DofData_P)
     }
   } while(String[0] != '$');
 
-#if !defined(OLD_DOF_NUMBERING)
   DofData_P->PartitionSplit.clear();
   DofData_P->PartitionSplit.push_back(0);
   // add last dof num for each partition
@@ -942,7 +937,6 @@ void Dof_ReadFilePRE(struct DofData *DofData_P)
     for(auto p : DofData_P->PartitionSplit) sstream << p << " ";
     Message::Info("Dofs partitioning: %s", sstream.str().c_str());
   }
-#endif
 
   Dof_InitDofType(DofData_P);
 }
@@ -1702,9 +1696,8 @@ void Dof_DefineUnknownDof(int D1, int D2, int NbrHar, int PartitionOrNonLocal)
   }
 }
 
-#if !defined(OLD_DOF_NUMBERING)
-
-// partition/global
+// the unknown Dofs that have no number yet, by mesh partition (0 for the
+// elements without partition, -1 for the non-local, e.g. global, Dofs)
 static std::map<int, std::vector<struct Dof *>> UnnumberedUnknownDofs;
 
 static void GetUnnumberedUnknownDofs(void *a, void *b)
@@ -2078,28 +2071,6 @@ void Dof_NumberUnknownDof(void)
   }
 }
 
-#else
-
-static void NumberUnnumberedUnknownDof(void *a, void *b)
-{
-  struct Dof *Dof_P = (struct Dof *)a;
-  if(Dof_P->Type == DOF_UNKNOWN || Dof_P->Type == DOF_UNKNOWN_INIT) {
-    if(Dof_P->Case.Unknown.NumDof == -1)
-      Dof_P->Case.Unknown.NumDof = ++(CurrentDofData->NbrDof) ;
-    if(Dof_P->Case.Unknown.PartitionOrNonLocal == -1)
-      CurrentDofData->NonLocalEquations.push_back(Dof_P->Case.Unknown.NumDof);
-  }
-}
-
-void Dof_NumberUnknownDof(void)
-{
-  if(CurrentDofData->DofTree)
-    Tree_Action(CurrentDofData->DofTree, NumberUnnumberedUnknownDof);
-  else
-    List_Action(CurrentDofData->DofList, NumberUnnumberedUnknownDof);
-}
-
-#endif
 
 /* ------------------------------------------------------------------------ */
 /*  D o f _ D e f i n e A s s o c i a t e D o f                             */

@@ -407,19 +407,12 @@ static void _preallocate(Mat M, SparseRows<PetscScalar, PetscInt> &S)
 }
 
 // Gives the entries added to the storage of M since the last hand-over to the
-// PETSc matrix. Collective, unless local is set: the rows of the other ranks
-// then go through the PETSc stash, and the non-local rows are left for the next
-// collective hand-over.
-static void _handOver(Mat M, bool local = false)
+// PETSc matrix (collective).
+static void _handOver(Mat M)
 {
   _Assembly &A = _getAssembly(M);
-  if(local) {
-    for(auto &row : A.rows.others()) _setRow(M, row.first, row.second);
-  }
-  else {
-    _gatherRows(M);
-    if(A.isNew) _preallocate(M, A.rows);
-  }
+  _gatherRows(M);
+  if(A.isNew) _preallocate(M, A.rows);
   A.isNew = false;
   for(PetscInt i = A.rows.first(); i < A.rows.last(); i++)
     _setRow(M, i, A.rows.row(i));
@@ -677,7 +670,7 @@ void LinAlg_UpdateSequentialVectors()
   _seqStale.clear();
 }
 
-void LinAlg_CreateMatrix(gMatrix *M, gSolver *Solver, int n, int m, bool silent)
+void LinAlg_CreateMatrix(gMatrix *M, gSolver *Solver, int n, int m)
 {
   Message::Debug("Creating matrix with MPI_CommSize=%d and MPI_IsCommWorld=%d",
                  Message::GetCommSize(), Message::GetIsCommWorld());
@@ -709,7 +702,7 @@ void LinAlg_RecreateMatrix(gMatrix *M, gSolver *Solver, int n, int m)
   SparseRows<PetscScalar, PetscInt> rows = std::move(_getAssembly(M->M).rows);
   rows.clear();
   LinAlg_DestroyMatrix(M);
-  LinAlg_CreateMatrix(M, Solver, n, m, true);
+  LinAlg_CreateMatrix(M, Solver, n, m);
   SparseRows<PetscScalar, PetscInt> &S = _getAssembly(M->M).rows;
   if(rows.first() == S.first() && rows.last() == S.last()) S = std::move(rows);
 }
@@ -1219,55 +1212,6 @@ void LinAlg_SetComplexInVector(double d1, double d2, gVector *V, int i, int j)
   if(_isInLocalRange(V, j)) {
     tmp = d2;
     _try(VecSetValues(V->V, 1, &tj, &tmp, INSERT_VALUES));
-  }
-#endif
-}
-
-void LinAlg_SetScalarInMatrix(gScalar *S, gMatrix *M, int i, int j)
-{
-  _handOver(M->M, true);
-  if(!_isInLocalRange(M, i)) return;
-  PetscInt ti = i, tj = j;
-  _try(MatSetValues(M->M, 1, &ti, 1, &tj, &S->s, INSERT_VALUES));
-}
-
-void LinAlg_SetDoubleInMatrix(double d, gMatrix *M, int i, int j)
-{
-  _handOver(M->M, true);
-  if(!_isInLocalRange(M, i)) return;
-  PetscInt ti = i, tj = j;
-  _try(MatSetValues(M->M, 1, &ti, 1, &tj, (PetscScalar *)&d, INSERT_VALUES));
-}
-
-void LinAlg_SetComplexInMatrix(double d1, double d2, gMatrix *M, int i, int j,
-                               int k, int l)
-{
-  _handOver(M->M, true);
-  PetscScalar tmp;
-#if defined(PETSC_USE_COMPLEX)
-  PetscInt ti = i, tj = j;
-  if(_isInLocalRange(M, i)) {
-    tmp = d1 + PETSC_i * d2;
-    _try(MatSetValues(M->M, 1, &ti, 1, &tj, &tmp, INSERT_VALUES));
-  }
-#else
-  PetscInt ti = i, tj = j, tk = k, tl = l;
-  if(d1) {
-    tmp = d1;
-    if(_isInLocalRange(M, i))
-      _try(MatSetValues(M->M, 1, &ti, 1, &tj, &tmp, INSERT_VALUES));
-    if(_isInLocalRange(M, k))
-      _try(MatSetValues(M->M, 1, &tk, 1, &tl, &tmp, INSERT_VALUES));
-  }
-  if(d2) {
-    if(_isInLocalRange(M, i)) {
-      tmp = -d2;
-      _try(MatSetValues(M->M, 1, &ti, 1, &tl, &tmp, INSERT_VALUES));
-    }
-    if(_isInLocalRange(M, k)) {
-      tmp = d2;
-      _try(MatSetValues(M->M, 1, &tk, 1, &tj, &tmp, INSERT_VALUES));
-    }
   }
 #endif
 }

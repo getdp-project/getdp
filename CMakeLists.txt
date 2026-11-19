@@ -1229,6 +1229,7 @@ if(${Python3_FOUND} AND GMSH)
   if(HAVE_MPI AND MPIEXEC_EXECUTABLE AND TEST_MPI_RANKS)
     set(TEST_MPI TRUE)
   endif()
+  # (additional arguments are options of run_test.py)
   function(test_mpi name dir gmsh_opts getdp_opts)
     if(TEST_MPI)
       add_test(NAME ${name}_mpi
@@ -1237,7 +1238,7 @@ if(${Python3_FOUND} AND GMSH)
                --workdir ${CMAKE_SOURCE_DIR}/${dir}
                --name "${name}_mpi"
                --gmsh-options "${gmsh_opts}"
-               --getdp-options "${getdp_opts}")
+               --getdp-options "${getdp_opts}" ${ARGN})
       set_tests_properties(${name}_mpi PROPERTIES PROCESSORS 3)
     endif()
   endfunction()
@@ -1251,7 +1252,7 @@ if(${Python3_FOUND} AND GMSH)
              --getdp-options "${file}.pro -solve \#1 -pos \#1 -bin ${opts}")
     test_mpi(tutorial_${name} tutorials/${dir}
              "${file}.geo -3 ${opts} -bin"
-             "${file}.pro -solve \#1 -pos \#1 ${opts}")
+             "${file}.pro -solve \#1 -pos \#1 ${opts}" ${ARGN})
   endfunction()
   test_tuto(01a 01-Electrostatics "microstrip" "")
   test_tuto(02a 02-Thermal "radiator" "")
@@ -1273,7 +1274,10 @@ if(${Python3_FOUND} AND GMSH)
   test_tuto(07a 07-Coupled_problems "busbar" "")
   test_tuto(07b 07-Coupled_problems "busbar" "-setnumber NonLinear 0")
   test_tuto(08a 08-Circuit_coupling "circuit" "")
-  test_tuto(08b 08-Circuit_coupling "circuit" "-setnumber dim 3 -setnumber s 1.5")
+  # (in 3D the two electrodes of the second conductor are not grounded: their
+  # voltages in U.txt are only known up to a constant, their difference is)
+  test_tuto(08b 08-Circuit_coupling "circuit" "-setnumber dim 3 -setnumber s 1.5"
+            --ignore U.txt)
   test_tuto(08c 08-Circuit_coupling "circuit" "-setnumber AnalysisType 0")
   test_tuto(09a 09-Template_library "transfo" "")
   test_tuto(09b 09-Template_library "transfo" "-setnumber LoadType 1")
@@ -1290,9 +1294,28 @@ if(${Python3_FOUND} AND GMSH)
            "parallel.pro -solve Transfer")
   test_mpi(parallel_periodic tests "parallel.geo -2"
            "parallel.pro -solve Periodic -pos Periodic")
+  test_mpi(parallel_regions tests "parallel.geo -2"
+           "parallel.pro -solve Laplace -pos Regions")
+  # the same with all the Dofs on all the ranks, on a mesh partitioned by Gmsh
+  # and with a pre-processing done by another run of getdp
+  test_mpi(parallel_points_all_dofs tests "parallel.geo -2"
+           "parallel.pro -solve Laplace -pos Points -all-dofs")
+  test_mpi(parallel_elements_all_dofs tests "parallel.geo -2"
+           "parallel.pro -solve Laplace -pos Elements -all-dofs")
+  test_mpi(parallel_partitioned tests "parallel_partitioned.geo -"
+           "parallel.pro -msh parallel_partitioned.msh -solve Laplace -pos Elements")
+  test_mpi(parallel_separate tests "parallel.geo -2"
+           "parallel.pro -pre Laplace ; parallel.pro -cal -pos Points ; parallel.pro -pos Elements")
   # the search of the element of a point close to surfaces (see tests/search.pro)
   test_mpi(parallel_search tests "search.geo -3"
            "search.pro -solve Laplace -pos Points")
+  # an assembly limited to a group before the assembly of the whole system
+  add_test(NAME grouped_assembly
+           COMMAND ${RUN_TEST} --workdir ${CMAKE_SOURCE_DIR}/tests
+           --name "grouped_assembly" --gmsh-options "search.geo -3"
+           --getdp-options "search.pro -pre Grouped ; search.pro -cal")
+  test_mpi(grouped_assembly tests "search.geo -3"
+           "search.pro -pre Grouped ; search.pro -cal")
 endif()
 
 if(ENABLE_COVERAGE)

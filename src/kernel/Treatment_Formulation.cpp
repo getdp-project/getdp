@@ -650,10 +650,6 @@ void Treatment_FemFormulation(struct Formulation *Formulation_P)
   if(Current.GeoData->HasMovingBand) {
     // changing mesh element topology -> maps must be re-initialized at each system generation
     if(Formulation_P->RegionToEquationTermIDsIsInit) {
-      for(int i_Element = 0; i_Element < Nbr_Element; i_Element++) {
-        Element.Region = Geo_GetGeoElement(i_Element)->Region;
-        (*Formulation_P->RegionToEquationTermIDs)[Element.Region].clear();
-      }
       delete Formulation_P->RegionToEquationTermIDs;
       Formulation_P->RegionToEquationTermIDsIsInit = 0;
       Formulation_P->ElementListEquationTermIDs.clear();
@@ -661,7 +657,6 @@ void Treatment_FemFormulation(struct Formulation *Formulation_P)
     }
   }
 
-  std::unordered_set<int> regionsOfEquationTerms;
   if(Formulation_P->RegionToEquationTermIDsIsInit == 0)
     Formulation_P->RegionToEquationTermIDs =
       new std::unordered_map<int, std::vector<int> >();
@@ -709,38 +704,35 @@ void Treatment_FemFormulation(struct Formulation *Formulation_P)
     // when there are more equation terms than elements (!) - yes that can
     // happen e.g. in CERN's use of thin shell formulations ;-)
 
-    if(Formulation_P->RegionToEquationTermIDsIsInit == 0 &&
-       regionsOfEquationTerms.insert(Element.Region).second) {
-      // trick is to perform one dummy assembly path here to detect which
-      // equation terms are relevant (this only depends on the region)
+    // the terms of a region are searched when its first element is met (and
+    // not once for all the regions: an assembly can be limited to a group)
+    auto termsOfRegion =
+      Formulation_P->RegionToEquationTermIDs->find(Element.Region);
+    if(termsOfRegion == Formulation_P->RegionToEquationTermIDs->end()) {
+      termsOfRegion = Formulation_P->RegionToEquationTermIDs
+                        ->insert({Element.Region, std::vector<int>()})
+                        .first;
       for(int i_EquTerm = 0; i_EquTerm < Nbr_EquationTerm; i_EquTerm++) {
         EquationTerm_P = EquationTerm_P0 + i_EquTerm;
-
-        if(EquationTerm_P->Type == GALERKIN) { // only GALERKIN are considered
-          struct Group *GroupIn_P = (struct Group *)List_Pointer(
-            Problem_S.Group, EquationTerm_P->Case.LocalTerm.InIndex);
-          if((GroupIn_P->Type != ELEMENTLIST &&
-              List_Nbr(GroupIn_P->InitialList) &&
-              List_Search(GroupIn_P->InitialList, &Element.Region, fcmp_int))) {
-            if((*Formulation_P->RegionToEquationTermIDs)[Element.Region]
-                   .size() == 0 ||
-               (*Formulation_P->RegionToEquationTermIDs)[Element.Region]
-                   .back() < i_EquTerm) {
-              // only add if not already present (to avoid duplicates)
-              (*Formulation_P->RegionToEquationTermIDs)[Element.Region]
-                .push_back(i_EquTerm);
-            }
-          }
-          if(Formulation_P->ElementListEquationTermIDsIsInit == 0 &&
-             GroupIn_P->Type == ELEMENTLIST) {
-            // storing indices of ELEMENTLIST terms for later use
-            Formulation_P->ElementListEquationTermIDs.push_back(i_EquTerm);
-          }
-        }
+        if(EquationTerm_P->Type != GALERKIN) continue;
+        struct Group *GroupIn_P = (struct Group *)List_Pointer(
+          Problem_S.Group, EquationTerm_P->Case.LocalTerm.InIndex);
+        if(GroupIn_P->Type != ELEMENTLIST && List_Nbr(GroupIn_P->InitialList) &&
+           List_Search(GroupIn_P->InitialList, &Element.Region, fcmp_int))
+          termsOfRegion->second.push_back(i_EquTerm);
       }
-      // this element list is independent of Element.Region, so we only need to
-      // init it once
+    }
+    // the terms on a list of elements do not depend on the region
+    if(Formulation_P->ElementListEquationTermIDsIsInit == 0) {
       Formulation_P->ElementListEquationTermIDsIsInit = 1;
+      for(int i_EquTerm = 0; i_EquTerm < Nbr_EquationTerm; i_EquTerm++) {
+        EquationTerm_P = EquationTerm_P0 + i_EquTerm;
+        if(EquationTerm_P->Type != GALERKIN) continue;
+        struct Group *GroupIn_P = (struct Group *)List_Pointer(
+          Problem_S.Group, EquationTerm_P->Case.LocalTerm.InIndex);
+        if(GroupIn_P->Type == ELEMENTLIST)
+          Formulation_P->ElementListEquationTermIDs.push_back(i_EquTerm);
+      }
     }
 
     if(oneRankPerElement) {
@@ -768,25 +760,15 @@ void Treatment_FemFormulation(struct Formulation *Formulation_P)
     // first Loop for all equation terms with GroupIn_P->TYPE != ELEMENTLIST it
     // is performed by looping only on the relevant equation terms for the
     // current Element.Region
-    for(int i_EquTermIdx = 0;
-        i_EquTermIdx <
-        (int)(*Formulation_P->RegionToEquationTermIDs)[Element.Region].size();
-        i_EquTermIdx++) {
-      int i_EquTerm =
-        (*Formulation_P->RegionToEquationTermIDs)[Element.Region][i_EquTermIdx];
+    for(int i_EquTerm : termsOfRegion->second) {
       EquationTerm_P = EquationTerm_P0 + i_EquTerm;
-
-      if(true) { // we already checked that Element.Region is in the support of
-                 // integration of the term
-        if(Message::GetVerbosity() == 10)
-          printf("==> Element #%d, EquationTerm #%d/%d\n", Element.Num,
-                 i_EquTerm + 1, Nbr_EquationTerm);
-        Treatment_FemFormulation_LocalTerm(
-          &Element, EquationTerm_P, QuantityStorage_P0, QuantityStorage_P,
-          DefineQuantity_P0, DefineQuantity_P, Formulation_P);
-      } // if Support
-
-    } // for i_EquTerm ...
+      if(Message::GetVerbosity() == 10)
+        printf("==> Element #%d, EquationTerm #%d/%d\n", Element.Num,
+               i_EquTerm + 1, Nbr_EquationTerm);
+      Treatment_FemFormulation_LocalTerm(
+        &Element, EquationTerm_P, QuantityStorage_P0, QuantityStorage_P,
+        DefineQuantity_P0, DefineQuantity_P, Formulation_P);
+    }
 
     // second Loop over all equation terms with a test only if GroupIn_P->TYPE
     // == ELEMENTLIST we loop on all these terms stored in

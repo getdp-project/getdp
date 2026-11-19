@@ -1572,6 +1572,7 @@ WholeQuantity_Single :
 	vyyerror(0, "Wrong number of arguments for discrete quantity evaluation (%d)", $2);
       WholeQuantity_S.Type = WQ_OPERATORANDQUANTITYEVAL;
       WholeQuantity_S.Case.OperatorAndQuantity.NbrArguments = $2;
+      if($2 > 1) Problem_S.HasQuantityAtCoordinates = true;
       WholeQuantity_S.Case.OperatorAndQuantity.TypeQuantity = QUANTITY_SIMPLE;
       WholeQuantity_S.Case.OperatorAndQuantity.TypeOperator = $1.Int1;
       WholeQuantity_S.Case.OperatorAndQuantity.Index = $1.Int2;

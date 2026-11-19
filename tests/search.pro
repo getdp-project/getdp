@@ -4,7 +4,12 @@
    test is run without MPI and on several ranks (see utils/misc/run_test.py),
    and the results must be the same:
 
-   getdp search.pro -solve Laplace -pos Points */
+   getdp search.pro -solve Laplace -pos Points
+
+   A second resolution tests an assembly limited to a group of regions before
+   the assembly of the whole system:
+
+   getdp search.pro -pre Grouped, then getdp search.pro -cal */
 
 Group {
   Core = Region[1];
@@ -75,6 +80,20 @@ Resolution {
       Generate[A]; Solve[A]; SaveSolution[A];
     }
   }
+  { Name Grouped;
+    System {
+      { Name A; NameOfFormulation Laplace; }
+    }
+    Operation {
+      GenerateGroup[A, Core]; Generate[A]; Solve[A]; SaveSolution[A];
+      // u is of the order of 1: if the terms of the shell were missing in
+      // the second assembly the matrix would be singular
+      PostOperation[Center];
+      Test[ !($u_center > 0 && $u_center < 10) ]{
+        Error["Wrong solution after GenerateGroup"];
+      }
+    }
+  }
 }
 
 PostProcessing {
@@ -108,6 +127,12 @@ PostOperation {
       Print[ grad_u,
         OnPlane {{0.031, -1.1, -1.1} {0.037, 1.1, -1.1} {0.041, -1.1, 1.1}}
         {80, 70}, File "plane_grad_u.pos" ];
+    }
+  }
+  { Name Center; NameOfPostProcessing Laplace;
+    Operation {
+      Print[ u, OnPoint {0.011, 0.013, 0.017}, Format Table,
+        StoreInVariable $u_center, File "center_u.txt" ];
     }
   }
 }

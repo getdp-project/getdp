@@ -23,7 +23,7 @@ void LinAlg_CreateSolver(gSolver *Solver, const char *SolverDataFileName)
 }
 void LinAlg_SetGlobalSolverOptions(const std::string &opt) { err; }
 void LinAlg_CreateVector(gVector *V, gSolver *Solver, int n, bool sequential) { err; }
-void LinAlg_CreateMatrix(gMatrix *M, gSolver *Solver, int n, int m, bool silent) { err; }
+void LinAlg_CreateMatrix(gMatrix *M, gSolver *Solver, int n, int m) { err; }
 void LinAlg_RecreateMatrix(gMatrix *M, gSolver *Solver, int n, int m) { err; }
 void LinAlg_StartElementCache() {}
 void LinAlg_FlushElementCache() {}
@@ -89,12 +89,6 @@ void LinAlg_SetComplexInVector(double d1, double d2, gVector *V, int i, int j)
   err;
 }
 void LinAlg_SetScalarInMatrix(gScalar *S, gMatrix *M, int i, int j) { err; }
-void LinAlg_SetDoubleInMatrix(double d, gMatrix *M, int i, int j) { err; }
-void LinAlg_SetComplexInMatrix(double d1, double d2, gMatrix *M, int i, int j,
-                               int k, int l)
-{
-  err;
-}
 void LinAlg_AddScalarScalar(gScalar *S1, gScalar *S2, gScalar *S3) { err; }
 void LinAlg_DummyVector(gVector *V) { err; }
 void LinAlg_AddScalarInVector(gScalar *S, gVector *V, int i) { err; }

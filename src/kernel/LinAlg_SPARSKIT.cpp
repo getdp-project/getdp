@@ -117,7 +117,7 @@ void LinAlg_CreateVector(gVector *V, gSolver *Solver, int n, bool sequential)
   V->N = n;
 }
 
-void LinAlg_CreateMatrix(gMatrix *M, gSolver *Solver, int n, int m, bool silent)
+void LinAlg_CreateMatrix(gMatrix *M, gSolver *Solver, int n, int m)
 {
   init_matrix(n, &M->M, &Solver->Params);
 }
@@ -133,7 +133,7 @@ void LinAlg_DestroyMatrix(gMatrix *M) { free_matrix(&M->M); }
 void LinAlg_RecreateMatrix(gMatrix *M, gSolver *Solver, int n, int m)
 {
   LinAlg_DestroyMatrix(M);
-  LinAlg_CreateMatrix(M, Solver, n, m, true);
+  LinAlg_CreateMatrix(M, Solver, n, m);
 }
 
 void LinAlg_CopyScalar(gScalar *S1, gScalar *S2) { S2->s = S1->s; }
@@ -315,22 +315,6 @@ void LinAlg_SetComplexInVector(double d1, double d2, gVector *V, int i, int j)
 {
   V->V[i] = d1;
   V->V[j] = d2;
-}
-
-void LinAlg_SetScalarInMatrix(gScalar *S, gMatrix *M, int i, int j)
-{
-  Message::Error("'LinAlg_SetScalarInMatrix' not yet implemented");
-}
-
-void LinAlg_SetDoubleInMatrix(double d, gMatrix *M, int i, int j)
-{
-  Message::Error("'LinAlg_SetDoubleInMatrix' not yet implemented");
-}
-
-void LinAlg_SetComplexInMatrix(double d1, double d2, gMatrix *M, int i, int j,
-                               int k, int l)
-{
-  Message::Error("'LinAlg_SetComplexInMatrix' not yet implemented");
 }
 
 void LinAlg_AddScalarScalar(gScalar *S1, gScalar *S2, gScalar *S3)

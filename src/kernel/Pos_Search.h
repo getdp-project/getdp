@@ -16,12 +16,6 @@ struct ElementBox {
   double Zmin, Zmax;
 };
 
-struct PointElement {
-  double d;
-  double xp, yp, zp;
-  int ElementIndex;
-};
-
 void Free_ElementSearch(struct GeoData *GeoData);
 void Pos_SearchInPartitionOfThisRank(bool own);
 int DimensionOfElementType(int Type);
@@ -31,8 +25,7 @@ void InWhichElement(struct GeoData *GeoData, List_T *ExcludeRegion,
                     double z, double *u, double *v, double *w);
 
 int PointInElement(struct Element *Element, List_T *ExcludeRegion_L, double x,
-                   double y, double z, double *u, double *v, double *w,
-                   double tol);
+                   double y, double z, double *u, double *v, double *w);
 
 void xyz2uvwInAnElement(struct Element *Element, double x, double y, double z,
                         double *u, double *v, double *w);

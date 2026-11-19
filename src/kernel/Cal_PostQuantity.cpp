@@ -259,8 +259,7 @@ void Pos_GlobalQuantity(struct PostQuantity *PostQuantity_P,
                         struct PostQuantityTerm *PostQuantityTerm_P,
                         struct Element *ElementEmpty, List_T *InRegion_L,
                         List_T *Support_L, struct Value *Value,
-                        int Type_InRegion, bool partitioned,
-                        bool reduceIfPartitioned)
+                        int Type_InRegion, bool partitioned)
 {
   struct DefineQuantity *DefineQuantity_P;
   struct QuantityStorage *QuantityStorage_P;
@@ -344,6 +343,12 @@ void Pos_GlobalQuantity(struct PostQuantity *PostQuantity_P,
       if(elements.empty()) elements.push_back(-1); // no element: cached too
     }
 
+    // the integral of this term, summed over the ranks before it is added
+    // to the value of the quantity (which can have other terms)
+    struct Value Integral;
+    Cal_ZeroValue(&Integral);
+    Integral.Type = SCALAR;
+
     Type_Quantity = LOCALQUANTITY; /* Attention... il faut se comprendre: */
     /* il s'agit de grandeurs locales qui seront integrees */
     for(std::size_t i = 0; i < elements.size(); i++) {
@@ -376,51 +381,30 @@ void Pos_GlobalQuantity(struct PostQuantity *PostQuantity_P,
         Current.z = Element.z[0];
         Pos_LocalOrIntegralQuantity(PostQuantity_P, DefineQuantity_P0,
                                     QuantityStorage_P0, PostQuantityTerm_P,
-                                    &Element, Type_Quantity, 0., 0., 0., Value);
+                                    &Element, Type_Quantity, 0., 0., 0.,
+                                    &Integral);
       }
     } /* for i_Element ... */
 
-    // if partitioned, reducing the value across ranks, only if reduceIfPartitioned is true (to avoid double reduction in case of multiple calls to Pos_GlobalQuantity)
-    if(partitioned && reduceIfPartitioned) {
-      struct Value sendValue;
-      Cal_CopyValue(Value, &sendValue);
-
-      std::vector<struct Value> recvValues(Message::GetCommSize());
+    // A rank without any element of the support still has the default
+    // scalar zero: the type is the one of the ranks that have some (the types
+    // other than SCALAR have larger numbers)
+    if(partitioned) {
 #if defined(HAVE_MPI)
-      MPI_Allgather(&sendValue, sizeof(struct Value), MPI_BYTE,
-                    &recvValues[0], sizeof(struct Value), MPI_BYTE,
+      MPI_Allreduce(MPI_IN_PLACE, &Integral.Type, 1, MPI_INT, MPI_MAX,
                     MPI_COMM_WORLD);
-#else
-      // user shouldn't end up here anyway because partitioned should be false if MPI is not enabled, but just in case:
-      Message::Error("Please compile with MPI to enable distributed post-processing of global quantities");
+      MPI_Allreduce(MPI_IN_PLACE, Integral.Val, Current.NbrHar * MAX_DIM,
+                    MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
 #endif
-      // A rank that processed no element of the integration support still
-      // holds the default SCALAR zero set in Cal_PostQuantity, so the value
-      // type must be taken from a rank that actually contributed, and the
-      // untyped zeros must be skipped (adding e.g. VECTOR + SCALAR is an
-      // error in Cal_AddValue)
-      int commonType = SCALAR;
-      for(int i_Rank = 0; i_Rank < Message::GetCommSize(); i_Rank++) {
-        if(recvValues[i_Rank].Type != SCALAR) {
-          commonType = recvValues[i_Rank].Type;
-          break;
-        }
-      }
-      Cal_ZeroValue(Value);
-      Value->Type = commonType;
-      for(int i_Rank = 0; i_Rank < Message::GetCommSize(); i_Rank++) {
-        if(recvValues[i_Rank].Type != commonType) {
-          bool isZero = true;
-          for(int i = 0; i < Current.NbrHar * MAX_DIM; i++) {
-            if(recvValues[i_Rank].Val[i] != 0.) {
-              isZero = false;
-              break;
-            }
-          }
-          if(isZero) continue; // rank had no elements in the support
-        }
-        Cal_AddValue(Value, &recvValues[i_Rank], Value);
-      }
+    }
+
+    // the same holds for the value if this is its first term
+    bool zero = true;
+    for(int i = 0; i < Current.NbrHar * MAX_DIM; i++)
+      if(Integral.Val[i] != 0.) zero = false;
+    if(!zero || Integral.Type != SCALAR) {
+      Value->Type = Integral.Type;
+      Cal_AddValue(Value, &Integral, Value);
     }
 
   } /* if INTEGRAL ... */
@@ -460,9 +444,6 @@ void Cal_PostQuantity(struct PostQuantity *PostQuantity_P,
   partitioned = false;
 #endif
   if(Dof_UseLocalDofs()) partitioned = !Dof_GetPostOnRootOnly();
-#if !defined(HAVE_MPI)
-  partitioned = false;
-#endif
   if(distributedPostOperation) {
     // all sub-operations are already distributed, so we don't further distribute the post-processing operation
     partitioned = false;
@@ -561,10 +542,9 @@ void Cal_PostQuantity(struct PostQuantity *PostQuantity_P,
     /* ----------------- */
 
     else if(Type_Quantity == GLOBALQUANTITY) {
-      bool reduceIfPartitioned = i_PQT == List_Nbr(PostQuantity_P->PostQuantityTerm) - 1; // only reduce during last call, otherwise we will have multiple reductions incorrect output value
       Pos_GlobalQuantity(PostQuantity_P, DefineQuantity_P0, QuantityStorage_P0,
                          &PostQuantityTerm, Element, InRegion_L, Support_L,
-                         Value, Type_InRegion, partitioned, reduceIfPartitioned);
+                         Value, Type_InRegion, partitioned);
     }
 
   } /* for i_PQT ... */

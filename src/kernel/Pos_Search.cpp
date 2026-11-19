@@ -146,8 +146,7 @@ static int PointInRefElement(struct Element *Element, double u, double v,
 }
 
 int PointInElement(struct Element *Element, List_T *ExcludeRegion_L, double x,
-                   double y, double z, double *u, double *v, double *w,
-                   double tol)
+                   double y, double z, double *u, double *v, double *w)
 {
   struct ElementBox ElementBox;
 
@@ -314,14 +313,6 @@ void InWhichElement(struct GeoData *GeoData, List_T *ExcludeRegion_L,
   if(!GeoData->ElementSearch) Init_ElementSearch(GeoData);
   struct ElementSearch *S = GeoData->ElementSearch;
 
-  double tol;
-  if((Dim == DIM_1D && Current.GeoData->Dimension == DIM_3D) ||
-     (Dim == DIM_1D && Current.GeoData->Dimension == DIM_2D) ||
-     (Dim == DIM_2D && Current.GeoData->Dimension == DIM_3D))
-    tol = Current.GeoData->CharacteristicLength * 1.e-4; /* instead of 5.e-3 */
-  else
-    tol = Current.GeoData->CharacteristicLength * 1.e-8;
-
   // the boxes are numbered by decreasing dimension: those of the dimension
   // we look for have the numbers first, ..., last - 1; top is the dimension
   // of the elements that are tested first
@@ -348,7 +339,7 @@ void InWhichElement(struct GeoData *GeoData, List_T *ExcludeRegion_L,
   // first if there are volumes, since it would hide the volume of the point
   if(LastGeoElement && DimensionOfElementType(LastGeoElement->Type) == top) {
     Element->GeoElement = LastGeoElement;
-    if(PointInElement(Element, ExcludeRegion_L, x, y, z, u, v, w, tol)) {
+    if(PointInElement(Element, ExcludeRegion_L, x, y, z, u, v, w)) {
       return;
     }
   }
@@ -358,7 +349,7 @@ void InWhichElement(struct GeoData *GeoData, List_T *ExcludeRegion_L,
   for(std::size_t i = 0; i < found.size(); i++) {
     if(found[i] < first || found[i] >= last) continue;
     Element->GeoElement = S->Elements[found[i]];
-    if(PointInElement(Element, ExcludeRegion_L, x, y, z, u, v, w, tol)) {
+    if(PointInElement(Element, ExcludeRegion_L, x, y, z, u, v, w)) {
       LastGeoElement = Element->GeoElement;
       return;
     }

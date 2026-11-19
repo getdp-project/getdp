@@ -560,6 +560,10 @@ static bool AnyOperation(List_T *Operations, bool (*test)(struct Operation *))
 
 static const char *WhatNeedsAllDofs()
 {
+  // the point can be anywhere in the mesh, in an element of another rank
+  if(Problem_S.HasQuantityAtCoordinates)
+    return "a quantity evaluated at given coordinates";
+
   for(int i = 0; i < List_Nbr(Problem_S.Group); i++)
     if(((struct Group *)List_Pointer(Problem_S.Group, i))->Type == MOVINGBAND2D)
       return "a moving band";
@@ -597,6 +601,15 @@ static const char *WhatNeedsAllDofs()
   for(int i = 0; i < List_Nbr(Problem_S.Resolution); i++) {
     struct Resolution *r =
       (struct Resolution *)List_Pointer(Problem_S.Resolution, i);
+    // a quantity of a system on another mesh is evaluated at coordinates
+    for(int j = 1; j < List_Nbr(r->DefineSystem); j++) {
+      const char *m0 =
+        ((struct DefineSystem *)List_Pointer(r->DefineSystem, 0))->MeshName;
+      const char *m =
+        ((struct DefineSystem *)List_Pointer(r->DefineSystem, j))->MeshName;
+      if((m0 != NULL) != (m != NULL) || (m && strcmp(m0, m)))
+        return "systems on different meshes";
+    }
     if(AnyOperation(r->Operation, [](struct Operation *o) {
          return o->Type == OPERATION_COPYDOFS ||
                 o->Type == OPERATION_FOURIERTRANSFORM ||
@@ -619,6 +632,13 @@ static const char *WhatNeedsAllDofs()
     for(int j = 0; j < List_Nbr(po->PostSubOperation); j++) {
       struct PostSubOperation *p =
         (struct PostSubOperation *)List_Pointer(po->PostSubOperation, j);
+      // evaluated by all the ranks, at nodes that are not all in their part
+      if(p->Type == POP_PRINT && p->SubType == PRINT_ONREGION &&
+         p->Case.OnRegion.RegionIndex >= 0 &&
+         ((struct Group *)List_Pointer(Problem_S.Group,
+                                       p->Case.OnRegion.RegionIndex))
+             ->FunctionType != REGION)
+        return "a Print on the nodes of a region";
       if(p->Type == POP_PRINT && p->SubType != PRINT_ONREGION &&
          (p->StoreInField >= 0 || p->StoreInMeshBasedField >= 0 ||
           p->StoreInRegister >= 0 || p->StoreInVariable ||

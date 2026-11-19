@@ -146,6 +146,7 @@ void Init_ProblemStructure()
   Problem_S.Resolution = NULL;
   Problem_S.PostProcessing = NULL;
   Problem_S.PostOperation = NULL;
+  Problem_S.HasQuantityAtCoordinates = false;
 
   Current.Name = NULL;
   Current.NbrSystem = 0;

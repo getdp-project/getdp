@@ -92,6 +92,9 @@ struct Problem {
   List_T *JacobianMethod, *IntegrationMethod;
   List_T *Resolution, *PostProcessing, *PostOperation;
 
+  // is a discrete quantity evaluated at given coordinates ({u}[x, y, z])?
+  bool HasQuantityAtCoordinates;
+
   // maps used only in the parser, to speed up queries by name
   std::map<std::string, int> GroupIndices, ExpressionIndices;
 };

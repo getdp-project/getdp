@@ -15,13 +15,23 @@
      TransferSolution, done by each rank for its degrees of freedom
 
    getdp parallel.pro -solve Periodic -pos Periodic
-     a Link constraint, which relates degrees of freedom of different ranks */
+     a Link constraint, which relates degrees of freedom of different ranks
+
+   getdp parallel.pro -solve Laplace -pos Regions
+     the quantities on regions: integrals, summed over the ranks, and values
+     at the nodes of a region, which need all the degrees of freedom on all
+     the ranks
+
+   The tests are also run with -all-dofs (all the degrees of freedom on all the
+   ranks), on a mesh partitioned by Gmsh (parallel_partitioned.geo), and with
+   the pre-processing and the processing done by two runs of getdp. */
 
 Group {
   Domain = Region[1];
   Left = Region[2];
   Right = Region[3];
   Everything = Region[{Domain, Left, Right}];
+  InnerNodes = NodesOf[Domain, Not {Left, Right}];
 }
 
 Function {
@@ -153,6 +163,12 @@ PostProcessing {
       { Name grad_u; Value { Term { [ {d u} ]; In Domain; Jacobian Vol; } } }
       { Name int_u; Value {
           Integral { [ {u} ]; In Domain; Jacobian Vol; Integration Int; } } }
+      // an integral, summed over the ranks, and a term that is not
+      { Name int_u_plus_one; Value {
+          Integral { [ {u} ]; In Domain; Jacobian Vol; Integration Int; }
+          Term { [ 1 ]; In Domain; Jacobian Vol; } } }
+      { Name int_grad_u; Value {
+          Integral { [ {d u} ]; In Domain; Jacobian Vol; Integration Int; } } }
     }
   }
   { Name Transferred; NameOfFormulation Mass; NameOfSystem B;
@@ -244,6 +260,16 @@ PostOperation {
       Print[ u, OnLine {{0.013, 0.021, 0} {0.987, 0.933, 0}} {200}, Format Table,
         File "line_u.txt" ];
       Print[ u, OnElementsOf Domain, File "u.pos" ];
+    }
+  }
+  { Name Regions; NameOfPostProcessing Laplace;
+    Operation {
+      Print[ int_u[Domain], OnGlobal, Format Table, File "integral_u.txt" ];
+      Print[ int_u_plus_one[Domain], OnGlobal, Format Table,
+        File "integral_u_plus_one.txt" ];
+      Print[ int_grad_u[Domain], OnGlobal, Format Table,
+        File "integral_grad_u.txt" ];
+      Print[ u, OnRegion InnerNodes, Format Table, File "nodes_u.txt" ];
     }
   }
 }
