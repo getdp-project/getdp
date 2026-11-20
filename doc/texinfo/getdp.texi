@@ -640,7 +640,12 @@ with hypre (if PETSc was built with it):
 @itemize @bullet
 @item
 for a symmetric positive definite problem with nodal unknowns (a scalar
-potential): @code{-ksp_type cg -pc_type hypre -pc_hypre_type boomeramg};
+potential): @code{-ksp_type cg -pc_type hypre -pc_hypre_type boomeramg}. In 3D
+the options @code{-pc_hypre_boomeramg_coarsen_type HMIS
+-pc_hypre_boomeramg_interp_type ext+i -pc_hypre_boomeramg_P_max 4
+-pc_hypre_boomeramg_agg_nl 1 -pc_hypre_boomeramg_strong_threshold 0.5} make
+each iteration much cheaper than with the default options, for a few more
+iterations, which pays off more and more as the number of processes grows;
 @item
 for a symmetric positive (semi-)definite problem whose unknowns are the
 circulations of a vector field on the edges of the mesh (lowest order edge

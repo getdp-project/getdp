@@ -5,6 +5,7 @@
 
      Space = 0: - div(nu grad u) + u = 1, with u = 0 on the boundary (nodal
        unknowns), e.g. with -ksp_type cg -pc_type hypre -pc_hypre_type boomeramg
+       (see utils/misc/scaling.py for options that make it faster in 3D)
 
      Space = 1: curl(nu curl a) + a = j, with n x a = 0 on the boundary (edge
        unknowns), e.g. with -ksp_type cg -pc_type hypre -pc_hypre_type ams

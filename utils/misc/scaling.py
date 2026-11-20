@@ -34,8 +34,15 @@ import sys
 import tempfile
 import time
 
+# (for BoomerAMG in 3D: HMIS coarsening, extended+i interpolation with at most
+# 4 entries per row, one level of aggressive coarsening and a strength
+# threshold of 0.5 give cheaper coarse levels than the defaults of PETSc, for
+# a few more iterations)
 SOLVER_OPTIONS = {
-    0: '-ksp_type cg -pc_type hypre -pc_hypre_type boomeramg -ksp_rtol 1e-8',
+    0: '-ksp_type cg -pc_type hypre -pc_hypre_type boomeramg -ksp_rtol 1e-8 '
+       '-pc_hypre_boomeramg_coarsen_type HMIS '
+       '-pc_hypre_boomeramg_interp_type ext+i -pc_hypre_boomeramg_P_max 4 '
+       '-pc_hypre_boomeramg_agg_nl 1 -pc_hypre_boomeramg_strong_threshold 0.5',
     1: '-ksp_type cg -pc_type hypre -pc_hypre_type ams -ksp_rtol 1e-8',
 }
 
