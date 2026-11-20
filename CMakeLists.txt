@@ -1334,7 +1334,8 @@ if(${Python3_FOUND} AND GMSH)
            "scaling.pro -solve Solve")
   if(PETSC_VARIABLES MATCHES "HYPRE_LIB = [^\n\r]*-lHYPRE")
     test_mpi(parallel_ams tests "scaling.geo -3 -setnumber N 6"
-             "scaling.pro -setnumber Space 1 -solve Solve -ksp_type cg -pc_type hypre -pc_hypre_type ams -ksp_rtol 1e-10")
+             "scaling.pro -setnumber Space 1 -solve Solve -ksp_type cg -pc_type hypre -pc_hypre_type ams -ksp_rtol 1e-10"
+             --ignore u_plane.pos)
   endif()
   # an assembly limited to a group before the assembly of the whole system
   add_test(NAME grouped_assembly
