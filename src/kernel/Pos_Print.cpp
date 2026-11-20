@@ -1415,6 +1415,14 @@ void Pos_PrintOnGrid(struct PostQuantity *NCPQ_P, struct PostQuantity *CPQ_P,
 
   Pos_SearchInPartitionOfThisRank(false);
 
+  // the value at a point, stored by the first rank, is sent to the others
+  if(overRanks && PSO_P->SubType == PRINT_ONGRID_0D) {
+    if(PSO_P->StoreInRegister >= 0)
+      Cal_BroadcastValueInRegister(PSO_P->StoreInRegister, 0);
+    if(PSO_P->StoreInVariable)
+      Cal_BroadcastValueInVariable(PSO_P->StoreInVariable, 0);
+  }
+
   Destroy_PostElement(PE);
 
   if(printHere) Format_PostFooter(PSO_P, 0);

@@ -1962,9 +1962,6 @@ void Dof_SyncPreResolutions(List_T *PreResolutionInfo_L)
                  displs.data(), MPI_INT, MPI_COMM_WORLD);
   List_Reset(PreResolutionInfo_L);
   for(int i = 0; i < total; i += 2) {
-    if(all[i + 1] == PR_GLOBALBASISFUNCTION)
-      Message::Error("Rank-local Dofs (use -all-dofs) do not handle pre-resolutions of global "
-                     "basis functions yet");
     if(List_ISearchSeq(PreResolutionInfo_L, &all[i], fcmp_int) >= 0) continue;
     struct PreResolutionInfo info;
     info.Index = all[i];

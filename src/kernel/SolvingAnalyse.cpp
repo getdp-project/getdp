@@ -558,6 +558,38 @@ static bool AnyOperation(List_T *Operations, bool (*test)(struct Operation *))
   return false;
 }
 
+// The post-operations that can be run: those of the command line and those of
+// the resolutions.
+static std::set<std::string> PostOperationNames;
+
+static void Get_PostOperationNames()
+{
+  PostOperationNames.clear();
+  for(int i = 0; Flag_POS && i < NBR_MAX_POS && Name_PostOperation[i]; i++)
+    PostOperationNames.insert(Name_PostOperation[i]);
+
+  for(int i = 0; i < List_Nbr(Problem_S.Resolution); i++) {
+    struct Resolution *r =
+      (struct Resolution *)List_Pointer(Problem_S.Resolution, i);
+    AnyOperation(r->Operation, [](struct Operation *o) {
+      List_T *names = NULL, *errors = NULL;
+      if(o->Type == OPERATION_POSTOPERATION)
+        names = o->Case.PostOperation.PostOperations;
+      else if(o->Type == OPERATION_TIMELOOPADAPTIVE)
+        errors = o->Case.TimeLoopAdaptive.TimeLoopAdaptivePOs_L;
+      else if(o->Type == OPERATION_ITERATIVELOOPADVANCED)
+        errors = o->Case.IterativeLoop.IterativeLoopPOs_L;
+      for(int j = 0; j < List_Nbr(names); j++)
+        PostOperationNames.insert(*(char **)List_Pointer(names, j));
+      for(int j = 0; j < List_Nbr(errors); j++)
+        PostOperationNames.insert(
+          ((struct LoopErrorPostOperation *)List_Pointer(errors, j))
+            ->PostOperationName);
+      return false;
+    });
+  }
+}
+
 static const char *WhatNeedsAllDofs()
 {
   // the point can be anywhere in the mesh, in an element of another rank
@@ -578,15 +610,6 @@ static const char *WhatNeedsAllDofs()
       default: break;
       }
     }
-  }
-
-  for(int i = 0; i < List_Nbr(Problem_S.FunctionSpace); i++) {
-    struct FunctionSpace *f =
-      (struct FunctionSpace *)List_Pointer(Problem_S.FunctionSpace, i);
-    for(int j = 0; j < List_Nbr(f->BasisFunction); j++)
-      if(List_Nbr(((struct BasisFunction *)List_Pointer(f->BasisFunction, j))
-                    ->GlobalBasisFunction))
-        return "a global basis function";
   }
 
   for(int i = 0; i < List_Nbr(Problem_S.Formulation); i++) {
@@ -645,10 +668,12 @@ static const char *WhatNeedsAllDofs()
       return "a post-operation with ResampleTime";
 
   // a Print on the mesh is evaluated by the first rank alone, and what it
-  // stores would be missing on the others
+  // stores would be missing on the others (in the post-operations that can be
+  // run)
   for(int i = 0; i < List_Nbr(Problem_S.PostOperation); i++) {
     struct PostOperation *po =
       (struct PostOperation *)List_Pointer(Problem_S.PostOperation, i);
+    if(!PostOperationNames.count(po->Name)) continue;
     for(int j = 0; j < List_Nbr(po->PostSubOperation); j++) {
       struct PostSubOperation *p =
         (struct PostSubOperation *)List_Pointer(po->PostSubOperation, j);
@@ -659,9 +684,12 @@ static const char *WhatNeedsAllDofs()
                                        p->Case.OnRegion.RegionIndex))
              ->FunctionType != REGION)
         return "a Print on the nodes of a region";
+      // (the value at a point is found by a rank, stored by the first one and
+      // sent to all, see Pos_PrintOnGrid)
+      const bool point = (p->SubType == PRINT_ONGRID_0D);
       if(p->Type == POP_PRINT && p->SubType != PRINT_ONREGION &&
          (p->StoreInField >= 0 || p->StoreInMeshBasedField >= 0 ||
-          p->StoreInRegister >= 0 || p->StoreInVariable ||
+          (!point && (p->StoreInRegister >= 0 || p->StoreInVariable)) ||
           p->StoreMinInRegister >= 0 || p->StoreMaxInRegister >= 0 ||
           p->StoreMinXinRegister >= 0 || p->StoreMaxXinRegister >= 0 ||
           p->StoreMinYinRegister >= 0 || p->StoreMaxYinRegister >= 0 ||
@@ -675,36 +703,10 @@ static const char *WhatNeedsAllDofs()
 // With rank-local Dofs, what the first rank does alone on the whole mesh, for
 // which it keeps the Dofs of all the ranks (see Dof_GetAllDofsOnFirstRank): a
 // Print that is not evaluated by all the ranks, in the post-operations that can
-// be run (those of the command line and those of the resolutions).
-static std::set<std::string> PostOperationNames;
+// be run.
 
 static const char *WhatNeedsAllDofsOnFirstRank()
 {
-  PostOperationNames.clear();
-  for(int i = 0; Flag_POS && i < NBR_MAX_POS && Name_PostOperation[i]; i++)
-    PostOperationNames.insert(Name_PostOperation[i]);
-
-  for(int i = 0; i < List_Nbr(Problem_S.Resolution); i++) {
-    struct Resolution *r =
-      (struct Resolution *)List_Pointer(Problem_S.Resolution, i);
-    AnyOperation(r->Operation, [](struct Operation *o) {
-      List_T *names = NULL, *errors = NULL;
-      if(o->Type == OPERATION_POSTOPERATION)
-        names = o->Case.PostOperation.PostOperations;
-      else if(o->Type == OPERATION_TIMELOOPADAPTIVE)
-        errors = o->Case.TimeLoopAdaptive.TimeLoopAdaptivePOs_L;
-      else if(o->Type == OPERATION_ITERATIVELOOPADVANCED)
-        errors = o->Case.IterativeLoop.IterativeLoopPOs_L;
-      for(int j = 0; j < List_Nbr(names); j++)
-        PostOperationNames.insert(*(char **)List_Pointer(names, j));
-      for(int j = 0; j < List_Nbr(errors); j++)
-        PostOperationNames.insert(
-          ((struct LoopErrorPostOperation *)List_Pointer(errors, j))
-            ->PostOperationName);
-      return false;
-    });
-  }
-
   for(int i = 0; i < List_Nbr(Problem_S.PostOperation); i++) {
     struct PostOperation *po =
       (struct PostOperation *)List_Pointer(Problem_S.PostOperation, i);
@@ -768,6 +770,7 @@ void SolvingAnalyse()
   DofData_L = 0; // in case of errors before it is created
   GeoData_L = List_Create(1, 5, sizeof(struct GeoData));
 
+  Get_PostOperationNames();
   if(Flag_LOCAL_DOFS && Message::GetCommSize() > 1) {
     const char *what = WhatNeedsAllDofs();
     if(what) {
