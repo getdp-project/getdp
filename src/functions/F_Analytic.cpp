@@ -15,6 +15,8 @@
 
 #include <math.h>
 #include <stdlib.h>
+#include <vector>
+#include <algorithm>
 #include "ProData.h"
 #include "F.h"
 #include "Legendre.h"
@@ -2459,138 +2461,75 @@ double sph_pnm(int n, int m, double u)
   return res;
 }
 
+// The normalized functions u_k^m(u) for k = n and k = n - 1 (0 if k < m),
+// with m >= 0, by recurrence on k from the diagonal u_m^m (u_k^0 = 0)
+static void sph_unm_rec(int m, int n, double u, double *un, double *un1)
+{
+  *un = *un1 = 0.;
+  if(m < 1 || m > n) return;
+  const double s = sqrt(1. - u * u), mf = m;
+  double d = -0.25 * sqrt(3. / M_PI);
+  for(int k = 2; k <= m; k++) {
+    double kf = k;
+    d *= -sqrt((kf * (2. * kf + 1.)) / (2. * (kf + 1.) * (kf - 1.))) * s;
+  }
+  double a = 0., b = d; // u_{k-1}^m and u_k^m
+  for(int k = m + 1; k <= n; k++) {
+    double kf = k, c;
+    if(k == m + 1)
+      c = sqrt((2. * kf + 1.) * (kf - 1.) / (kf + 1.)) * u * b;
+    else
+      c = sqrt(((4. * kf * kf - 1.) * (kf - 1.)) /
+               ((kf * kf - mf * mf) * (kf + 1.))) *
+            b * u -
+          sqrt(((2. * kf + 1.) * (kf - 1.) * (kf - 2.) * (kf - mf - 1.) *
+                (kf + mf - 1.)) /
+               ((2. * kf - 3.) * (kf * kf - mf * mf) * kf * (kf + 1.))) *
+            a;
+    a = b;
+    b = c;
+  }
+  *un = b;
+  *un1 = a;
+}
+
+// u_n^m(u) and s_n^m(u), with u_n^-m = (-1)^(m+1) u_n^m and s_n^-m = (-1)^m
+// s_n^m
+static void sph_unm_snm(int n, int m, double u, double *unm, double *snm)
+{
+  if(abs(m) > n) Message::Error("|m|<=n for the normalized unm's and snm's");
+  const int a = abs(m);
+  const double nf = n, mf = a;
+  double un, un1, s;
+  sph_unm_rec(a, n, u, &un, &un1);
+  if(!a) {
+    double u1n, u1n1;
+    sph_unm_rec(1, n, u, &u1n, &u1n1);
+    s = sqrt((nf + 1.) * nf) * sqrt(1. - u * u) * u1n + u * un;
+  }
+  else
+    s = nf / mf * u * un -
+        (mf + nf) / mf *
+          sqrt(((2. * nf + 1.) * (nf - mf) * (nf - 1.)) /
+               ((2. * nf - 1.) * (nf + mf) * (nf + 1.))) *
+          un1;
+  bool odd = (a % 2);
+  if(unm) *unm = (m < 0 && !odd) ? -un : un;
+  if(snm) *snm = (m < 0 && odd) ? -s : s;
+}
+
 double sph_unm(int n, int m, double u)
 {
-  int k, kn, km;
-  double knf, kmf, **umntab;
-
-  if(abs(m) > n) Message::Error("|m|<=n for the normalized unm's");
-  umntab = (double **)Malloc((2 * n + 1) * sizeof(double *));
-  for(k = 0; k <= 2 * n; k++) {
-    umntab[k] = (double *)Malloc((n + 1) * sizeof(double));
-  }
-
-  for(km = 0; km <= 2 * n; km++) {
-    for(kn = 0; kn <= n; kn++) { umntab[km][kn] = 0.; }
-  }
-  // initialize recur.
-  umntab[n][0] = 0.;
-  umntab[n + 1][1] = -0.25 * sqrt(3. / M_PI);
-  // fill diag and first diag
-  for(kn = 2; kn <= n; kn++) {
-    knf = (double)kn;
-    umntab[n + kn][kn] =
-      -sqrt((knf * (2. * knf + 1.)) / (2. * (knf + 1.) * (knf - 1.))) *
-      sqrt(1. - pow(u, 2)) * umntab[n + kn - 1][kn - 1];
-    umntab[n + kn - 1][kn] = sqrt((2. * knf + 1.) * (knf - 1.) / (knf + 1.)) *
-                             u * umntab[n + kn - 1][kn - 1];
-  }
-  for(kn = 2; kn <= n; kn++) {
-    for(km = 0; km <= kn - 2; km++) {
-      knf = (double)kn;
-      kmf = (double)km;
-      umntab[n + km][kn] = sqrt(((4. * pow(knf, 2) - 1.) * (knf - 1.)) /
-                                ((pow(knf, 2) - pow(kmf, 2)) * (knf + 1.))) *
-                             umntab[n + km][kn - 1] * u -
-                           sqrt(((2. * knf + 1.) * (knf - 1.) * (knf - 2.) *
-                                 (knf - kmf - 1.) * (knf + kmf - 1.)) /
-                                ((2. * knf - 3.) * (pow(knf, 2) - pow(kmf, 2)) *
-                                 knf * (knf + 1.))) *
-                             umntab[n + km][kn - 2];
-    }
-  }
-  for(kn = 0; kn <= n; kn++) {
-    for(km = n - 1; km >= 0; km--) {
-      umntab[km][kn] = pow(-1, n - km + 1) * umntab[2 * n - km][kn];
-    }
-  }
-  double res = umntab[n + m][n];
-  for(k = 0; k <= 2 * n; k++) { Free(umntab[k]); }
-  Free(umntab);
-  return res;
+  double unm;
+  sph_unm_snm(n, m, u, &unm, nullptr);
+  return unm;
 }
 
 double sph_snm(int n, int m, double u)
 {
-  int k, kn, km;
-  double knf, kmf, **umntab, **smntab;
-  if(abs(m) > n) Message::Error("|m|<=n for the normalized snm's");
-  umntab = (double **)Malloc((2 * n + 1) * sizeof(double *));
-  smntab = (double **)Malloc((2 * n + 1) * sizeof(double *));
-  for(k = 0; k <= 2 * n; k++) {
-    umntab[k] = (double *)Malloc((n + 1) * sizeof(double));
-    smntab[k] = (double *)Malloc((n + 1) * sizeof(double));
-  }
-  for(km = 0; km <= 2 * n; km++) {
-    for(kn = 0; kn <= n; kn++) {
-      umntab[km][kn] = 0.;
-      smntab[km][kn] = 0.;
-    }
-  }
-
-  // initialize recur.
-  umntab[n][0] = 0.;
-  umntab[n + 1][1] = -0.25 * sqrt(3. / M_PI);
-  // fill diag and first diag
-  for(kn = 2; kn <= n; kn++) {
-    knf = (double)kn;
-    umntab[n + kn][kn] =
-      -sqrt((knf * (2. * knf + 1.)) / (2. * (knf + 1.) * (knf - 1.))) *
-      sqrt(1. - pow(u, 2)) * umntab[n + kn - 1][kn - 1];
-    umntab[n + kn - 1][kn] = sqrt((2. * knf + 1.) * (knf - 1.) / (knf + 1.)) *
-                             u * umntab[n + kn - 1][kn - 1];
-  }
-  for(kn = 2; kn <= n; kn++) {
-    for(km = 0; km <= kn - 2; km++) {
-      knf = (double)kn;
-      kmf = (double)km;
-      umntab[n + km][kn] = sqrt(((4. * pow(knf, 2) - 1.) * (knf - 1.)) /
-                                ((pow(knf, 2) - pow(kmf, 2)) * (knf + 1.))) *
-                             umntab[n + km][kn - 1] * u -
-                           sqrt(((2. * knf + 1.) * (knf - 1.) * (knf - 2.) *
-                                 (knf - kmf - 1.) * (knf + kmf - 1.)) /
-                                ((2. * knf - 3.) * (pow(knf, 2) - pow(kmf, 2)) *
-                                 knf * (knf + 1.))) *
-                             umntab[n + km][kn - 2];
-    }
-  }
-  for(kn = 0; kn <= n; kn++) {
-    for(km = n - 1; km >= 0; km--) {
-      umntab[km][kn] = pow(-1, n - km + 1) * umntab[2 * n - km][kn];
-    }
-  }
-  for(kn = 0; kn <= n; kn++) {
-    km = 0;
-    kmf = 0.;
-    knf = (double)kn;
-    smntab[n + km][kn] = 1. / (kmf + 1) * sqrt((knf + kmf + 1.) * (knf - kmf)) *
-                           sqrt(1. - pow(u, 2)) * umntab[n + km + 1][kn] +
-                         u * umntab[n + km][kn];
-  }
-  for(kn = 1; kn <= n; kn++) {
-    for(km = 1; km <= kn; km++) {
-      knf = (double)kn;
-      kmf = (double)km;
-      smntab[n + km][kn] =
-        knf / kmf * u * umntab[n + km][kn] -
-        (kmf + knf) / kmf *
-          sqrt(((2. * knf + 1.) * (knf - kmf) * (knf - 1.)) /
-               ((2. * knf - 1.) * (knf + kmf) * (knf + 1.))) *
-          umntab[n + km][kn - 1];
-    }
-  }
-  for(kn = 0; kn <= n; kn++) {
-    for(km = n - 1; km >= 0; km--) {
-      smntab[km][kn] = pow(-1, n - km) * smntab[2 * n - km][kn];
-    }
-  }
-  double res = smntab[n + m][n];
-  for(k = 0; k <= 2 * n; k++) {
-    Free(umntab[k]);
-    Free(smntab[k]);
-  }
-  Free(smntab);
-  return res;
+  double snm;
+  sph_unm_snm(n, m, u, nullptr, &snm);
+  return snm;
 }
 
 void F_pnm(F_ARG)
@@ -2661,8 +2600,7 @@ void F_Xnm(F_ARG)
   theta = acos(costheta);
   phi = atan2(-y, -x) + M_PI;
 
-  unm_costheta = sph_unm(n, m, costheta);
-  snm_costheta = sph_snm(n, m, costheta);
+  sph_unm_snm(n, m, costheta, &unm_costheta, &snm_costheta);
   exp_jm_phi_re = cos(((double)m) * phi);
   exp_jm_phi_im = sin(((double)m) * phi);
 
@@ -2787,8 +2725,7 @@ void F_Znm(F_ARG)
   theta = acos(costheta);
   phi = atan2(-y, -x) + M_PI;
 
-  unm_costheta = sph_unm(n, m, costheta);
-  snm_costheta = sph_snm(n, m, costheta);
+  sph_unm_snm(n, m, costheta, &unm_costheta, &snm_costheta);
   exp_jm_phi_re = cos(((double)m) * phi);
   exp_jm_phi_im = sin(((double)m) * phi);
 
@@ -2853,8 +2790,7 @@ void F_Mnm(F_ARG)
   phi = atan2(-y, -x) + M_PI;
 
   // pnm_costheta  = sph_pnm(n,m,costheta);
-  unm_costheta = sph_unm(n, m, costheta);
-  snm_costheta = sph_snm(n, m, costheta);
+  sph_unm_snm(n, m, costheta, &unm_costheta, &snm_costheta);
   exp_jm_phi_re = cos(((double)m) * phi);
   exp_jm_phi_im = sin(((double)m) * phi);
 
@@ -2950,8 +2886,7 @@ void F_Nnm(F_ARG)
   phi = atan2(-y, -x) + M_PI;
 
   pnm_costheta = sph_pnm(n, m, costheta);
-  unm_costheta = sph_unm(n, m, costheta);
-  snm_costheta = sph_snm(n, m, costheta);
+  sph_unm_snm(n, m, costheta, &unm_costheta, &snm_costheta);
   exp_jm_phi_re = cos((double)m * phi);
   exp_jm_phi_im = sin((double)m * phi);
 
