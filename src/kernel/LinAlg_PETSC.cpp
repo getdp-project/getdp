@@ -1958,37 +1958,25 @@ static bool _getAMSEdges(AMSEdges &a)
       return false;
     }
   }
-  // with rank-local Dofs the rows of the other ranks' edges are not known here
-  std::unordered_map<int, int> rows;
-  const bool localDofs = Dof_UseLocalDofs();
-  if(localDofs) {
-    std::vector<int> mine;
-    for(int i = 0; i < List_Nbr(DofData_P->DofList); i++) {
-      struct Dof *Dof_P = (struct Dof *)List_Pointer(DofData_P->DofList, i);
-      if(Dof_P->Type == DOF_UNKNOWN || Dof_P->Type == DOF_UNKNOWN_INIT) {
-        mine.push_back(Dof_P->Entity);
-        mine.push_back(Dof_P->Case.Unknown.NumDof - 1);
-      }
-    }
-    int np = Message::GetCommSize(), nb = (int)mine.size();
-    std::vector<int> nbs(np), displs(np, 0);
-    MPI_Allgather(&nb, 1, MPI_INT, &nbs[0], 1, MPI_INT, MPI_COMM_WORLD);
-    long long total = nbs[0];
-    for(int i = 1; i < np; i++) {
-      displs[i] = displs[i - 1] + nbs[i - 1];
-      total += nbs[i];
-    }
-    std::vector<int> all(total + 1);
-    MPI_Allgatherv(mine.empty() ? NULL : &mine[0], nb, MPI_INT, &all[0], &nbs[0],
-                   &displs[0], MPI_INT, MPI_COMM_WORLD);
-    rows.reserve(total / 2);
-    for(long long i = 0; i + 1 < total; i += 2) rows[all[i]] = all[i + 1];
-  }
+  auto rowOf = [&](int num) {
+    struct Dof *Dof_P = Dof_GetDofStruct(DofData_P, NumType, num, 0);
+    return (Dof_P && (Dof_P->Type == DOF_UNKNOWN ||
+                      Dof_P->Type == DOF_UNKNOWN_INIT)) ?
+             Dof_P->Case.Unknown.NumDof - 1 :
+             -1;
+  };
   // the edges of the elements, from their first to their second node in
   // increasing order of the node numbers, sorted by nodes (they are taken from
   // the elements, as the table of the edges is not there when the edges were
-  // read from the .pre file)
-  std::map<std::pair<int, int>, std::pair<int, bool> > edges;
+  // read from the .pre file): their number, whether they are in an element of
+  // the partition of this rank, and otherwise the rank of an element that
+  // has them
+  struct EdgeInfo {
+    int num = 0, other = -1;
+    bool own = false;
+  };
+  const int np = Message::GetCommSize();
+  std::map<std::pair<int, int>, EdgeInfo> edges;
   for(int i = 0; i < Geo_GetNbrGeoElements(); i++) {
     struct Geo_Element *ge = Geo_GetGeoElement(i);
     const bool own = Dof_IsPartitionOfThisRank(ge->Partition);
@@ -1997,28 +1985,47 @@ static bool _getAMSEdges(AMSEdges &a)
       if(!local[0] || !local[1] || local[2]) continue;
       int n0 = abs(ge->NumNodes[abs(local[0]) - 1]);
       int n1 = abs(ge->NumNodes[abs(local[1]) - 1]);
-      std::pair<int, bool> &e =
-        edges[std::make_pair(std::min(n0, n1), std::max(n0, n1))];
-      e.first = abs(ge->NumEdges[k]);
-      if(own) e.second = true;
+      EdgeInfo &e = edges[std::make_pair(std::min(n0, n1), std::max(n0, n1))];
+      e.num = abs(ge->NumEdges[k]);
+      if(own) e.own = true;
+      e.other = (ge->Partition > 0) ? (ge->Partition - 1) % np : np - 1;
     }
   }
+
+  // the rows of the edges: with rank-local Dofs a rank only has the Dofs of
+  // the edges of its own elements, and asks the rows of the others to the
+  // rank of an element that has them
+  std::vector<int> rows(edges.size(), -1);
+  std::vector<std::vector<int> > send(np), recv, asked(np);
+  int i = 0;
   for(auto &e : edges) {
-    const int Num = e.second.first, nodes[2] = {e.first.first, e.first.second};
-    AMSEdges::Edge ed;
-    ed.num = Num;
-    ed.own = e.second.second;
-    if(localDofs) {
-      auto it = rows.find(Num);
-      ed.row = (it == rows.end()) ? -1 : it->second;
-    }
+    if(e.second.own || !Dof_UseLocalDofs())
+      rows[i] = rowOf(e.second.num);
     else {
-      struct Dof *Dof_P = Dof_GetDofStruct(DofData_P, NumType, Num, 0);
-      ed.row = (Dof_P && (Dof_P->Type == DOF_UNKNOWN ||
-                          Dof_P->Type == DOF_UNKNOWN_INIT)) ?
-                 Dof_P->Case.Unknown.NumDof - 1 :
-                 -1;
+      send[e.second.other].push_back(e.second.num);
+      asked[e.second.other].push_back(i);
     }
+    i++;
+  }
+  if(Dof_UseLocalDofs()) {
+    Message::Exchange(send, recv);
+    for(int r = 0; r < np; r++) {
+      send[r].clear();
+      for(int num : recv[r]) send[r].push_back(rowOf(num));
+    }
+    Message::Exchange(send, recv);
+    for(int r = 0; r < np; r++)
+      for(std::size_t j = 0; j < recv[r].size(); j++)
+        rows[asked[r][j]] = recv[r][j];
+  }
+
+  i = 0;
+  for(auto &e : edges) {
+    const int nodes[2] = {e.first.first, e.first.second};
+    AMSEdges::Edge ed;
+    ed.num = e.second.num;
+    ed.own = e.second.own;
+    ed.row = rows[i++];
     for(int j = 0; j < 2; j++) {
       int num = nodes[j];
       ed.s[j] = j ? -1 : 1;
@@ -2063,8 +2070,9 @@ static void _setupAMS(PC pc, Mat A)
   if(Dof_UseLocalDofs()) {
     // A rank may only have a part of the mesh: it knows all the edges of the
     // nodes of its own elements, and thus whether these nodes are in the space
-    // and who owns them. Each rank numbers the nodes it owns, and the numbers
-    // go to all the ranks.
+    // and who owns them. Each rank numbers the nodes it owns after those of
+    // the previous ranks, and asks the owners the numbers of the other nodes
+    // of the edges of its rows.
     std::vector<char> complete(nodes.size(), 0);
     for(int e = 0; e < Geo_GetNbrGeoElements(); e++) {
       struct Geo_Element *ge = Geo_GetGeoElement(e);
@@ -2080,18 +2088,43 @@ static void _setupAMS(PC pc, Mat A)
         myNodes.push_back(nodes[i]);
     std::sort(myNodes.begin(), myNodes.end());
     nloc = myNodes.size();
-    int nb = (int)nloc;
-    std::vector<int> nbs(size), displs(size, 0);
-    MPI_Allgather(&nb, 1, MPI_INT, &nbs[0], 1, MPI_INT, comm);
-    for(int i = 1; i < size; i++) displs[i] = displs[i - 1] + nbs[i - 1];
-    ncols = displs[size - 1] + nbs[size - 1];
-    std::vector<int> all(ncols + 1);
-    MPI_Allgatherv(myNodes.empty() ? NULL : &myNodes[0], nb, MPI_INT, &all[0],
-                   &nbs[0], &displs[0], MPI_INT, comm);
-    for(PetscInt c = 0; c < ncols; c++) {
-      auto it = nodeIndex.find(all[c]);
-      if(it != nodeIndex.end()) col[it->second] = c;
+    PetscInt first = 0;
+    MPI_Exscan(&nloc, &first, 1, MPIU_INT, MPI_SUM, comm);
+    if(!rank) first = 0;
+    MPI_Allreduce(&nloc, &ncols, 1, MPIU_INT, MPI_SUM, comm);
+    auto columnOf = [&](int num) {
+      auto it = std::lower_bound(myNodes.begin(), myNodes.end(), num);
+      return (it == myNodes.end() || *it != num) ?
+               -1 :
+               (int)(first + (it - myNodes.begin()));
+    };
+    std::vector<std::vector<int> > send(size), recv, asked(size);
+    std::vector<char> requested(nodes.size(), 0);
+    for(auto &ed : edges) {
+      if(ed.row < ranges[rank] || ed.row >= ranges[rank + 1]) continue;
+      for(int j = 0; j < 2; j++) {
+        int k = ed.n[j];
+        if(outside[k] || requested[k]) continue;
+        requested[k] = 1;
+        int owner = std::upper_bound(ranges, ranges + size + 1, minRow[k]) -
+                    ranges - 1;
+        if(owner == rank)
+          col[k] = columnOf(nodes[k]);
+        else {
+          send[owner].push_back(nodes[k]);
+          asked[owner].push_back(k);
+        }
+      }
     }
+    Message::Exchange(send, recv);
+    for(int r = 0; r < size; r++) {
+      send[r].clear();
+      for(int num : recv[r]) send[r].push_back(columnOf(num));
+    }
+    Message::Exchange(send, recv);
+    for(int r = 0; r < size; r++)
+      for(std::size_t j = 0; j < recv[r].size(); j++)
+        col[asked[r][j]] = recv[r][j];
   }
   else {
     std::vector<std::pair<int, int> > cols; // (owner, node number) -> index

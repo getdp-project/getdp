@@ -1490,3 +1490,36 @@ void Message::WriteParallelSections(FILE *stream, const char *fileName,
   std::string().swap(section);
 }
 
+// Sends a list of integers to each rank, and returns the list that each rank
+// sent to this one.
+void Message::Exchange(const std::vector<std::vector<int> > &send,
+                       std::vector<std::vector<int> > &recv)
+{
+#if defined(HAVE_MPI)
+  int np = GetCommSize();
+  std::vector<int> scounts(np), sdispls(np), rcounts(np), rdispls(np);
+  int stotal = 0, rtotal = 0;
+  for(int r = 0; r < np; r++) {
+    scounts[r] = (int)send[r].size();
+    sdispls[r] = stotal;
+    stotal += scounts[r];
+  }
+  std::vector<int> sbuf(stotal + 1);
+  for(int r = 0; r < np; r++)
+    std::copy(send[r].begin(), send[r].end(), sbuf.begin() + sdispls[r]);
+  MPI_Alltoall(&scounts[0], 1, MPI_INT, &rcounts[0], 1, MPI_INT, MPI_COMM_WORLD);
+  for(int r = 0; r < np; r++) {
+    rdispls[r] = rtotal;
+    rtotal += rcounts[r];
+  }
+  std::vector<int> rbuf(rtotal + 1);
+  MPI_Alltoallv(&sbuf[0], &scounts[0], &sdispls[0], MPI_INT, &rbuf[0],
+                &rcounts[0], &rdispls[0], MPI_INT, MPI_COMM_WORLD);
+  recv.assign(np, std::vector<int>());
+  for(int r = 0; r < np; r++)
+    recv[r].assign(rbuf.begin() + rdispls[r],
+                   rbuf.begin() + rdispls[r] + rcounts[r]);
+#else
+  recv = send;
+#endif
+}

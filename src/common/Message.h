@@ -66,6 +66,10 @@ public:
   static void SetCommRank(int val) { _commRank = val; }
   static void SetCommSize(int val) { _commSize = val; }
   static void Barrier();
+  // sends the list send[r] of integers to each rank r, and returns in recv[r]
+  // the list that each rank r sent to this one (all the ranks call it)
+  static void Exchange(const std::vector<std::vector<int> > &send,
+                       std::vector<std::vector<int> > &recv);
   static void WriteParallelSections(FILE *stream, const char *fileName,
                                     std::string &section,
                                     std::vector<long long> *positions = NULL);

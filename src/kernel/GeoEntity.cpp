@@ -504,36 +504,6 @@ void Geo_CreateEntitiesOfElement(
 /* ------------------------------------------------------------------------ */
 
 #if defined(HAVE_MPI)
-// Sends a list of integers to each rank, and returns the list that each rank
-// sent to this one.
-static void Exchange(const std::vector<std::vector<int> > &send,
-                     std::vector<std::vector<int> > &recv)
-{
-  int np = Message::GetCommSize();
-  std::vector<int> scounts(np), sdispls(np), rcounts(np), rdispls(np);
-  int stotal = 0, rtotal = 0;
-  for(int r = 0; r < np; r++) {
-    scounts[r] = (int)send[r].size();
-    sdispls[r] = stotal;
-    stotal += scounts[r];
-  }
-  std::vector<int> sbuf(stotal + 1);
-  for(int r = 0; r < np; r++)
-    std::copy(send[r].begin(), send[r].end(), sbuf.begin() + sdispls[r]);
-  MPI_Alltoall(&scounts[0], 1, MPI_INT, &rcounts[0], 1, MPI_INT, MPI_COMM_WORLD);
-  for(int r = 0; r < np; r++) {
-    rdispls[r] = rtotal;
-    rtotal += rcounts[r];
-  }
-  std::vector<int> rbuf(rtotal + 1);
-  MPI_Alltoallv(&sbuf[0], &scounts[0], &sdispls[0], MPI_INT, &rbuf[0],
-                &rcounts[0], &rdispls[0], MPI_INT, MPI_COMM_WORLD);
-  recv.assign(np, std::vector<int>());
-  for(int r = 0; r < np; r++)
-    recv[r].assign(rbuf.begin() + rdispls[r],
-                   rbuf.begin() + rdispls[r] + rcounts[r]);
-}
-
 // Gives the same numbers on all the ranks to the edges (or to the facets) that
 // each rank has created, with numbers of its own, for the elements of its part
 // of the mesh.
@@ -594,7 +564,7 @@ static void Geo_NumberEntitiesOverRanks(GeoEntityTable *table, bool facets,
     send[rank].push_back(lowest[i]);
     asked[rank].push_back(i);
   }
-  Exchange(send, recv);
+  Message::Exchange(send, recv);
   {
     std::map<std::vector<int>, int> owners;
     for(int r = 0; r < np; r++)
@@ -613,7 +583,7 @@ static void Geo_NumberEntitiesOverRanks(GeoEntityTable *table, bool facets,
                                                   recv[r].begin() + j + L)]);
     }
   }
-  Exchange(send, recv);
+  Message::Exchange(send, recv);
   std::vector<int> owner(n);
   for(int r = 0; r < np; r++)
     for(std::size_t j = 0; j < recv[r].size(); j++) owner[asked[r][j]] = recv[r][j];
@@ -648,7 +618,7 @@ static void Geo_NumberEntitiesOverRanks(GeoEntityTable *table, bool facets,
     send[owner[i]].insert(send[owner[i]].end(), list, list + L);
     asked[owner[i]].push_back(i);
   }
-  Exchange(send, recv);
+  Message::Exchange(send, recv);
   for(int r = 0; r < np; r++) {
     send[r].clear();
     for(std::size_t j = 0; j < recv[r].size(); j += L) {
@@ -662,7 +632,7 @@ static void Geo_NumberEntitiesOverRanks(GeoEntityTable *table, bool facets,
       send[r].push_back(created ? 0 : number[i]);
     }
   }
-  Exchange(send, recv);
+  Message::Exchange(send, recv);
   for(int r = 0; r < np; r++)
     for(std::size_t j = 0; j < recv[r].size(); j++) number[asked[r][j]] = recv[r][j];
 
