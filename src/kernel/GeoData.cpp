@@ -40,6 +40,11 @@ char *name;
 
 struct GeoData *CurrentGeoData;
 
+// Whether the ranks read their part of the mesh together (the numbers of the
+// elements that Geo_ReadFileWithGmsh creates then depend on the whole mesh)
+static bool ReadsPart = false;
+static void Geo_ReadFileWithGmsh(struct GeoData *GeoData_P, bool loaded = false);
+
 static void swapBytes(char *array, int size, int n)
 {
   int i, c;
@@ -471,37 +476,39 @@ static bool Geo_FileExists(const std::string &name)
   return fp != NULL;
 }
 
+// Whether the problem lets each rank read only its part of the mesh (on the
+// first rank, which tells it to the user if not)
+static bool Geo_CanReadPart(const char *what)
+{
+  std::unordered_set<int> linkRegions;
+  Geo_GetLinkRegions(linkRegions);
+  const char *need = WholeMeshOnFirstRank ? "the whole mesh on the first rank" :
+                     !linkRegions.empty() ? "a Link constraint" : NULL;
+  if(need)
+    Message::Info("The %s %s not used (the problem has %s)", what,
+                  strstr(what, "files") ? "are" : "is", need);
+  return !need;
+}
+
 static bool Geo_HasPartFiles(const char *Name)
 {
   int use = 0;
   if(!Message::GetCommRank()) {
     int np = Message::GetCommSize();
     if(Geo_FileExists(Geo_NameOfPartFile(Name, np)) &&
-       !Geo_FileExists(Geo_NameOfPartFile(Name, np + 1))) {
-      std::unordered_set<int> linkRegions;
-      Geo_GetLinkRegions(linkRegions);
-      const char *what = WholeMeshOnFirstRank ? "the whole mesh on the first rank" :
-                         !linkRegions.empty() ? "a Link constraint" : NULL;
-      if(!what)
-        use = 1;
-      else
-        Message::Info("The mesh files of the partitions are not used (the "
-                      "problem has %s)", what);
-    }
+       !Geo_FileExists(Geo_NameOfPartFile(Name, np + 1)))
+      use = Geo_CanReadPart("mesh files of the partitions");
   }
   MPI_Bcast(&use, 1, MPI_INT, 0, MPI_COMM_WORLD);
   return use;
 }
 
-static void Geo_ReadPartFile(struct GeoData *GeoData_P, const char *Name)
+// Completes the part of the mesh that a rank has read, with its elements (of
+// its partition) and those of the overlap (of other partitions)
+static void Geo_EndReadPart(struct GeoData *GeoData_P, const char *Name,
+                            const char *how)
 {
   const int np = Message::GetCommSize(), me = Message::GetCommRank();
-  std::string partName = Geo_NameOfPartFile(Name, me + 1);
-  Geo_OpenFile((char *)partName.c_str(), "rb");
-  Geo_ReadFile(GeoData_P);
-  Geo_CloseFile();
-
-  // the elements of the partition of the rank, and those of the overlap
   long long count[2] = {0, 0};
   for(int e = 0; e < List_Nbr(GeoData_P->Elements); e++)
     count[Geo_RankOfPartition(((struct Geo_Element *)List_Pointer(
@@ -511,10 +518,8 @@ static void Geo_ReadPartFile(struct GeoData *GeoData_P, const char *Name)
   MPI_Allreduce(MPI_IN_PLACE, count, 2, MPI_LONG_LONG, MPI_SUM, MPI_COMM_WORLD);
   if(!mine || !count[1])
     Message::Error("'%s' is not the mesh of partition %d out of %d with one "
-                   "layer of overlap (gmsh -part %d -part_split -overlap 1)",
-                   partName.c_str(), me + 1, np, np);
-  Message::Info("%lld elements in the mesh files of the %d partitions", count[0],
-                np);
+                   "layer of overlap (%s)", Name, me + 1, np, how);
+  Message::Info("%lld elements in the %d partitions", count[0], np);
 
   // the box and the dimension of the whole mesh
   double low[3] = {GeoData_P->Xmin, GeoData_P->Ymin, GeoData_P->Zmin};
@@ -540,6 +545,97 @@ static void Geo_ReadPartFile(struct GeoData *GeoData_P, const char *Name)
   GeoData_P->NbrPartitions = np;
   GeoData_P->IsPart = true;
 }
+
+static void Geo_ReadPartFile(struct GeoData *GeoData_P, const char *Name)
+{
+  std::string partName = Geo_NameOfPartFile(Name, Message::GetCommRank() + 1);
+  int np = Message::GetCommSize();
+  std::string how = "gmsh -part " + std::to_string(np) +
+                    " -part_split -overlap 1";
+  ReadsPart = true;
+  Geo_OpenFile((char *)partName.c_str(), "rb");
+  Geo_ReadFile(GeoData_P);
+  Geo_CloseFile();
+  ReadsPart = false;
+  Geo_EndReadPart(GeoData_P, partName.c_str(), how.c_str());
+}
+
+#if defined(HAVE_GMSH)
+// A mesh that Gmsh has partitioned in a single MSH 4 file with ghost cells
+// (gmsh -part n -part_ghosts), with one partition for each rank, is read in
+// parallel: each rank reads its partition and the elements of the other
+// partitions that share a node with it (gmsh::model::mesh::merge), i.e. the
+// part of the mesh that Geo_SendParts gives it.
+
+// Whether the file is a partitioned MSH 4 file (whose $PartitionedEntities
+// section follows $Entities)
+static bool Geo_IsPartitionedMSH4(const char *Name)
+{
+  FILE *fp = FOpen(Name, "rb");
+  if(!fp) return false;
+  char line[256];
+  bool partitioned = false;
+  while(fgets(line, sizeof(line), fp)) {
+    double version;
+    if(!strncmp(line, "$MeshFormat", 11)) {
+      if(!fgets(line, sizeof(line), fp) || sscanf(line, "%lf", &version) != 1 ||
+         version < 4)
+        break;
+    }
+    else if(!strncmp(line, "$PartitionedEntities", 20)) {
+      partitioned = true;
+      break;
+    }
+    else if(!strncmp(line, "$Nodes", 6) || !strncmp(line, "$Elements", 9))
+      break;
+  }
+  fclose(fp);
+  return partitioned;
+}
+
+// Reads the partition of the rank with its ghost cells in the current Gmsh
+// model; returns the number of partitions of the file, or 0 without ghost cells
+static int Geo_MergePartition(const char *Name)
+{
+  int part = Message::GetCommRank() + 1;
+  gmsh::clear();
+  gmsh::model::mesh::merge(Name, {part}, true);
+  std::vector<std::size_t> ghosts;
+  std::vector<int> partitions;
+  gmsh::model::mesh::getGhostElements(part, ghosts, partitions);
+  return ghosts.empty() ? 0 : gmsh::model::getNumberOfPartitions();
+}
+
+static bool Geo_ReadPartition(struct GeoData *GeoData_P, char *Name)
+{
+  const int np = Message::GetCommSize();
+  int use = 0;
+  if(!Message::GetCommRank() && !Flag_CALLED_WITH_ONELAB_SERVER &&
+     Geo_IsPartitionedMSH4(Name) &&
+     Geo_CanReadPart("partitions of the mesh file")) {
+    // the first rank tries first, so that the others do not read the whole
+    // mesh if the file has no ghost cells
+    use = (Geo_MergePartition(Name) == np);
+    if(!use) {
+      Message::Info("The partitions of the mesh file are not used (they are "
+                    "not %d with ghost cells: gmsh -part %d -part_ghosts)", np,
+                    np);
+      gmsh::clear();
+    }
+  }
+  MPI_Bcast(&use, 1, MPI_INT, 0, MPI_COMM_WORLD);
+  if(!use) return false;
+  if(Message::GetCommRank()) Geo_MergePartition(Name);
+  name = Name;
+  ReadsPart = true;
+  Geo_ReadFileWithGmsh(GeoData_P, true);
+  ReadsPart = false;
+  gmsh::clear();
+  std::string how = "gmsh -part " + std::to_string(np) + " -part_ghosts";
+  Geo_EndReadPart(GeoData_P, Name, how.c_str());
+  return true;
+}
+#endif
 #endif
 
 int Geo_AddGeoData(List_T *GeoData_L, char *Name_MshFile,
@@ -565,6 +661,10 @@ int Geo_AddGeoData(List_T *GeoData_L, char *Name_MshFile,
 #if defined(HAVE_MPI)
     if(distribute && (partFiles = Geo_HasPartFiles(Name_MshFile)))
       Geo_ReadPartFile(&GeoData_S, Name_MshFile);
+#if defined(HAVE_GMSH)
+    else if(distribute)
+      partFiles = Geo_ReadPartition(&GeoData_S, Name_MshFile);
+#endif
 #endif
     if(!partFiles && (!distribute || !Message::GetCommRank())) {
       Geo_OpenFile(Name_MshFile, "rb");
@@ -932,7 +1032,7 @@ static void Geo_SnapNodes(struct GeoData *GeoData_P)
                   (snaps > 1) ? "s" : "");
 }
 
-static void Geo_ReadFileWithGmsh(struct GeoData *GeoData_P)
+static void Geo_ReadFileWithGmsh(struct GeoData *GeoData_P, bool loaded)
 {
 #if defined(HAVE_GMSH)
   // within the program that runs the ONELAB server (the mobile and web apps),
@@ -947,7 +1047,8 @@ static void Geo_ReadFileWithGmsh(struct GeoData *GeoData_P)
       GModel::setCurrent(shown);
     }
   } restore;
-  if(Flag_CALLED_WITH_ONELAB_SERVER) {
+  if(loaded) {} // the part of the mesh of the rank (Geo_ReadPartition)
+  else if(Flag_CALLED_WITH_ONELAB_SERVER) {
     restore.shown = GModel::current();
     GModel::setCurrent(new GModel());
     gmsh::merge(name);
@@ -1042,6 +1143,14 @@ static void Geo_ReadFileWithGmsh(struct GeoData *GeoData_P)
       maxTag = std::max(maxTag, elementTags[i][j]);
   }
 
+#if defined(HAVE_MPI)
+  if(ReadsPart) {
+    long long max = maxTag;
+    MPI_Allreduce(MPI_IN_PLACE, &max, 1, MPI_LONG_LONG, MPI_MAX, MPI_COMM_WORLD);
+    maxTag = max;
+  }
+#endif
+
   if(GeoData_P->Elements == NULL)
     GeoData_P->Elements = List_Create(nbr, 1000, sizeof(struct Geo_Element));
 
@@ -1061,9 +1170,17 @@ static void Geo_ReadFileWithGmsh(struct GeoData *GeoData_P)
       dimTags[entity].first, dimTags[entity].second, physicalsTags);
 
     std::vector<int> partitions;
-    if(GeoData_P->NbrPartitions > 1)
+    int elementary = dimTags[entity].second;
+    if(GeoData_P->NbrPartitions > 1) {
       gmsh::model::getPartitions(dimTags[entity].first, dimTags[entity].second,
                                  partitions);
+      // the elementary region of a partition entity is its parent entity
+      int parentDim, parentTag;
+      gmsh::model::getParent(dimTags[entity].first, dimTags[entity].second,
+                             parentDim, parentTag);
+      if(parentDim == dimTags[entity].first && parentTag > 0)
+        elementary = parentTag;
+    }
 
     for(unsigned int phys = 0; phys < physicalsTags.size(); phys++) {
       for(unsigned int i = 0; i < elementTypes.size(); i++) {
@@ -1073,10 +1190,11 @@ static void Geo_ReadFileWithGmsh(struct GeoData *GeoData_P)
         for(unsigned int j = 0; j < elementTags[i].size(); j++) {
           // if more than one physical group, create new elements (with new
           // tags) for all additional groups - this is consistent with the
-          // behavior of the old MSH2 file format
-          Geo_Element.Num = (phys == 0) ? elementTags[i][j] : ++maxTag;
+          // behavior of the old MSH2 file format; their tags only depend on
+          // the element, also when each rank reads its part of the mesh
+          Geo_Element.Num = elementTags[i][j] + phys * maxTag;
           Geo_Element.Region = physicalsTags[phys];
-          Geo_Element.ElementaryRegion = dimTags[entity].second;
+          Geo_Element.ElementaryRegion = elementary;
           Geo_Element.Partition = partitions.empty() ? 0 : partitions[0];
           Geo_Element.NumNodes =
             (int *)Malloc(Geo_Element.NbrNodes * sizeof(int));

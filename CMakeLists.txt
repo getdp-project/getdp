@@ -1338,6 +1338,9 @@ if(${Python3_FOUND} AND GMSH)
   # on 3 ranks each rank reads the mesh file of its partition
   test_mpi(parallel_part_files tests "parallel_part_files.geo -"
            "scaling.pro -msh parallel_part_files.msh -setnumber Space 1 -solve Solve")
+  # on 3 ranks each rank reads its partition of a mesh file with ghost cells
+  test_mpi(parallel_ghosts tests "parallel_ghosts.geo -"
+           "scaling.pro -msh parallel_ghosts.msh -setnumber Space 1 -solve Solve")
   test_mpi(parallel_scaling tests "scaling.geo -3 -setnumber N 6"
            "scaling.pro -solve Solve")
   if(PETSC_VARIABLES MATCHES "HYPRE_LIB = [^\n\r]*-lHYPRE")

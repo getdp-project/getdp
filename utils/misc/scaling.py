@@ -130,6 +130,10 @@ def main():
                         help='partition the mesh with Gmsh in one file for '
                              'each rank, with the overlap that lets each rank '
                              'read its own file')
+    parser.add_argument('--ghosts', action='store_true',
+                        help='partition the mesh with Gmsh in a single file '
+                             'with ghost cells, from which each rank reads '
+                             'its partition')
     parser.add_argument('--workdir', default=None,
                         help='directory of the runs, kept (default: a '
                              'temporary directory, removed at the end)')
@@ -157,6 +161,8 @@ def main():
                str(n), '-v', '2']
         if args.split and np > 1:
             cmd += ['-part', str(np), '-part_split', '-overlap', '1']
+        elif args.ghosts and np > 1:
+            cmd += ['-part', str(np), '-part_ghosts']
         elif args.partition and np > 1:
             cmd += ['-part', str(np)]
         if run(cmd, d, 'gmsh.log'):
