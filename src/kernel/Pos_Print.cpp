@@ -1068,7 +1068,8 @@ void Pos_PrintOnGrid(struct PostQuantity *NCPQ_P, struct PostQuantity *CPQ_P,
   // evaluate the points that they find in an element of their mesh partition
   // (pass 0); the first rank then gets what they computed and prints all the
   // points (pass 1), those that no rank found as without MPI. A point between
-  // two partitions is taken from the rank with the smallest number.
+  // two partitions is taken from the element with the lowest number, as
+  // without MPI (see InWhichElement).
   const bool overRanks = Dof_UseLocalDofs();
   const bool printHere = !overRanks || !Message::GetCommRank();
   const int nbVal = Current.NbrHar * MAX_DIM; // numbers stored for a value
@@ -1185,9 +1186,12 @@ void Pos_PrintOnGrid(struct PostQuantity *NCPQ_P, struct PostQuantity *CPQ_P,
       // a rank without the volume that contains a point can find it in a
       // surface or a curve close to it: the volumes come first, as without MPI
       evaluated.assign(point, -1);
-      for(int i = (int)points.size() - 1; i >= 0; i--) {
+      // and among them the element with the lowest number, as without MPI
+      for(int i = 0; i < (int)points.size(); i++) {
         int &first = evaluated[points[i]];
-        if(first < 0 || dims[i] >= dims[first]) first = i;
+        if(first < 0 || dims[i] > dims[first] ||
+           (dims[i] == dims[first] && elements[i] < elements[first]))
+          first = i;
       }
     }
 #endif

@@ -82,11 +82,14 @@ static int PointInElementBox(struct ElementBox ElementBox, double x, double y,
   }
 }
 
+// A point is in an element if it is not further than tol outside of it, in the
+// coordinates of the reference element (with a negative tol: at least that far
+// inside).
 static int PointInRefElement(struct Element *Element, double u, double v,
-                             double w)
+                             double w, double tol = 1.e-6)
 {
-  double ONE = 1. + 1.e-6;
-  double ZERO = 1.e-6;
+  double ONE = 1. + tol;
+  double ZERO = tol;
 
   switch(Element->Type) {
   case LINE:
@@ -335,15 +338,21 @@ void InWhichElement(struct GeoData *GeoData, List_T *ExcludeRegion_L,
   default: break;
   }
 
-  // successive points are often in the same element; a surface is not tried
-  // first if there are volumes, since it would hide the volume of the point
+  // Successive points are often in the same element. A surface is not tried
+  // first if there are volumes, since it would hide the volume of the point.
+  // A point close to the boundary of the element is also within the tolerance
+  // of its neighbours: the search below then gives the one with the lowest
+  // number, whatever the previous point and the mesh partition were.
   if(LastGeoElement && DimensionOfElementType(LastGeoElement->Type) == top) {
     Element->GeoElement = LastGeoElement;
-    if(PointInElement(Element, ExcludeRegion_L, x, y, z, u, v, w)) {
+    if(PointInElement(Element, ExcludeRegion_L, x, y, z, u, v, w) &&
+       PointInRefElement(Element, *u, *v, *w, -1.e-3)) {
       return;
     }
   }
 
+  // (the boxes are found in increasing order of their numbers, i.e. of the
+  // numbers of the elements of each dimension)
   static std::vector<int> found;
   S->Tree.search(x, y, z, found);
   for(std::size_t i = 0; i < found.size(); i++) {

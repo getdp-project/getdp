@@ -1323,19 +1323,14 @@ if(${Python3_FOUND} AND GMSH)
            "search.pro -solve Laplace -pos Points")
   # the scaling benchmark (see utils/misc/scaling.py), with the default direct
   # solver and, if PETSc has hypre, with the AMS preconditioner for edge elements
-  # on 3 ranks each rank reads the mesh file of its partition (the values on
-  # the plane are not compared: the normal component of the field jumps across
-  # the faces of the elements, and a point within the tolerance of a face
-  # between two ranks is not found in the same element as without MPI)
+  # on 3 ranks each rank reads the mesh file of its partition
   test_mpi(parallel_part_files tests "parallel_part_files.geo -"
-           "scaling.pro -msh parallel_part_files.msh -setnumber Space 1 -solve Solve"
-           --ignore u_plane.pos)
+           "scaling.pro -msh parallel_part_files.msh -setnumber Space 1 -solve Solve")
   test_mpi(parallel_scaling tests "scaling.geo -3 -setnumber N 6"
            "scaling.pro -solve Solve")
   if(PETSC_VARIABLES MATCHES "HYPRE_LIB = [^\n\r]*-lHYPRE")
     test_mpi(parallel_ams tests "scaling.geo -3 -setnumber N 6"
-             "scaling.pro -setnumber Space 1 -solve Solve -ksp_type cg -pc_type hypre -pc_hypre_type ams -ksp_rtol 1e-10"
-             --ignore u_plane.pos)
+             "scaling.pro -setnumber Space 1 -solve Solve -ksp_type cg -pc_type hypre -pc_hypre_type ams -ksp_rtol 1e-10")
   endif()
   # an assembly limited to a group before the assembly of the whole system
   add_test(NAME grouped_assembly
