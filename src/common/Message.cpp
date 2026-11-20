@@ -1396,7 +1396,8 @@ int Message::GetThreadNum() { return 0; }
 
 // Writes the sections of all the ranks in the file, after what the first rank
 // has already written in it (stream is only used on the first rank), and
-// empties them. The ranks write their
+// empties them. If positions is given, it gets the position in the file of the
+// section of each rank, followed by the position of the end of the last one. The ranks write their
 // sections themselves, at the same time, each one at its own position in the
 // file (MPI-IO): nothing goes through the first rank.
 //
@@ -1404,8 +1405,10 @@ int Message::GetThreadNum() { return 0; }
 // system they share), the sections are sent to the first rank instead, which
 // writes them one after the other.
 void Message::WriteParallelSections(FILE *stream, const char *fileName,
-                                    std::string &section)
+                                    std::string &section,
+                                    std::vector<long long> *positions)
 {
+  if(positions) positions->clear();
 #if defined(HAVE_MPI)
   const int me = GetCommRank(), np = GetCommSize();
   const long long chunk = 1 << 30; // an MPI count is an int
@@ -1417,6 +1420,10 @@ void Message::WriteParallelSections(FILE *stream, const char *fileName,
   // where the first rank stopped, and thus where each section starts
   long long start = -1;
   if(np == 1) {
+    if(stream && positions) {
+      positions->push_back(ftell(stream));
+      positions->push_back(positions->back() + n);
+    }
     if(stream && n) fwrite(&section[0], 1, n, stream);
     std::string().swap(section);
     return;
@@ -1431,6 +1438,11 @@ void Message::WriteParallelSections(FILE *stream, const char *fileName,
   for(int rank = 0; rank < np; rank++) {
     if(rank < me) mine += sizes[rank];
     largest = std::max(largest, sizes[rank]);
+  }
+  if(positions && start >= 0) {
+    positions->push_back(start);
+    for(int rank = 0; rank < np; rank++)
+      positions->push_back(positions->back() + sizes[rank]);
   }
 
   MPI_File file;

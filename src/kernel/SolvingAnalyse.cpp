@@ -929,6 +929,7 @@ void SolvingAnalyse()
     Nbr_GeoData = List_Nbr(GeoData_L);
     for(i = 0; i < Nbr_GeoData; i++)
       Geo_WriteFilePRE(GeoData_P0 + i, Problem_S.Group);
+    Dof_WriteIndexPRE();
 
     Dof_CloseFile(DOF_PRE);
 
@@ -961,6 +962,14 @@ void SolvingAnalyse()
     Geo_ReadFilePRE(GeoData_P0, Nbr_GeoData, Problem_S.Group);
 
     Dof_CloseFile(DOF_PRE);
+
+    // as in the pre-processing, when the ranks only have a part of the mesh
+    if(Dof_UseLocalDofs() && Nbr_DefineSystem) {
+      Geo_SetCurrentGeoData(Current.GeoData =
+                              GeoData_P0 + DofData_P0->GeoDataIndex);
+      if(Current.GeoData->HasParts || Current.GeoData->IsPart)
+        F_ComputeRegionMeasures();
+    }
   }
 
   Message::Cpu("");

@@ -570,8 +570,11 @@ GetDP when they are read, with a simple geometrical method that usually gives
 partitions of lesser quality.
 
 By default each process only defines the degrees of freedom of its partition
-and, if the pre-processing and the processing are done in the same run of
-GetDP, only holds its part of the mesh. The first process reads the whole
+and only holds its part of the mesh. This is also the case in a later run
+(@code{-cal}, @code{-pos}) on the same number of processes and with the same
+mesh files as the pre-processing, where each process reads what it wrote in
+the @file{.pre} file; on another number of processes, all the processes read
+the whole mesh and all the degrees of freedom. The first process reads the whole
 mesh, sends their part to the others and only keeps its own, unless the
 problem has something that it does alone on the whole mesh (a tree, a
 @code{Print} that is not computed by all the processes, @code{SaveMesh}).
@@ -587,9 +590,8 @@ partition, with one layer of overlap:
 @noindent Each process then reads the file of its partition
 (@file{@var{filename}_1.msh}, @dots{}), which also has the elements of the
 other partitions that share a node with its own. These files are used if
-there is exactly one for each process, the pre-processing and the processing
-are done in the same run, and the problem has no @code{Link} constraint and
-nothing that the first process does on the whole mesh.
+there is exactly one for each process, and the problem has no @code{Link}
+constraint and nothing that the first process does on the whole mesh.
 
 Some features need all the degrees of freedom on
 all the processes: GetDP then defines them all, as with the @code{-all-dofs}
@@ -5642,7 +5644,7 @@ $DofData /* #@var{dofdata-number} */
 @var{resolution-number} @var{system-number}
 @var{number-of-function-spaces} @var{function-space-number} @dots{}
 @var{number-of-time-functions} @var{time-function-number} @dots{}
-@var{number-of-partitions} @var{partition-index} @dots{}
+@var{number-of-partition-bounds} @var{first-equation-of-partition} @dots{}
 @var{number-of-any-dof} @var{number-of-dof}
 @var{dof-basis-function-number} @var{dof-entity} @var{dof-harmonic} @var{dof-type} @var{dof-data}
 @dots{}
@@ -5682,7 +5684,10 @@ mesh partition (@pxref{Running GetDP in parallel}), each process writes its own
 (@var{number-of-sections} is 1 if it is omitted), with
 @var{number-of-any-dof} the number of degrees of freedom in the field, and a
 degree of freedom that several processes define is in the field of each of
-them. The file can be read by a run on any number of processes.
+them. The file can be read by a run on any number of processes. It ends with
+a @code{$Sections} field that gives the position in the file of the fields
+written by each process, followed by the position of this field: a run on the
+same number of processes uses it to read only the fields of each process.
 @item
 @var{number-of-dof} is the dimension of the considered system of equations, while
 @var{number-of-any-dof} is the total number of degrees of freedom before

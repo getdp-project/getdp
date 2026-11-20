@@ -10,6 +10,7 @@
 #include <algorithm>
 #include "GetDPConfig.h"
 #include "GeoData.h"
+#include "DofData.h"
 #include "GeoEntityTable.h"
 #include "ProData.h"
 #include "ProDefine.h"
@@ -196,8 +197,11 @@ void Geo_SetWholeMeshOnFirstRank(bool whole) { WholeMeshOnFirstRank = whole; }
 static bool Geo_CanDistributeMesh(char *Name_AdaptFile)
 {
 #if defined(HAVE_MPI)
-  return Flag_PRE && Flag_LOCAL_DOFS && !Name_AdaptFile &&
-         Message::GetCommSize() > 1 && Message::GetIsCommWorld();
+  // in the run that does the pre-processing, or in a later one that reads the
+  // Dofs that each rank had
+  return (Flag_PRE || Dof_ReadsOwnSectionsPRE()) && Flag_LOCAL_DOFS &&
+         !Name_AdaptFile && Message::GetCommSize() > 1 &&
+         Message::GetIsCommWorld();
 #else
   return false;
 #endif

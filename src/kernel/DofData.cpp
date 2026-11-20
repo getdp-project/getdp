@@ -368,8 +368,15 @@ void Dof_SetCurrentDofData(struct DofData *DofData_P)
 // follows the number of systems in the file (it is 1 without it); a Dof that
 // several ranks have is in the section of each of them. The ranks prepare
 // their sections in SectionPRE and write them at the same time (MPI-IO).
+//
+// The file ends with the positions of these sections ($Sections: for each
+// group of sections written together, the position of the section of each
+// rank and of the end of the last one), followed by the position of this
+// index. A run on the same number of ranks, after the pre-processing, uses it
+// to read only the section of each rank (see Dof_ReadsOwnSectionsPRE).
 static std::string Name_PRE, SectionPRE;
 static int NbrSectionsPRE = 1;
+static std::vector<std::vector<long long> > PositionsPRE;
 
 void Dof_PrintfPRE(const char *fmt, ...)
 {
@@ -385,8 +392,12 @@ void Dof_PrintfPRE(const char *fmt, ...)
 // rank that writes the file
 void Dof_WriteSectionPRE(bool byRank)
 {
-  if(byRank)
-    Message::WriteParallelSections(File_PRE, Name_PRE.c_str(), SectionPRE);
+  if(byRank) {
+    std::vector<long long> positions;
+    Message::WriteParallelSections(File_PRE, Name_PRE.c_str(), SectionPRE,
+                                   &positions);
+    if(!positions.empty()) PositionsPRE.push_back(positions);
+  }
   else if(File_PRE && !SectionPRE.empty())
     fwrite(&SectionPRE[0], 1, SectionPRE.size(), File_PRE);
   std::string().swap(SectionPRE);
@@ -397,12 +408,74 @@ static bool Dof_SectionsByRankPRE()
   return Dof_UseLocalDofs() && !Dof_GetAllDofsOnFirstRank();
 }
 
+void Dof_WriteIndexPRE()
+{
+  if(!File_PRE || PositionsPRE.empty()) return;
+  long long index = ftell(File_PRE);
+  fprintf(File_PRE, "$Sections\n%d %d\n", (int)PositionsPRE.size(),
+          (int)PositionsPRE[0].size() - 1);
+  for(auto &positions : PositionsPRE) {
+    for(long long p : positions) fprintf(File_PRE, "%lld ", p);
+    fprintf(File_PRE, "\n");
+  }
+  fprintf(File_PRE, "$EndSections\n%020lld\n", index);
+}
+
+static void Dof_ReadIndexPRE()
+{
+  PositionsPRE.clear();
+  long long here = ftell(File_PRE), index = -1;
+  char String[256];
+  int nbr = 0, np = 0;
+  if(!fseek(File_PRE, -21, SEEK_END) && fscanf(File_PRE, "%lld", &index) == 1 &&
+     index > 0 && !fseek(File_PRE, index, SEEK_SET) &&
+     fgets(String, sizeof(String), File_PRE) &&
+     !strncmp(String, "$Sections", 9) &&
+     fscanf(File_PRE, "%d %d", &nbr, &np) == 2) {
+    PositionsPRE.assign(nbr, std::vector<long long>(np + 1));
+    for(auto &positions : PositionsPRE)
+      for(long long &p : positions)
+        if(fscanf(File_PRE, "%lld", &p) != 1) nbr = 0;
+    if(!nbr) PositionsPRE.clear();
+  }
+  fseek(File_PRE, here, SEEK_SET);
+}
+
+// After the pre-processing, a run on the number of ranks that wrote the
+// sections of the .pre file gives each rank what it had: the Dofs and the part
+// of the mesh of its partition (which is the same if the mesh is, see
+// Geo_ReadFilePRE). On another number of ranks, or if a rank needs them all,
+// all the sections are read and merged.
+bool Dof_ReadsOwnSectionsPRE()
+{
+  extern int Flag_PRE;
+  return !Flag_PRE && Dof_UseLocalDofs() && !PositionsPRE.empty() &&
+         NbrSectionsPRE == Message::GetCommSize();
+}
+
+// Moves from the sections of the other ranks to the section of this rank, or
+// to what follows the sections.
+void Dof_SkipOtherSectionsPRE()
+{
+  long long here = ftell(File_PRE);
+  const int me = Message::GetCommRank(), np = Message::GetCommSize();
+  for(auto &positions : PositionsPRE) {
+    if(here < positions[0] || here >= positions[np]) continue;
+    if(here < positions[me])
+      fseek(File_PRE, positions[me], SEEK_SET);
+    else if(here >= positions[me + 1])
+      fseek(File_PRE, positions[np], SEEK_SET);
+    return;
+  }
+}
+
 /* ------------------------------------------------------------------------ */
 /*  D o f _ O p e n F i l e                                                 */
 /* ------------------------------------------------------------------------ */
 
 void Dof_OpenFile(int Type, char *Name, const char *Mode)
 {
+  if(Type == DOF_PRE) PositionsPRE.clear();
   // all the ranks need the name of the file they write together
   if(Type == DOF_PRE) Name_PRE = std::string(Name) + ".pre";
 
@@ -520,6 +593,7 @@ void Dof_ReadFilePRE0(int *Num_Resolution, int *Nbr_DofData)
       Message::Error("Could not read resolution data");
       return;
     }
+    if(NbrSectionsPRE > 1) Dof_ReadIndexPRE();
   }
 
   do {
@@ -677,8 +751,14 @@ void Dof_WriteFilePRE(struct DofData *DofData_P)
             *((int *)List_Pointer(DofData_P->TimeFunctionIndex, i)));
   Dof_PrintfPRE("\n");
 
-  Dof_PrintfPRE("%d", 1);
-  for(i = 0; i < 1; i++) Dof_PrintfPRE(" %d", 0);
+  // the first unknown of each mesh partition (a single 0 by the previous
+  // versions)
+  if(DofData_P->PartitionSplit.empty())
+    Dof_PrintfPRE("1 0");
+  else {
+    Dof_PrintfPRE("%d", (int)DofData_P->PartitionSplit.size());
+    for(int split : DofData_P->PartitionSplit) Dof_PrintfPRE(" %d", split);
+  }
   Dof_PrintfPRE("\n");
 
   // with -bin, the Dofs are written in binary (see Dof_WriteDofPRE)
@@ -837,11 +917,13 @@ static bool Dof_ReadSectionPRE(struct DofData *DofData_P, bool first,
       Message::Error("Format error");
       return false;
     }
-    for(i = 0; i < 1; i++) {
-      if(fscanf(File_PRE, "%d", &Dummy) != 1) {
+    DofData_P->PartitionSplit.clear();
+    for(i = 0; i < Dummy; i++) {
+      if(fscanf(File_PRE, "%d", &Int) != 1) {
         Message::Error("Format error");
         return false;
       }
+      DofData_P->PartitionSplit.push_back(Int);
     }
 
     if(fscanf(File_PRE, "%d %d", &Nbr_Dof, &DofData_P->NbrDof) != 2) {
@@ -965,10 +1047,18 @@ void Dof_ReadFilePRE(struct DofData *DofData_P)
   Message::Barrier();
 
   std::map<int, int> last;
-  for(int i = 0; i < NbrSectionsPRE; i++)
-    if(!Dof_ReadSectionPRE(DofData_P, i == 0, last)) return;
+  const bool own = Dof_ReadsOwnSectionsPRE() &&
+                   (Message::GetCommRank() || !Dof_GetAllDofsOnFirstRank());
+  if(own) {
+    Dof_SkipOtherSectionsPRE();
+    if(!Dof_ReadSectionPRE(DofData_P, true, last)) return;
+    Dof_SkipOtherSectionsPRE();
+  }
+  else
+    for(int i = 0; i < NbrSectionsPRE; i++)
+      if(!Dof_ReadSectionPRE(DofData_P, i == 0, last)) return;
 
-  if(NbrSectionsPRE > 1) {
+  if(!own && NbrSectionsPRE > 1) {
     // a Dof is in the section of each rank that has it
     List_Sort(DofData_P->DofList, fcmp_Dof);
     int n = List_Nbr(DofData_P->DofList), k = 0;
@@ -985,13 +1075,15 @@ void Dof_ReadFilePRE(struct DofData *DofData_P)
   }
   DofData_P->NbrAnyDof = List_Nbr(DofData_P->DofList);
 
-  DofData_P->PartitionSplit.clear();
-  DofData_P->PartitionSplit.push_back(0);
-  // add last dof num for each partition
-  for(auto &p : last) {
-    if(p.first > 0) DofData_P->PartitionSplit.push_back(p.second);
+  if(DofData_P->PartitionSplit.size() < 2) { // not in the file
+    DofData_P->PartitionSplit.clear();
+    DofData_P->PartitionSplit.push_back(0);
+    // add last dof num for each partition
+    for(auto &p : last) {
+      if(p.first > 0) DofData_P->PartitionSplit.push_back(p.second);
+    }
+    DofData_P->PartitionSplit.push_back(DofData_P->NbrDof);
   }
-  DofData_P->PartitionSplit.push_back(DofData_P->NbrDof);
 
   if(DofData_P->PartitionSplit.size() > 2) {
     std::ostringstream sstream;

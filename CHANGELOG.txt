@@ -7,8 +7,9 @@ problem needs them all, and only keeps the values of the vectors for these
 degrees of freedom; a mesh without one partition per process is partitioned
 when it is read; the edges and facets are numbered by all the processes, which
 each write their part of the .pre file, where the elements are now identified
-by their number; each process reads the mesh file of its partition if Gmsh
-has written one per partition with an overlap); improved support for high-order meshes; Gmsh post-processing
+by their number, and read theirs in a later run on the same number of
+processes; each process reads the mesh file of its partition if Gmsh has
+written one per partition with an overlap); improved support for high-order meshes; Gmsh post-processing
 files of field maps on the elements of the mesh are mesh-based by default
 (-list-based for the previous format), and in parallel field maps and
 evaluations at points are computed by all the processes, the field maps being

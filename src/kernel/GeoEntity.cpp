@@ -753,9 +753,26 @@ void free_E2XE1(void *a, void *b)
 /*  G e o _ W r i t e F i l e P R E                                         */
 /* ------------------------------------------------------------------------ */
 
+// The number of elements of the partition of this rank and the sum of their
+// numbers, to check that a mesh is partitioned as another one.
+static void Geo_CountElementsOfPartition(struct GeoData *GeoData_P,
+                                         long long *count, long long *sum)
+{
+  *count = *sum = 0;
+  for(int i = 0; i < List_Nbr(GeoData_P->Elements); i++) {
+    struct Geo_Element *e =
+      (struct Geo_Element *)List_Pointer(GeoData_P->Elements, i);
+    if(!Dof_IsPartitionOfThisRank(e->Partition)) continue;
+    (*count)++;
+    *sum += e->Num;
+  }
+}
+
 // The edges (what = 0) or the facets (1) of the elements of the mesh, which
-// are identified by their number. When the ranks only have a part of the mesh,
-// each one writes those of the elements of its partition.
+// are identified by their number. A rank that only has a part of the mesh
+// writes those of all its elements (those of its partition and their
+// neighbours, which the section of another rank also has); the first rank, if
+// it has the whole mesh, those of the elements of its partition.
 static void Geo_PrintElementEntitiesPRE(struct GeoData *GeoData_P, int what,
                                         bool byRank)
 {
@@ -763,7 +780,9 @@ static void Geo_PrintElementEntitiesPRE(struct GeoData *GeoData_P, int what,
   struct Geo_Element *e0 =
     n ? (struct Geo_Element *)List_Pointer(GeoData_P->Elements, 0) : NULL;
   auto nbr = [&](int i) {
-    if(byRank && !Dof_IsPartitionOfThisRank(e0[i].Partition)) return 0;
+    if(byRank && GeoData_P->HasParts &&
+       !Dof_IsPartitionOfThisRank(e0[i].Partition))
+      return 0;
     return what ? e0[i].NbrFacets : e0[i].NbrEdges;
   };
   for(int i = 0; i < n; i++)
@@ -786,6 +805,12 @@ void Geo_WriteFilePRE(struct GeoData *GeoData_P, List_T *Group_L)
   const bool write = !(Message::GetIsCommWorld() && Message::GetCommRank());
 
   if(byRank || write) {
+    if(byRank) {
+      long long count, sum;
+      Geo_CountElementsOfPartition(GeoData_P, &count, &sum);
+      Dof_PrintfPRE("$ElementsOfPartition\n%d %lld %lld\n"
+                    "$EndElementsOfPartition\n", GeoData_P->Num, count, sum);
+    }
     if(GeoData_P->NumCurrentEdge)
       Geo_PrintElementEntitiesPRE(GeoData_P, 0, byRank);
     if(GeoData_P->NumCurrentFacet)
@@ -876,19 +901,44 @@ void Geo_ReadFilePRE(struct GeoData *GeoData_P0, int NbrGeoData,
     }
   }
 
+  // a rank that only has its part of the mesh only reads its section
+  const bool own = Dof_ReadsOwnSectionsPRE() && GeoData_P0->IsPart;
+
   while(1) {
+    if(own) Dof_SkipOtherSectionsPRE();
     do {
       if(!fgets(String, sizeof(String), File_PRE) || feof(File_PRE)) break;
     } while(String[0] != '$');
 
     if(feof(File_PRE)) break;
 
+    /*  E l e m e n t s O f P a r t i t i o n  */
+
+    if(!strncmp(&String[1], "ElementsOfPartition", 19)) {
+      long long count, sum, c, s;
+      if(fscanf(File_PRE, "%d %lld %lld", &GeoDataIndex, &count, &sum) != 3 ||
+         GeoDataIndex > NbrGeoData - 1) {
+        Message::Error("Could not read the elements of the partition");
+        return;
+      }
+      if(own) {
+        Geo_CountElementsOfPartition(GeoData_P0 + GeoDataIndex, &c, &s);
+        if(c != count || s != sum) {
+          Message::Error("The mesh partition of rank %d is not the one of the "
+                         "pre-processing (%lld elements instead of %lld): use "
+                         "the same mesh files or -all-dofs",
+                         Message::GetCommRank(), c, count);
+          return;
+        }
+      }
+    }
+
     /*  E l e m e n t E d g e s ,   E l e m e n t F a c e t s  */
 
     // the edges or the facets of elements given by their number (there can be
     // several such sections, see Geo_WriteFilePRE)
-    if(!strncmp(&String[1], "ElementEdges", 12) ||
-       !strncmp(&String[1], "ElementFacets", 13)) {
+    else if(!strncmp(&String[1], "ElementEdges", 12) ||
+            !strncmp(&String[1], "ElementFacets", 13)) {
       const bool facets = (String[8] == 'F');
       if(fscanf(File_PRE, "%d %d", &GeoDataIndex, &Nbr_Entities) != 2 ||
          GeoDataIndex > NbrGeoData - 1) {
