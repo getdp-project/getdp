@@ -600,18 +600,6 @@ static const char *WhatNeedsAllDofs()
     if(((struct Group *)List_Pointer(Problem_S.Group, i))->Type == MOVINGBAND2D)
       return "a moving band";
 
-  for(int i = 0; i < List_Nbr(Problem_S.Constraint); i++) {
-    struct Constraint *c =
-      (struct Constraint *)List_Pointer(Problem_S.Constraint, i);
-    for(int j = 0; j < List_Nbr(c->ConstraintPerRegion); j++) {
-      switch(((struct ConstraintPerRegion *)List_Pointer(c->ConstraintPerRegion, j))
-               ->Type) {
-      case ASSIGNFROMRESOLUTION: return "an AssignFromResolution constraint";
-      default: break;
-      }
-    }
-  }
-
   for(int i = 0; i < List_Nbr(Problem_S.Formulation); i++) {
     struct Formulation *f =
       (struct Formulation *)List_Pointer(Problem_S.Formulation, i);
@@ -859,8 +847,10 @@ void SolvingAnalyse()
                            &DofData2_P0, &DofData2_L, GeoData_L, &GeoData_P0);
 
       TreatmentStatus = STATUS_PRE;
+      Dof_SetSolveDofsAreUnknowns(true);
       Treatment_Preprocessing(Nbr_DefineSystem2, DofData2_P0, DefineSystem2_P0,
                               GeoData_P0);
+      Dof_SetSolveDofsAreUnknowns(false);
 
       for(j = 0; j < Nbr_DefineSystem2; j++)
         Dof_TransferDofTreeToList(DofData2_P0 + j);

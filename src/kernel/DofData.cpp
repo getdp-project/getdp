@@ -1971,20 +1971,38 @@ void Dof_SyncPreResolutions(List_T *PreResolutionInfo_L)
 #endif
 }
 
+// The Dofs with a constraint assigned from a resolution (AssignFromResolution)
+// are the unknowns of the systems of this resolution, where they are numbered
+// after the others when the first operation is done on the system (see
+// Dof_DefineUnknownDofFromSolveOrInitDof). With rank-local Dofs the numbers of
+// the unknowns are computed once, by all the ranks together: these Dofs then
+// become unknowns before, in the pre-processing of a pre-resolution.
+static bool SolveDofsAreUnknowns = false;
+void Dof_SetSolveDofsAreUnknowns(bool unknowns)
+{
+  SolveDofsAreUnknowns = unknowns;
+}
+
 #if defined(HAVE_MPI)
 static std::vector<struct Dof *> LocalUnknownDofs;
-static int NbrUnsupportedLocalDofs = 0;
 
 static void GetLocalUnknownDofs(void *a, void *b)
 {
   struct Dof *Dof_P = (struct Dof *)a;
   switch(Dof_P->Type) {
+  case DOF_FIXEDWITHASSOCIATE_SOLVE:
+  case DOF_FIXED_SOLVE:
+    if(!SolveDofsAreUnknowns) break;
+    // defined by this rank for an element of its partition
+    Dof_P->Type = DOF_UNKNOWN;
+    Dof_P->Case.Unknown.NumDof = -1;
+    Dof_P->Case.Unknown.PartitionOrNonLocal = Message::GetCommRank() + 1;
+    LocalUnknownDofs.push_back(Dof_P);
+    break;
   case DOF_UNKNOWN:
   case DOF_UNKNOWN_INIT:
     if(Dof_P->Case.Unknown.NumDof == -1) LocalUnknownDofs.push_back(Dof_P);
     break;
-  case DOF_FIXEDWITHASSOCIATE_SOLVE:
-  case DOF_FIXED_SOLVE: NbrUnsupportedLocalDofs++; break;
   default: break;
   }
 }
@@ -2009,15 +2027,7 @@ static void Dof_NumberUnknownDofLocal(void)
   const int blocks = np + 1;
 
   LocalUnknownDofs.clear();
-  NbrUnsupportedLocalDofs = 0;
   Tree_Action(CurrentDofData->DofTree, GetLocalUnknownDofs);
-  int bad = NbrUnsupportedLocalDofs;
-  MPI_Allreduce(MPI_IN_PLACE, &bad, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
-  if(bad) {
-    Message::Error("Rank-local Dofs (use -all-dofs) do not handle "
-                   "AssignFromResolution yet (%d such Dofs)", bad);
-    return;
-  }
 
   // The associated Dofs of global quantities have already been numbered, first
   // (see Dof_DefineAssociateDof), and they belong to the first rank as with
@@ -2872,45 +2882,161 @@ void Dof_DefineUnknownDofFromSolveOrInitDof(struct DofData **DofData_P)
 /*  D o f _ T r a n s f e r D o f                                           */
 /* ------------------------------------------------------------------------ */
 
+// Gives the value of a Dof of a system to a Dof of another one that waits for
+// it (a constraint or an initial value from a resolution)
+static void Dof_TransferValues(struct Dof *Dof_P, gScalar Val, gScalar Val2)
+{
+  switch(Dof_P->Type) {
+  case DOF_FIXED_SOLVE:
+    Dof_P->Type = DOF_FIXED;
+    Dof_P->Val = Val;
+    break;
+  case DOF_FIXEDWITHASSOCIATE_SOLVE:
+    Dof_P->Type = DOF_FIXEDWITHASSOCIATE;
+    Dof_P->Val = Val;
+    break;
+  case DOF_UNKNOWN_INIT:
+    /* A DOF_UNKNOWN_INIT will always use the value obtained by
+       pre-resolution even if a simple Init contraint is given; we should
+       introduce DOF_UNKNOWN_INIT_SOLVE */
+    Dof_P->Val = Val;
+    Dof_P->Val2 = Val2;
+    break;
+  }
+}
+
+static bool Dof_WaitsForValues(struct Dof *Dof_P)
+{
+  return Dof_P->Type == DOF_FIXED_SOLVE ||
+         Dof_P->Type == DOF_FIXEDWITHASSOCIATE_SOLVE ||
+         Dof_P->Type == DOF_UNKNOWN_INIT;
+}
+
+static std::vector<struct Dof *> *WaitingDofs = NULL;
+static void Dof_GetWaitingDof(void *a, void *b)
+{
+  if(Dof_WaitsForValues((struct Dof *)a)) WaitingDofs->push_back((struct Dof *)a);
+}
+
+// The value of a Dof of the first system, and its value in the previous
+// solution (zero if there is none)
+static void Dof_GetValuesToTransfer(struct DofData *DofData_P1, struct Dof *Dof_P,
+                                    gScalar *Val, gScalar *Val2)
+{
+  struct Solution *Solutions_P0 =
+    (struct Solution *)List_Pointer(DofData_P1->Solutions, 0);
+  *Val = Dof_GetDofValue(DofData_P1, Dof_P);
+  if((DofData_P1->CurrentSolution - Solutions_P0) > 0) {
+    DofData_P1->CurrentSolution -= 1;
+    *Val2 = Dof_GetDofValue(DofData_P1, Dof_P);
+    DofData_P1->CurrentSolution += 1;
+  }
+  else
+    LinAlg_ZeroScalar(Val2);
+}
+
 void Dof_TransferDof(struct DofData *DofData_P1, struct DofData **DofData_P2)
 {
   int i, Nbr_AnyDof;
   struct Dof Dof, *Dof_P;
-  struct Solution *Solutions_P0;
+  gScalar Val, Val2;
 
   Nbr_AnyDof = List_Nbr(DofData_P1->DofList);
-  Solutions_P0 = (struct Solution *)List_Pointer(DofData_P1->Solutions, 0);
-  DofData_P1->CurrentSolution = Solutions_P0;
+  DofData_P1->CurrentSolution =
+    (struct Solution *)List_Pointer(DofData_P1->Solutions, 0);
 
   for(i = 0; i < Nbr_AnyDof; i++) {
     Dof = *(struct Dof *)List_Pointer(DofData_P1->DofList, i);
-    if((Dof_P = (struct Dof *)Dof_Find(*DofData_P2, &Dof, true))) {
-      switch(Dof_P->Type) {
-      case DOF_FIXED_SOLVE:
-        Dof_P->Type = DOF_FIXED;
-        Dof_P->Val = Dof_GetDofValue(DofData_P1, &Dof);
-        break;
-      case DOF_FIXEDWITHASSOCIATE_SOLVE:
-        Dof_P->Type = DOF_FIXEDWITHASSOCIATE;
-        Dof_P->Val = Dof_GetDofValue(DofData_P1, &Dof);
-        break;
-      case DOF_UNKNOWN_INIT:
-        /* A DOF_UNKNOWN_INIT will always use the value obtained by
-           pre-resolution even if a simple Init contraint is given; we should
-           introduce DOF_UNKNOWN_INIT_SOLVE */
-        Dof_P->Val = Dof_GetDofValue(DofData_P1, &Dof);
-        if((DofData_P1->CurrentSolution - Solutions_P0) > 0) {
-          DofData_P1->CurrentSolution -= 1;
-          Dof_P->Val2 = Dof_GetDofValue(DofData_P1, &Dof);
-          DofData_P1->CurrentSolution += 1;
-        }
-        else {
-          LinAlg_ZeroScalar(&Dof_P->Val2);
-        }
-        break;
-      }
+    if((Dof_P = (struct Dof *)Dof_Find(*DofData_P2, &Dof,
+                                       (*DofData_P2)->DofTree != NULL)) &&
+       Dof_WaitsForValues(Dof_P)) {
+      Dof_GetValuesToTransfer(DofData_P1, &Dof, &Val, &Val2);
+      Dof_TransferValues(Dof_P, Val, Val2);
     }
   }
+
+#if defined(HAVE_MPI)
+  if(!Dof_UseLocalDofs()) return;
+
+  // With rank-local Dofs a rank can have a Dof that waits for a value in the
+  // second system without having it in the first one, which it only defines
+  // for the elements of its partition (e.g. an edge of one of its volumes on
+  // a surface whose elements belong to the other ranks). The ranks tell each
+  // other which Dofs still wait, and those that have them send their values.
+  const int np = Message::GetCommSize(), me = Message::GetCommRank();
+  std::vector<struct Dof *> waiting;
+  std::vector<int> keys, counts(np), displs(np);
+  const bool tree1 = (DofData_P1->DofTree != NULL);
+  WaitingDofs = &waiting;
+  if((*DofData_P2)->DofTree)
+    Tree_Action((*DofData_P2)->DofTree, Dof_GetWaitingDof);
+  else
+    List_Action((*DofData_P2)->DofList, Dof_GetWaitingDof);
+  waiting.erase(std::remove_if(waiting.begin(), waiting.end(),
+                               [&](struct Dof *d) {
+                                 return Dof_Find(DofData_P1, d, tree1) != NULL;
+                               }),
+                waiting.end());
+  for(struct Dof *d : waiting) {
+    keys.push_back(d->NumType);
+    keys.push_back(d->Entity);
+    keys.push_back(d->Harmonic);
+  }
+  auto gather = [&](void *mine, int count, MPI_Datatype type,
+                    std::vector<char> &all, int size) {
+    int total = 0;
+    MPI_Allgather(&count, 1, MPI_INT, &counts[0], 1, MPI_INT, MPI_COMM_WORLD);
+    for(int r = 0; r < np; r++) {
+      displs[r] = total;
+      total += counts[r];
+    }
+    all.resize((std::size_t)(total + 1) * size);
+    MPI_Allgatherv(mine, count, type, &all[0], &counts[0], &displs[0], type,
+                   MPI_COMM_WORLD);
+    return total;
+  };
+  std::vector<char> buffer;
+  keys.push_back(0);
+  int total = gather(&keys[0], (int)keys.size() - 1, MPI_INT, buffer, sizeof(int));
+  const int first = displs[me] / 3, last = first + (int)waiting.size();
+  const int *allKeys = (const int *)&buffer[0];
+
+  // for each waiting Dof that this rank has in the first system: its position
+  // among the waiting ones and its values
+  std::vector<double> answers;
+  for(i = 0; i < total / 3; i++) {
+    Dof.NumType = allKeys[3 * i];
+    Dof.Entity = allKeys[3 * i + 1];
+    Dof.Harmonic = allKeys[3 * i + 2];
+    if(!(Dof_P = (struct Dof *)Dof_Find(DofData_P1, &Dof, tree1))) continue;
+    Dof = *Dof_P;
+    double d[5] = {(double)i, 0., 0., 0., 0.};
+    Dof_GetValuesToTransfer(DofData_P1, &Dof, &Val, &Val2);
+    Dof_GetScalarPRE(&Val, d + 1);
+    Dof_GetScalarPRE(&Val2, d + 3);
+    answers.insert(answers.end(), d, d + 5);
+  }
+  answers.push_back(0.);
+  std::vector<char> buffer2;
+  total = gather(&answers[0], (int)answers.size() - 1, MPI_DOUBLE, buffer2,
+                 sizeof(double));
+  const double *all = (const double *)&buffer2[0];
+  Message::Debug("TransferSolution: %d Dofs wait for a value of another rank",
+                 (int)waiting.size());
+  for(i = 0; i < total; i += 5) {
+    int k = (int)all[i];
+    if(k < first || k >= last || !waiting[k - first] ||
+       !Dof_WaitsForValues(waiting[k - first]))
+      continue;
+    double v[2] = {all[i + 1], all[i + 2]}, v2[2] = {all[i + 3], all[i + 4]};
+    LinAlg_SetScalar(&Val, v);
+    LinAlg_SetScalar(&Val2, v2);
+    struct Dof *w = waiting[k - first];
+    bool init = (w->Type == DOF_UNKNOWN_INIT);
+    Dof_TransferValues(w, Val, Val2);
+    if(init) waiting[k - first] = NULL; // its type does not change: only once
+  }
+#endif
 }
 
 /* ------------------------------------------------------------------------ */

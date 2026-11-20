@@ -211,6 +211,7 @@ void Dof_DefineLinkCplxDof(int D1, int D2, int NbrHar, double Value[],
 void Dof_DefineUnknownDof(int D1, int D2, int NbrHar, int PartitionOrNonLocal = 0);
 bool Dof_IsNonLocalEquation(int n);
 bool Dof_UseLocalDofs();
+void Dof_SetSolveDofsAreUnknowns(bool unknowns);
 void Dof_SyncPreResolutions(List_T *PreResolutionInfo_L);
 bool Dof_IsPartitionOfThisRank(int partition);
 bool Dof_HasRankPartitions();

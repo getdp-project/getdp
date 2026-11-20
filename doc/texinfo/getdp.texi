@@ -596,8 +596,7 @@ constraint and nothing that the first process does on the whole mesh.
 Some features need all the degrees of freedom on
 all the processes: GetDP then defines them all, as with the @code{-all-dofs}
 option, and says so in an information message. This is the case for a moving
-band, integral quantities, constraints of type
-@code{AssignFromResolution}, quantities evaluated at given coordinates or on
+band, integral quantities, quantities evaluated at given coordinates or on
 another mesh, the @code{CopyDegreesOfFreedom}, @code{FourierTransform},
 @code{DeformMesh} and @code{SetCommSelf} operations, and, in the
 post-operations that are run, @code{Print} operations that store their result

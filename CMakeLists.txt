@@ -1268,6 +1268,18 @@ if(${Python3_FOUND} AND GMSH)
   test_tuto(04c 04-Magneto-quasistatics "electromagnet" "-setnumber Axisymmetric 1")
   test_tuto(05a 05-Full_wave "full_wave" "")
   test_tuto(05b 05-Full_wave "full_wave" "-setnumber dim 3 -setnumber res 0.5")
+  if(TEST_MPI)
+    # on 4 ranks some ranks have Dofs of the port, constrained by a
+    # pre-resolution, without having an element of the port in their partition
+    add_test(NAME tutorial_05b_mpi4
+             COMMAND ${RUN_TEST}
+             --mpiexec ${MPIEXEC_EXECUTABLE} --ranks "4"
+             --workdir ${CMAKE_SOURCE_DIR}/tutorials/05-Full_wave
+             --name "tutorial_05b_mpi4"
+             --gmsh-options "full_wave.geo -3 -setnumber dim 3 -setnumber res 0.5 -bin"
+             --getdp-options "full_wave.pro -solve \#1 -pos \#1 -setnumber dim 3 -setnumber res 0.5")
+    set_tests_properties(tutorial_05b_mpi4 PROPERTIES PROCESSORS 4)
+  endif()
   test_tuto(06a 06-Global_quantities "microstrip" "")
   test_tuto(06b 06-Global_quantities "microstrip" "-setnumber TypeBC 1")
   test_tuto(06c 06-Global_quantities "microstrip" "-setnumber DisplayGlobalBasisFunctions 1")
