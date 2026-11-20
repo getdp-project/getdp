@@ -1312,6 +1312,14 @@ if(${Python3_FOUND} AND GMSH)
   # all the Dofs
   test_mpi(parallel_coordinates tests "parallel.geo -2"
            "parallel_all_dofs.pro -msh parallel.msh -solve Laplace -pos Mirror")
+  # an integral quantity and a moving band, for which all the ranks also define
+  # all the Dofs, and a mesh that moves along a sliding surface
+  test_mpi(integral_quantity tests "integral_quantity.geo -2"
+           "integral_quantity.pro -solve MagSta_phi -pos phi")
+  test_mpi(moving_band tests/moving_band "pmsm.geo -2"
+           "pmsm.pro -setnumber Flag_AnalysisType 1 -setnumber thetaMax_deg 6 -solve Analysis")
+  test_mpi(sliding_surface tests/sliding_surface "mrvl.geo -2"
+           "mrvl.pro -setstring R_ QuasiStatic -setnumber NumStep 6 -solve QuasiStatic -pos \#1")
   # the same with all the Dofs on all the ranks, on a mesh partitioned by Gmsh
   # and with a pre-processing done by another run of getdp
   test_mpi(parallel_points_all_dofs tests "parallel.geo -2"
