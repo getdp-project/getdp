@@ -419,9 +419,15 @@ void Read_ProblemStructure(const char *name)
     Read_ProblemStructure(getdp_yyincludename);
     getdp_yyin = FOpen(getdp_yyname.c_str(), "rb"); // same comment as above
     getdp_yyrestart(getdp_yyin);
+    // skip the lines already parsed, ended by "\n", "\r\n" or "\r"
     for(i = 0; i < getdp_yylinenum; i++) {
-      if(!fgets(AbsPath, sizeof(AbsPath), getdp_yyin))
-        Message::Warning("Could not read line %d", getdp_yylinenum);
+      int c = getc(getdp_yyin);
+      if(c == EOF) Message::Warning("Could not read line %d", getdp_yylinenum);
+      while(c != EOF && c != '\n' && c != '\r') c = getc(getdp_yyin);
+      if(c == '\r') {
+        int c2 = getc(getdp_yyin);
+        if(c2 != EOF && c2 != '\n') ungetc(c2, getdp_yyin);
+      }
     }
     getdp_yylinenum++;
     getdp_yyparse();

@@ -31,6 +31,18 @@ extern std::string getdp_yystring;
   }                                                     \
   else{                                                 \
     c = getc(getdp_yyin);				\
+    /* read "\r\n" and "\r" line ends as "\n" */         \
+    if(c == '\r'){                                      \
+      int c2 = getc(getdp_yyin);                        \
+      if(c2 == EOF){                                    \
+        /* the line end is not parsed yet */            \
+        if(!ferror(getdp_yyin)) clearerr(getdp_yyin);   \
+      }                                                 \
+      else if(c2 != '\n'){                              \
+        ungetc(c2, getdp_yyin);                         \
+      }                                                 \
+      c = '\n';                                         \
+    }                                                   \
   }                                                     \
   getdp_yycolnum++;					\
   result = (c == EOF) ? YY_NULL : (buf[0] = c, 1);	\
