@@ -722,6 +722,25 @@ static const char *WhatNeedsAllDofsOnFirstRank()
   return NULL;
 }
 
+// With rank-local Dofs, what the first rank does alone on the whole mesh, which
+// it then keeps instead of its own part only (see Geo_SendParts): the Prints
+// for which it also keeps all the Dofs, the trees and SaveMesh.
+static const char *WhatNeedsWholeMeshOnFirstRank()
+{
+  if(Dof_GetAllDofsOnFirstRank())
+    return "a Print that is not evaluated by all the ranks";
+  for(int i = 0; i < List_Nbr(Problem_S.Group); i++) {
+    int type = ((struct Group *)List_Pointer(Problem_S.Group, i))->FunctionType;
+    if(type == EDGESOFTREEIN || type == FACETSOFTREEIN) return "a tree";
+  }
+  for(int i = 0; i < List_Nbr(Problem_S.Resolution); i++)
+    if(AnyOperation(
+         ((struct Resolution *)List_Pointer(Problem_S.Resolution, i))->Operation,
+         [](struct Operation *o) { return o->Type == OPERATION_SAVEMESH; }))
+      return "SaveMesh";
+  return NULL;
+}
+
 void SolvingAnalyse()
 {
   struct Resolution *Resolution_P, *Resolution2_P;
@@ -763,6 +782,11 @@ void SolvingAnalyse()
       Message::Info("The first rank gets all the Dofs (the problem has %s)",
                     what);
     Dof_SetAllDofsOnFirstRank(what != NULL);
+    what = WhatNeedsWholeMeshOnFirstRank();
+    if(what)
+      Message::Info("The first rank keeps the whole mesh (the problem has %s)",
+                    what);
+    Geo_SetWholeMeshOnFirstRank(what != NULL);
   }
 
   /* -------------------- */

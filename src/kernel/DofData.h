@@ -166,6 +166,8 @@ void Dof_WriteFilePRE0(int Num_Resolution, char *Name_Resolution,
                        int Nbr_DofData);
 void Dof_ReadFilePRE0(int *Num_Resolution, int *Nbr_DofData);
 void Dof_WriteFilePRE(struct DofData *DofData_P);
+void Dof_PrintfPRE(const char *fmt, ...);
+void Dof_WriteSectionPRE(bool byRank);
 void Dof_WriteDofPRE(void *a, void *b);
 void Dof_ReadFilePRE(struct DofData *DofData_P);
 

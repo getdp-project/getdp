@@ -1076,7 +1076,9 @@ void Pos_PrintOnGrid(struct PostQuantity *NCPQ_P, struct PostQuantity *CPQ_P,
   // what this rank evaluated, then (on the first rank) what they all did: the
   // index of each point, the number of its element and its values (their type
   // and numbers, for each time step)
-  std::vector<int> points, elements, types;
+  // for each point evaluated by a rank: the element found, its region and its
+  // dimension
+  std::vector<int> points, elements, regions, dims, types;
   std::vector<double> vals;
   std::vector<int> evaluated; // where is each point in these vectors (or -1)
 
@@ -1119,16 +1121,20 @@ void Pos_PrintOnGrid(struct PostQuantity *NCPQ_P, struct PostQuantity *CPQ_P,
         if(Element.Num == NO_ELEMENT) return; // not in the partition of this rank
         points.push_back(point - 1);
         elements.push_back(Element.Num);
+        regions.push_back(Element.Region);
+        dims.push_back(DimensionOfElementType(Element.Type));
       }
       Current.Region = Element.Region;
       PE->Index = (Element.Num != NO_ELEMENT) ?
                     Geo_GetGeoElementIndex(Element.GeoElement) :
                     NO_ELEMENT;
+      PE->NumElement = 0;
     }
     else {
-      struct Geo_Element *ge = Geo_GetGeoElementOfNum(elements[other]);
-      Current.Region = ge->Region;
-      PE->Index = Geo_GetGeoElementIndex(ge);
+      // the element of another rank, which the first rank need not have
+      Current.Region = regions[other];
+      PE->Index = NO_ELEMENT;
+      PE->NumElement = elements[other];
     }
 
     for(int ts = 0; ts < NbTimeStep; ts++) {
@@ -1171,19 +1177,17 @@ void Pos_PrintOnGrid(struct PostQuantity *NCPQ_P, struct PostQuantity *CPQ_P,
     if(overRanks && pass == 1) {
       GatherOnFirstRank(points, MPI_INT);
       GatherOnFirstRank(elements, MPI_INT);
+      GatherOnFirstRank(regions, MPI_INT);
+      GatherOnFirstRank(dims, MPI_INT);
       GatherOnFirstRank(types, MPI_INT);
       GatherOnFirstRank(vals, MPI_DOUBLE);
       if(!printHere) break;
       // a rank without the volume that contains a point can find it in a
       // surface or a curve close to it: the volumes come first, as without MPI
-      auto dim = [&](int i) {
-        return DimensionOfElementType(
-          Geo_GetGeoElementOfNum(elements[i])->Type);
-      };
       evaluated.assign(point, -1);
       for(int i = (int)points.size() - 1; i >= 0; i--) {
         int &first = evaluated[points[i]];
-        if(first < 0 || dim(i) >= dim(first)) first = i;
+        if(first < 0 || dims[i] >= dims[first]) first = i;
       }
     }
 #endif

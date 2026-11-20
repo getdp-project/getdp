@@ -50,6 +50,7 @@ struct PostElement *Create_PostElement(int Index, int Type, int NbrNodes,
 
   PostElement = (struct PostElement *)Malloc(sizeof(struct PostElement));
   PostElement->Index = Index;
+  PostElement->NumElement = 0;
   PostElement->Type = Type;
   PostElement->Depth = Depth;
   PostElement->NbrNodes = NbrNodes;
@@ -78,6 +79,7 @@ struct PostElement *NodeCopy_PostElement(struct PostElement *PostElement)
 
   Copy = (struct PostElement *)Malloc(sizeof(struct PostElement));
   Copy->Index = PostElement->Index;
+  Copy->NumElement = PostElement->NumElement;
   Copy->Type = PostElement->Type;
   Copy->Depth = PostElement->Depth;
   Copy->NbrNodes = PostElement->NbrNodes;
@@ -104,6 +106,7 @@ struct PostElement *PartialCopy_PostElement(struct PostElement *PostElement)
 
   Copy = (struct PostElement *)Malloc(sizeof(struct PostElement));
   Copy->Index = PostElement->Index;
+  Copy->NumElement = PostElement->NumElement;
   Copy->Type = PostElement->Type;
   Copy->Depth = PostElement->Depth;
   Copy->NbrNodes = PostElement->NbrNodes;

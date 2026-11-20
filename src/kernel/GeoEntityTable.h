@@ -54,6 +54,8 @@ public:
     for(auto &x : _entities) Free(x.NumEntities);
   }
   std::size_t size() const { return _entities.size(); }
+  // the entities in the order of their creation (their lists must not change)
+  std::vector<struct Entity2XEntity1> &entities() { return _entities; }
   // the entity defined by the n numbers in list; if it is new, created is set
   // and its number is left to the caller
   struct Entity2XEntity1 &get(int n, int *list, bool &created)

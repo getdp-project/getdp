@@ -4,11 +4,15 @@
 // issues on https://gitlab.onelab.info/getdp/getdp/issues.
 
 #include <string.h>
+#include <algorithm>
+#include <map>
 #include <vector>
 #include "GeoData.h"
 #include "ProData.h"
 #include "GeoEntity.h"
 #include "GeoEntityTable.h"
+#include "DofData.h"
+#include "ListUtils.h"
 #include "MallocUtils.h"
 #include "Message.h"
 #include "GetDPConfig.h"
@@ -441,8 +445,6 @@ int *Geo_GetIM_Dfe_Xp(int Type_Element, int *nbf, int *nbe)
 /*  G e o _ C r e a t e E n t i t i e s O f E l e m e n t                   */
 /* ------------------------------------------------------------------------ */
 
-static const int *GivenEntityNumbers = NULL;
-
 void Geo_CreateEntitiesOfElement(
   int Nbr_Entities2, int *D_Element, int Geo_Element_NbrEntities1,
   int *Geo_Element_NumEntities1, int *Geo_Element_NbrEntities2,
@@ -478,22 +480,20 @@ void Geo_CreateEntitiesOfElement(
     struct Entity2XEntity1 &Entity2 =
       Geo_Entities2XEntities1->get(Nbr_Entities1, Num_Entities1, created);
     if(created) {
-      if(GivenEntityNumbers) // of the first rank, see Geo_CreateEdgesAndFacets
-        Entity2.Num = abs(GivenEntityNumbers[i]);
-      else {
-        // On a part of the mesh, an edge or facet numbered here does not have
-        // the number the other ranks give it. This is fine as long as the
-        // numbers are only used on this rank (e.g. the facets, to find the
-        // elements on one side of a surface), i.e. when the first rank was not
-        // asked for them; otherwise all the elements already have theirs.
-        int level =
-          (Geo_Entities2XEntities1 == CurrentGeoData->EdgesXNodes) ? 1 : 2;
-        if(CurrentGeoData->IsPart && CurrentGeoData->EntitiesLevel >= level)
-          Message::Error("%s created on a part of the mesh: its number is not "
-                         "the one of the other ranks (use -all-dofs)",
-                         (level == 1) ? "Edge" : "Facet");
-        Entity2.Num = ++(*Geo_NumCurrentEntity2);
-      }
+      // When the ranks only have a part of the mesh, an edge or facet
+      // numbered here does not have the number the other ranks give it. This
+      // is fine as long as the numbers are only used on this rank (e.g. the
+      // facets, to find the elements on one side of a surface), i.e. when
+      // they were not numbered over the ranks (Geo_CreateEdgesAndFacets);
+      // otherwise all the elements already have theirs.
+      int level =
+        (Geo_Entities2XEntities1 == CurrentGeoData->EdgesXNodes) ? 1 : 2;
+      if((CurrentGeoData->IsPart || CurrentGeoData->HasParts) &&
+         CurrentGeoData->EntitiesLevel >= level)
+        Message::Error("%s created on a part of the mesh: its number is not "
+                       "the one of the other ranks (use -all-dofs)",
+                       (level == 1) ? "Edge" : "Facet");
+      Entity2.Num = ++(*Geo_NumCurrentEntity2);
     }
     (*Geo_Element_NumEntities2)[i] = Entity2.Num * Sign_Entity2;
   }
@@ -503,13 +503,189 @@ void Geo_CreateEntitiesOfElement(
 /*  G e o _ C r e a t e E d g e s A n d F a c e t s                         */
 /* ------------------------------------------------------------------------ */
 
+#if defined(HAVE_MPI)
+// Sends a list of integers to each rank, and returns the list that each rank
+// sent to this one.
+static void Exchange(const std::vector<std::vector<int> > &send,
+                     std::vector<std::vector<int> > &recv)
+{
+  int np = Message::GetCommSize();
+  std::vector<int> scounts(np), sdispls(np), rcounts(np), rdispls(np);
+  int stotal = 0, rtotal = 0;
+  for(int r = 0; r < np; r++) {
+    scounts[r] = (int)send[r].size();
+    sdispls[r] = stotal;
+    stotal += scounts[r];
+  }
+  std::vector<int> sbuf(stotal + 1);
+  for(int r = 0; r < np; r++)
+    std::copy(send[r].begin(), send[r].end(), sbuf.begin() + sdispls[r]);
+  MPI_Alltoall(&scounts[0], 1, MPI_INT, &rcounts[0], 1, MPI_INT, MPI_COMM_WORLD);
+  for(int r = 0; r < np; r++) {
+    rdispls[r] = rtotal;
+    rtotal += rcounts[r];
+  }
+  std::vector<int> rbuf(rtotal + 1);
+  MPI_Alltoallv(&sbuf[0], &scounts[0], &sdispls[0], MPI_INT, &rbuf[0],
+                &rcounts[0], &rdispls[0], MPI_INT, MPI_COMM_WORLD);
+  recv.assign(np, std::vector<int>());
+  for(int r = 0; r < np; r++)
+    recv[r].assign(rbuf.begin() + rdispls[r],
+                   rbuf.begin() + rdispls[r] + rcounts[r]);
+}
+
+// Gives the same numbers on all the ranks to the edges (or to the facets) that
+// each rank has created, with numbers of its own, for the elements of its part
+// of the mesh.
+//
+// An entity is identified by its list of nodes (or of edges), and is owned by
+// the lowest of the ranks of the partitions of the elements that contain it.
+// As a rank does not have all these elements, it does not know the owner: the
+// ranks agree on it through a third rank, chosen from the list alone (a hash
+// of it), to which each rank sends its entities with the lowest rank it sees.
+// The owners then number their entities, one rank after the other, and the
+// other ranks ask them for these numbers.
+static void Geo_NumberEntitiesOverRanks(GeoEntityTable *table, bool facets,
+                                        int *NumCurrentEntity)
+{
+  struct GeoData *geo = CurrentGeoData;
+  const int np = Message::GetCommSize(), me = Message::GetCommRank();
+  std::vector<struct Entity2XEntity1> &entities = table->entities();
+  const int n = (int)entities.size();
+  const int L = 4; // largest number of nodes of an edge, or of edges of a facet
+
+  // the position of each entity from its own number, and the lowest rank of
+  // the partitions of the elements of this rank that contain it
+  std::vector<int> position(*NumCurrentEntity + 1, -1), lowest(n, np);
+  for(int i = 0; i < n; i++) {
+    if(entities[i].NbrEntities > L) {
+      Message::Error("Edge or facet with %d nodes or edges",
+                     entities[i].NbrEntities);
+      return;
+    }
+    position[entities[i].Num] = i;
+  }
+  for(int e = 0; e < List_Nbr(geo->Elements); e++) {
+    struct Geo_Element *ge = (struct Geo_Element *)List_Pointer(geo->Elements, e);
+    int rank = (ge->Partition > 0) ? (ge->Partition - 1) % np : np - 1;
+    int nbr = facets ? ge->NbrFacets : ge->NbrEdges;
+    int *num = facets ? ge->NumFacets : ge->NumEdges;
+    for(int k = 0; k < nbr; k++) {
+      int i = position[abs(num[k])];
+      lowest[i] = std::min(lowest[i], rank);
+    }
+  }
+
+  // ask the owner of each entity to the rank given by its list
+  auto key = [&](int i, int *list) {
+    std::fill(list, list + L, 0);
+    std::copy(entities[i].NumEntities,
+              entities[i].NumEntities + entities[i].NbrEntities, list);
+  };
+  std::vector<std::vector<int> > send(np), recv, asked(np);
+  for(int i = 0; i < n; i++) {
+    int list[L];
+    key(i, list);
+    std::size_t h = 0;
+    for(int k = 0; k < L; k++)
+      h = (h ^ (std::size_t)(unsigned int)list[k]) * 0x9E3779B97F4A7C15ULL;
+    int rank = (int)((h ^ (h >> 29)) % (std::size_t)np);
+    send[rank].insert(send[rank].end(), list, list + L);
+    send[rank].push_back(lowest[i]);
+    asked[rank].push_back(i);
+  }
+  Exchange(send, recv);
+  {
+    std::map<std::vector<int>, int> owners;
+    for(int r = 0; r < np; r++)
+      for(std::size_t j = 0; j < recv[r].size(); j += L + 1) {
+        std::vector<int> list(recv[r].begin() + j, recv[r].begin() + j + L);
+        auto it = owners.find(list);
+        if(it == owners.end())
+          owners[list] = recv[r][j + L];
+        else
+          it->second = std::min(it->second, recv[r][j + L]);
+      }
+    for(int r = 0; r < np; r++) {
+      send[r].clear();
+      for(std::size_t j = 0; j < recv[r].size(); j += L + 1)
+        send[r].push_back(owners[std::vector<int>(recv[r].begin() + j,
+                                                  recv[r].begin() + j + L)]);
+    }
+  }
+  Exchange(send, recv);
+  std::vector<int> owner(n);
+  for(int r = 0; r < np; r++)
+    for(std::size_t j = 0; j < recv[r].size(); j++) owner[asked[r][j]] = recv[r][j];
+
+  // number the entities owned by this rank, sorted by list, after those of
+  // the previous ranks
+  std::vector<int> owned;
+  for(int i = 0; i < n; i++)
+    if(owner[i] == me) owned.push_back(i);
+  std::sort(owned.begin(), owned.end(), [&](int a, int b) {
+    int la[L], lb[L];
+    key(a, la);
+    key(b, lb);
+    return std::lexicographical_compare(la, la + L, lb, lb + L);
+  });
+  int count = (int)owned.size(), before = 0, total = 0;
+  MPI_Scan(&count, &before, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
+  MPI_Allreduce(&count, &total, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
+  before -= count;
+  std::vector<int> number(n, 0);
+  for(int j = 0; j < count; j++) number[owned[j]] = before + j + 1;
+
+  // ask the numbers of the other entities to their owners
+  for(int r = 0; r < np; r++) {
+    send[r].clear();
+    asked[r].clear();
+  }
+  for(int i = 0; i < n; i++) {
+    if(owner[i] == me) continue;
+    int list[L];
+    key(i, list);
+    send[owner[i]].insert(send[owner[i]].end(), list, list + L);
+    asked[owner[i]].push_back(i);
+  }
+  Exchange(send, recv);
+  for(int r = 0; r < np; r++) {
+    send[r].clear();
+    for(std::size_t j = 0; j < recv[r].size(); j += L) {
+      int nbr = 0;
+      while(nbr < L && recv[r][j + nbr]) nbr++;
+      bool created;
+      struct Entity2XEntity1 &entity = table->get(nbr, &recv[r][j], created);
+      int i = (int)(&entity - &entities[0]);
+      if(created || number[i] == 0)
+        Message::Error("Edge or facet of rank %d unknown on rank %d", r, me);
+      send[r].push_back(created ? 0 : number[i]);
+    }
+  }
+  Exchange(send, recv);
+  for(int r = 0; r < np; r++)
+    for(std::size_t j = 0; j < recv[r].size(); j++) number[asked[r][j]] = recv[r][j];
+
+  // replace the numbers
+  for(int e = 0; e < List_Nbr(geo->Elements); e++) {
+    struct Geo_Element *ge = (struct Geo_Element *)List_Pointer(geo->Elements, e);
+    int nbr = facets ? ge->NbrFacets : ge->NbrEdges;
+    int *num = facets ? ge->NumFacets : ge->NumEdges;
+    for(int k = 0; k < nbr; k++)
+      num[k] = (num[k] > 0) ? number[position[num[k]]] : -number[position[-num[k]]];
+  }
+  for(int i = 0; i < n; i++) entities[i].Num = number[i];
+  *NumCurrentEntity = total;
+}
+#endif
+
 // Creates the edges (and the facets) of all the elements of the current mesh.
 //
 // The edges and facets are numbered in the order of their creation, and these
 // numbers identify their Dofs: in parallel all the ranks must have the same
-// ones. When the ranks only have a part of the mesh (Geo_SendParts), the
-// first rank, which has it all, numbers them, and each other rank asks it for
-// the numbers of the edges and facets of its own elements.
+// ones. When the ranks only have a part of the mesh (Geo_SendParts), each one
+// creates those of its elements, which are then numbered over the ranks; the
+// facets, which are defined by their edges, after the edges.
 void Geo_CreateEdgesAndFacets(bool facets)
 {
   struct GeoData *geo = CurrentGeoData;
@@ -518,67 +694,24 @@ void Geo_CreateEdgesAndFacets(bool facets)
   int n = List_Nbr(geo->Elements);
   struct Geo_Element *e0 =
     n ? (struct Geo_Element *)List_Pointer(geo->Elements, 0) : NULL;
+  const bool parts = geo->HasParts || geo->IsPart;
 
-  if(!geo->IsPart) {
-    for(int e = 0; e < n; e++) {
+  if(geo->EntitiesLevel < 1) {
+    for(int e = 0; e < n; e++)
       if(e0[e].NbrEdges == 0) Geo_CreateEdgesOfElement(&e0[e]);
-      if(facets && e0[e].NbrFacets == 0) Geo_CreateFacetsOfElement(&e0[e]);
-    }
-  }
-
 #if defined(HAVE_MPI)
-  if(geo->HasParts) {
-    // answer each rank: for each element it has, the number of edges and the
-    // edges, then the same for the facets
-    for(int rank = 1; rank < Message::GetCommSize(); rank++) {
-      int count;
-      MPI_Recv(&count, 1, MPI_INT, rank, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-      std::vector<int> nums(count + 1), answer;
-      MPI_Recv(&nums[0], count, MPI_INT, rank, 0, MPI_COMM_WORLD,
-               MPI_STATUS_IGNORE);
-      for(int i = 0; i < count; i++) {
-        struct Geo_Element key, *ge;
-        key.Num = nums[i];
-        ge = (struct Geo_Element *)List_PQuery(geo->Elements, &key, fcmp_Elm);
-        answer.push_back(ge ? ge->NbrEdges : 0);
-        if(ge) answer.insert(answer.end(), ge->NumEdges, ge->NumEdges + ge->NbrEdges);
-        answer.push_back((ge && facets) ? ge->NbrFacets : 0);
-        if(ge && facets)
-          answer.insert(answer.end(), ge->NumFacets, ge->NumFacets + ge->NbrFacets);
-      }
-      count = (int)answer.size();
-      MPI_Send(&count, 1, MPI_INT, rank, 0, MPI_COMM_WORLD);
-      MPI_Send(&answer[0], count, MPI_INT, rank, 0, MPI_COMM_WORLD);
-    }
-  }
-  else if(geo->IsPart) {
-    std::vector<int> nums(n + 1);
-    for(int e = 0; e < n; e++) nums[e] = e0[e].Num;
-    MPI_Send(&n, 1, MPI_INT, 0, 0, MPI_COMM_WORLD);
-    MPI_Send(&nums[0], n, MPI_INT, 0, 0, MPI_COMM_WORLD);
-    int count;
-    MPI_Recv(&count, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-    std::vector<int> answer(count + 1);
-    MPI_Recv(&answer[0], count, MPI_INT, 0, 0, MPI_COMM_WORLD,
-             MPI_STATUS_IGNORE);
-    const int *p = &answer[0];
-    for(int e = 0; e < n; e++) {
-      int nbrEdges = *p++;
-      if(nbrEdges && e0[e].NbrEdges == 0) {
-        GivenEntityNumbers = p;
-        Geo_CreateEdgesOfElement(&e0[e]);
-      }
-      p += nbrEdges;
-      int nbrFacets = *p++;
-      if(nbrFacets && e0[e].NbrFacets == 0) {
-        GivenEntityNumbers = p;
-        Geo_CreateFacetsOfElement(&e0[e]);
-      }
-      p += nbrFacets;
-      GivenEntityNumbers = NULL;
-    }
-  }
+    if(parts)
+      Geo_NumberEntitiesOverRanks(geo->EdgesXNodes, false, &geo->NumCurrentEdge);
 #endif
+  }
+  if(facets) {
+    for(int e = 0; e < n; e++)
+      if(e0[e].NbrFacets == 0) Geo_CreateFacetsOfElement(&e0[e]);
+#if defined(HAVE_MPI)
+    if(parts)
+      Geo_NumberEntitiesOverRanks(geo->FacetsXEdges, true, &geo->NumCurrentFacet);
+#endif
+  }
   geo->EntitiesLevel = level;
 }
 
@@ -620,70 +753,66 @@ void free_E2XE1(void *a, void *b)
 /*  G e o _ W r i t e F i l e P R E                                         */
 /* ------------------------------------------------------------------------ */
 
+// The edges (what = 0) or the facets (1) of the elements of the mesh, which
+// are identified by their number. When the ranks only have a part of the mesh,
+// each one writes those of the elements of its partition.
+static void Geo_PrintElementEntitiesPRE(struct GeoData *GeoData_P, int what,
+                                        bool byRank)
+{
+  int n = List_Nbr(GeoData_P->Elements), count = 0;
+  struct Geo_Element *e0 =
+    n ? (struct Geo_Element *)List_Pointer(GeoData_P->Elements, 0) : NULL;
+  auto nbr = [&](int i) {
+    if(byRank && !Dof_IsPartitionOfThisRank(e0[i].Partition)) return 0;
+    return what ? e0[i].NbrFacets : e0[i].NbrEdges;
+  };
+  for(int i = 0; i < n; i++)
+    if(nbr(i)) count++;
+  Dof_PrintfPRE(what ? "$ElementFacets\n" : "$ElementEdges\n");
+  Dof_PrintfPRE("%d %d\n", GeoData_P->Num, count);
+  for(int i = 0; i < n; i++) {
+    if(!nbr(i)) continue;
+    int *num = what ? e0[i].NumFacets : e0[i].NumEdges;
+    Dof_PrintfPRE("%d %d", e0[i].Num, nbr(i));
+    for(int j = 0; j < nbr(i); j++) Dof_PrintfPRE(" %d", num[j]);
+    Dof_PrintfPRE("\n");
+  }
+  Dof_PrintfPRE(what ? "$EndElementFacets\n" : "$EndElementEdges\n");
+}
+
 void Geo_WriteFilePRE(struct GeoData *GeoData_P, List_T *Group_L)
 {
-  if(Message::GetIsCommWorld() && Message::GetCommRank()) return;
+  const bool byRank = GeoData_P->HasParts || GeoData_P->IsPart;
+  const bool write = !(Message::GetIsCommWorld() && Message::GetCommRank());
 
-  int i, Nbr_Elements, j, Index_Group, Nbr_Entities, *Num_Entities;
-  struct Geo_Element *Geo_Element_P0, *Geo_Element_P;
-  struct Group *Group_P;
-
-  Nbr_Elements = List_Nbr(GeoData_P->Elements);
-
-  /*  E l e m e n t s X E d g e s  */
-
-  if(Nbr_Elements && GeoData_P->NumCurrentEdge) {
-    fprintf(File_PRE, "$ElementsXEdges\n");
-    fprintf(File_PRE, "%d %d\n", GeoData_P->Num,
-            GeoData_P->NbrElementsWithEdges);
-    Geo_Element_P0 = (struct Geo_Element *)List_Pointer(GeoData_P->Elements, 0);
-    for(i = 0; i < Nbr_Elements; i++) {
-      if((Geo_Element_P0 + i)->NbrEdges) {
-        Geo_Element_P = Geo_Element_P0 + i;
-        fprintf(File_PRE, "%d %d", i, Geo_Element_P->NbrEdges);
-        for(j = 0; j < Geo_Element_P->NbrEdges; j++)
-          fprintf(File_PRE, " %d", Geo_Element_P->NumEdges[j]);
-        fprintf(File_PRE, "\n");
-      }
-    }
-    fprintf(File_PRE, "$EndElementsXEdges\n");
-
-    if(Flag_XDATA) {
-      fprintf(File_PRE, "$EdgesXNodes  /* Never used, only for test */\n");
-      fprintf(File_PRE, "%d %d\n", GeoData_P->Num,
-              (int)GeoData_P->EdgesXNodes->size());
-      for(auto e : GeoData_P->EdgesXNodes->sorted())
-        Geo_WriteEntities2XEntities1(e, NULL);
-      fprintf(File_PRE, "$EndEdgesXNodes\n");
-    }
+  if(byRank || write) {
+    if(GeoData_P->NumCurrentEdge)
+      Geo_PrintElementEntitiesPRE(GeoData_P, 0, byRank);
+    if(GeoData_P->NumCurrentFacet)
+      Geo_PrintElementEntitiesPRE(GeoData_P, 1, byRank);
+    Dof_WriteSectionPRE(byRank);
   }
 
-  /*  E l e m e n t s X F a c e t s  */
+  if(!write) return;
 
-  if(Nbr_Elements && GeoData_P->NumCurrentFacet) {
-    fprintf(File_PRE, "$ElementsXFacets\n");
+  int i, j, Index_Group, Nbr_Entities, *Num_Entities;
+  struct Group *Group_P;
+
+  if(Flag_XDATA && GeoData_P->NumCurrentEdge) {
+    fprintf(File_PRE, "$EdgesXNodes  /* Never used, only for test */\n");
     fprintf(File_PRE, "%d %d\n", GeoData_P->Num,
-            GeoData_P->NbrElementsWithFacets);
-    Geo_Element_P0 = (struct Geo_Element *)List_Pointer(GeoData_P->Elements, 0);
-    for(i = 0; i < Nbr_Elements; i++) {
-      if((Geo_Element_P0 + i)->NbrFacets) {
-        Geo_Element_P = Geo_Element_P0 + i;
-        fprintf(File_PRE, "%d %d", i, Geo_Element_P->NbrFacets);
-        for(j = 0; j < Geo_Element_P->NbrFacets; j++)
-          fprintf(File_PRE, " %d", Geo_Element_P->NumFacets[j]);
-        fprintf(File_PRE, "\n");
-      }
-    }
-    fprintf(File_PRE, "$EndElementsXFacets\n");
-
-    if(Flag_XDATA) {
-      fprintf(File_PRE, "$FacetsXEdges  /* Never used, only for test */\n");
-      fprintf(File_PRE, "%d %d\n", GeoData_P->Num,
-              (int)GeoData_P->FacetsXEdges->size());
-      for(auto e : GeoData_P->FacetsXEdges->sorted())
-        Geo_WriteEntities2XEntities1(e, NULL);
-      fprintf(File_PRE, "$EndFacetsXEdges\n");
-    }
+            (int)GeoData_P->EdgesXNodes->size());
+    for(auto e : GeoData_P->EdgesXNodes->sorted())
+      Geo_WriteEntities2XEntities1(e, NULL);
+    fprintf(File_PRE, "$EndEdgesXNodes\n");
+  }
+  if(Flag_XDATA && GeoData_P->NumCurrentFacet) {
+    fprintf(File_PRE, "$FacetsXEdges  /* Never used, only for test */\n");
+    fprintf(File_PRE, "%d %d\n", GeoData_P->Num,
+            (int)GeoData_P->FacetsXEdges->size());
+    for(auto e : GeoData_P->FacetsXEdges->sorted())
+      Geo_WriteEntities2XEntities1(e, NULL);
+    fprintf(File_PRE, "$EndFacetsXEdges\n");
   }
 
   /*  E x t e n d e d G r o u p  */
@@ -754,9 +883,52 @@ void Geo_ReadFilePRE(struct GeoData *GeoData_P0, int NbrGeoData,
 
     if(feof(File_PRE)) break;
 
-    /*  E l e m e n t s X E d g e s  */
+    /*  E l e m e n t E d g e s ,   E l e m e n t F a c e t s  */
 
-    if(!strncmp(&String[1], "ElementsXEdges", 14)) {
+    // the edges or the facets of elements given by their number (there can be
+    // several such sections, see Geo_WriteFilePRE)
+    if(!strncmp(&String[1], "ElementEdges", 12) ||
+       !strncmp(&String[1], "ElementFacets", 13)) {
+      const bool facets = (String[8] == 'F');
+      if(fscanf(File_PRE, "%d %d", &GeoDataIndex, &Nbr_Entities) != 2 ||
+         GeoDataIndex > NbrGeoData - 1) {
+        Message::Error("Could not read the edges or facets of the elements");
+        return;
+      }
+      GeoData_P = GeoData_P0 + GeoDataIndex;
+      const int count = Nbr_Entities;
+      std::vector<int> num;
+      for(i = 0; i < count; i++) {
+        struct Geo_Element key;
+        if(fscanf(File_PRE, "%d %d", &key.Num, &Nbr_Entities) != 2) {
+          Message::Error("Could not read element and number of edges or facets");
+          return;
+        }
+        num.resize(Nbr_Entities + 1);
+        for(j = 0; j < Nbr_Entities; j++) {
+          if(fscanf(File_PRE, "%d", &num[j]) != 1) {
+            Message::Error("Could not read edge or facet");
+            return;
+          }
+        }
+        Geo_Element_P =
+          (struct Geo_Element *)List_PQuery(GeoData_P->Elements, &key, fcmp_Elm);
+        if(!Geo_Element_P) continue; // not in the part of the mesh of the rank
+        int *&list = facets ? Geo_Element_P->NumFacets : Geo_Element_P->NumEdges;
+        int &nbr = facets ? Geo_Element_P->NbrFacets : Geo_Element_P->NbrEdges;
+        if(nbr) continue; // already read
+        nbr = Nbr_Entities;
+        list = (int *)Malloc(Nbr_Entities * sizeof(int));
+        std::copy(num.begin(), num.begin() + Nbr_Entities, list);
+        (facets ? GeoData_P->NbrElementsWithFacets :
+                  GeoData_P->NbrElementsWithEdges)++;
+      }
+    }
+
+    /*  E l e m e n t s X E d g e s  (elements given by their position, as */
+    /*  written by the previous versions)                                  */
+
+    else if(!strncmp(&String[1], "ElementsXEdges", 14)) {
       if(fscanf(File_PRE, "%d", &GeoDataIndex) != 1) {
         Message::Error("Could not read GeoData index");
         return;

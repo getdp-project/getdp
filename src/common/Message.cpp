@@ -1393,3 +1393,88 @@ int Message::GetMaxThreads() { return 1; }
 int Message::GetThreadNum() { return 0; }
 
 #endif
+
+// Writes the sections of all the ranks in the file, after what the first rank
+// has already written in it (stream is only used on the first rank), and
+// empties them. The ranks write their
+// sections themselves, at the same time, each one at its own position in the
+// file (MPI-IO): nothing goes through the first rank.
+//
+// If the file cannot be opened by all the ranks (e.g. it is not on a file
+// system they share), the sections are sent to the first rank instead, which
+// writes them one after the other.
+void Message::WriteParallelSections(FILE *stream, const char *fileName,
+                                    std::string &section)
+{
+#if defined(HAVE_MPI)
+  const int me = GetCommRank(), np = GetCommSize();
+  const long long chunk = 1 << 30; // an MPI count is an int
+  long long n = section.size();
+  std::vector<long long> sizes(np);
+  MPI_Allgather(&n, 1, MPI_LONG_LONG, &sizes[0], 1, MPI_LONG_LONG,
+                MPI_COMM_WORLD);
+
+  // where the first rank stopped, and thus where each section starts
+  long long start = -1;
+  if(np == 1) {
+    if(stream && n) fwrite(&section[0], 1, n, stream);
+    std::string().swap(section);
+    return;
+  }
+  if(!me && stream && stream != stdout) {
+    fflush(stream);
+    fseek(stream, 0, SEEK_END);
+    start = ftell(stream);
+  }
+  MPI_Bcast(&start, 1, MPI_LONG_LONG, 0, MPI_COMM_WORLD);
+  long long mine = start, largest = 0;
+  for(int rank = 0; rank < np; rank++) {
+    if(rank < me) mine += sizes[rank];
+    largest = std::max(largest, sizes[rank]);
+  }
+
+  MPI_File file;
+  bool shared = start >= 0 &&
+                MPI_File_open(MPI_COMM_WORLD, fileName, MPI_MODE_WRONLY,
+                              MPI_INFO_NULL, &file) == MPI_SUCCESS;
+  Debug("Writing the sections of %d ranks in '%s' (%s)", np,
+                 fileName, shared ? "MPI-IO" : "through the first rank");
+  if(shared) {
+    // collective writes: all the ranks make the same number of calls
+    int failed = 0;
+    for(long long done = 0; done < largest; done += chunk) {
+      int count = (int)std::max(0LL, std::min(chunk, n - done));
+      if(MPI_File_write_at_all(file, mine + done,
+                               count ? &section[done] : NULL, count,
+                               MPI_BYTE, MPI_STATUS_IGNORE) != MPI_SUCCESS)
+        failed = 1;
+    }
+    MPI_File_close(&file);
+    MPI_Allreduce(MPI_IN_PLACE, &failed, 1, MPI_INT, MPI_MAX, MPI_COMM_WORLD);
+    if(failed) Error("Could not write '%s'", fileName);
+    // the first rank goes on after the sections
+    if(!me) fseek(stream, 0, SEEK_END);
+  }
+  else if(me) {
+    for(long long sent = 0; sent < n; sent += chunk)
+      MPI_Send(&section[sent], (int)std::min(chunk, n - sent), MPI_BYTE, 0,
+               0, MPI_COMM_WORLD);
+  }
+  else {
+    if(stream && n) fwrite(&section[0], 1, n, stream);
+    for(int rank = 1; rank < np; rank++) {
+      section.resize(std::min(chunk, sizes[rank]));
+      for(long long got = 0; got < sizes[rank]; got += chunk) {
+        int count = (int)std::min(chunk, sizes[rank] - got);
+        MPI_Recv(&section[0], count, MPI_BYTE, rank, 0, MPI_COMM_WORLD,
+                 MPI_STATUS_IGNORE);
+        if(stream) fwrite(&section[0], 1, count, stream);
+      }
+    }
+  }
+#else
+  if(stream && !section.empty()) fwrite(&section[0], 1, section.size(), stream);
+#endif
+  std::string().swap(section);
+}
+

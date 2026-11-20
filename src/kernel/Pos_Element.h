@@ -14,7 +14,9 @@
 /* ------------------------------------------------------------------------ */
 
 struct PostElement {
-  int Index, Type, Depth;
+  // Index is the position of the element in the mesh of the rank; NumElement
+  // is the number of the element if it is not in this mesh (0 otherwise)
+  int Index, NumElement, Type, Depth;
   int NbrNodes, *NumNodes;
   double *u, *v, *w, *x, *y, *z;
   struct Value *Value;

@@ -1960,24 +1960,40 @@ static bool _getAMSEdges(AMSEdges &a)
     rows.reserve(total / 2);
     for(long long i = 0; i + 1 < total; i += 2) rows[all[i]] = all[i + 1];
   }
-  for(struct Entity2XEntity1 *e : CurrentGeoData->EdgesXNodes->sorted()) {
-    if(e->NbrEntities != 2) continue;
+  // the edges of the elements, from their first to their second node in
+  // increasing order of the node numbers, sorted by nodes (they are taken from
+  // the elements, as the table of the edges is not there when the edges were
+  // read from the .pre file)
+  std::map<std::pair<int, int>, int> edges;
+  for(int i = 0; i < Geo_GetNbrGeoElements(); i++) {
+    struct Geo_Element *ge = Geo_GetGeoElement(i);
+    for(int k = 0; k < ge->NbrEdges; k++) {
+      int *local = Geo_GetNodesOfEdgeInElement(ge, k);
+      if(!local[0] || !local[1] || local[2]) continue;
+      int n0 = abs(ge->NumNodes[abs(local[0]) - 1]);
+      int n1 = abs(ge->NumNodes[abs(local[1]) - 1]);
+      edges[std::make_pair(std::min(n0, n1), std::max(n0, n1))] =
+        abs(ge->NumEdges[k]);
+    }
+  }
+  for(auto &e : edges) {
+    const int Num = e.second, nodes[2] = {e.first.first, e.first.second};
     AMSEdges::Edge ed;
-    ed.num = e->Num;
+    ed.num = Num;
     if(localDofs) {
-      auto it = rows.find(e->Num);
+      auto it = rows.find(Num);
       ed.row = (it == rows.end()) ? -1 : it->second;
     }
     else {
-      struct Dof *Dof_P = Dof_GetDofStruct(DofData_P, NumType, e->Num, 0);
+      struct Dof *Dof_P = Dof_GetDofStruct(DofData_P, NumType, Num, 0);
       ed.row = (Dof_P && (Dof_P->Type == DOF_UNKNOWN ||
                           Dof_P->Type == DOF_UNKNOWN_INIT)) ?
                  Dof_P->Case.Unknown.NumDof - 1 :
                  -1;
     }
     for(int j = 0; j < 2; j++) {
-      int num = abs(e->NumEntities[j]);
-      ed.s[j] = e->NumEntities[j] > 0 ? 1 : -1;
+      int num = nodes[j];
+      ed.s[j] = j ? -1 : 1;
       auto it = a.nodeIndex.find(num);
       if(it == a.nodeIndex.end()) {
         it = a.nodeIndex.insert(std::make_pair(num, (int)a.nodes.size())).first;

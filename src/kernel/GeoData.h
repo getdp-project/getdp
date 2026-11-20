@@ -89,14 +89,16 @@ struct GeoData {
 
   // In parallel, with rank-local Dofs, only the first rank reads the mesh: it
   // sends to each other rank the part of the mesh this rank needs
-  // (Geo_SendParts, Geo_ReceivePart). HasParts is set on the first rank and IsPart on the
-  // others; EntitiesLevel tells which entities of the elements of the parts
-  // have been numbered by the first rank (1: edges, 2: edges and facets).
+  // (Geo_SendParts, Geo_ReceivePart). IsPart is set on the ranks that only
+  // have their part, and HasParts on the first rank if it keeps the whole
+  // mesh; EntitiesLevel tells which entities of the elements of the parts have
+  // been numbered over the ranks (1: edges, 2: edges and facets).
   bool HasParts, IsPart;
   int EntitiesLevel;
 };
 
 void Geo_GetLinkRegions(std::unordered_set<int> &regions);
+void Geo_SetWholeMeshOnFirstRank(bool whole);
 int Geo_AddGeoData(List_T *GeoData_L, char *Name_MshFile,
                    char *Name_DefaultMshFile, char *Name_AdaptFile,
                    char *Name_DefaultAdaptFile);

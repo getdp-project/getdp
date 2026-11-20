@@ -5617,7 +5617,7 @@ unknowns, fixed values, initial values, etc.).
 
 @example
 $Resolution /* '@var{resolution-id}' */
-@var{main-resolution-number} @var{number-of-dofdata}
+@var{main-resolution-number} @var{number-of-dofdata} @var{number-of-sections}
 $EndResolution
 $DofData /* #@var{dofdata-number} */
 @var{resolution-number} @var{system-number}
@@ -5655,6 +5655,15 @@ the resolution (including those considered in pre-resolutions).
 @item
 The @var{dofdata-number} of a @code{$DofData} field is determined by the order
 of this field in the @file{.pre} file.
+@item
+In a parallel run where each process only defines the degrees of freedom of its
+mesh partition (@pxref{Running GetDP in parallel}), each process writes its own
+@code{$DofData} field for each system: there are then
+@var{number-of-sections} consecutive @code{$DofData} fields for each system
+(@var{number-of-sections} is 1 if it is omitted), with
+@var{number-of-any-dof} the number of degrees of freedom in the field, and a
+degree of freedom that several processes define is in the field of each of
+them. The file can be read by a run on any number of processes.
 @item
 @var{number-of-dof} is the dimension of the considered system of equations, while
 @var{number-of-any-dof} is the total number of degrees of freedom before

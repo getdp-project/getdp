@@ -154,7 +154,7 @@ static void Gmsh_StringEnd(int Format)
 // elements of its mesh partition (see Format_SetGmshParallel). Each rank
 // formats its values as a $ElementNodeData section of its own, tagged with its
 // rank as "partition", in GmshBuffer; the sections are then written one after
-// the other in the file (see Gmsh_WriteParallelSections).
+// the other in the file (see Message::WriteParallelSections).
 // Gmsh assembles the sections of a view when it reads the file.
 static bool GmshParallel = false;
 static std::string GmshBuffer;
@@ -196,81 +196,6 @@ static void Gmsh_Printf(const char *fmt, ...)
   int n = vsnprintf(str, sizeof(str), fmt, args);
   va_end(args);
   Gmsh_Write(str, std::min(n, (int)sizeof(str) - 1));
-}
-
-// Writes the sections of all the ranks in the file, after what the first rank
-// has already written in it (the header and the mesh). The ranks write their
-// sections themselves, at the same time, each one at its own position in the
-// file (MPI-IO): nothing goes through the first rank.
-//
-// If the file cannot be opened by all the ranks (e.g. it is not on a file
-// system they share), the sections are sent to the first rank instead, which
-// writes them one after the other.
-static void Gmsh_WriteParallelSections()
-{
-#if defined(HAVE_MPI)
-  const int me = Message::GetCommRank(), np = Message::GetCommSize();
-  const long long chunk = 1 << 30; // an MPI count is an int
-  long long n = GmshBuffer.size();
-  std::vector<long long> sizes(np);
-  MPI_Allgather(&n, 1, MPI_LONG_LONG, &sizes[0], 1, MPI_LONG_LONG,
-                MPI_COMM_WORLD);
-
-  // where the first rank stopped, and thus where each section starts
-  long long start = -1;
-  if(!me && PostStream && PostStream != stdout) {
-    fflush(PostStream);
-    fseek(PostStream, 0, SEEK_END);
-    start = ftell(PostStream);
-  }
-  MPI_Bcast(&start, 1, MPI_LONG_LONG, 0, MPI_COMM_WORLD);
-  long long mine = start, largest = 0;
-  for(int rank = 0; rank < np; rank++) {
-    if(rank < me) mine += sizes[rank];
-    largest = std::max(largest, sizes[rank]);
-  }
-
-  MPI_File file;
-  bool shared = start >= 0 &&
-                MPI_File_open(MPI_COMM_WORLD, PostFileName, MPI_MODE_WRONLY,
-                              MPI_INFO_NULL, &file) == MPI_SUCCESS;
-  Message::Debug("Writing the sections of %d ranks in '%s' (%s)", np,
-                 PostFileName, shared ? "MPI-IO" : "through the first rank");
-  if(shared) {
-    // collective writes: all the ranks make the same number of calls
-    int failed = 0;
-    for(long long done = 0; done < largest; done += chunk) {
-      int count = (int)std::max(0LL, std::min(chunk, n - done));
-      if(MPI_File_write_at_all(file, mine + done,
-                               count ? &GmshBuffer[done] : NULL, count,
-                               MPI_BYTE, MPI_STATUS_IGNORE) != MPI_SUCCESS)
-        failed = 1;
-    }
-    MPI_File_close(&file);
-    MPI_Allreduce(MPI_IN_PLACE, &failed, 1, MPI_INT, MPI_MAX, MPI_COMM_WORLD);
-    if(failed) Message::Error("Could not write '%s'", PostFileName);
-    // the first rank goes on after the sections
-    if(!me) fseek(PostStream, 0, SEEK_END);
-  }
-  else if(me) {
-    for(long long sent = 0; sent < n; sent += chunk)
-      MPI_Send(&GmshBuffer[sent], (int)std::min(chunk, n - sent), MPI_BYTE, 0,
-               0, MPI_COMM_WORLD);
-  }
-  else {
-    if(PostStream && n) fwrite(&GmshBuffer[0], 1, n, PostStream);
-    for(int rank = 1; rank < np; rank++) {
-      GmshBuffer.resize(std::min(chunk, sizes[rank]));
-      for(long long got = 0; got < sizes[rank]; got += chunk) {
-        int count = (int)std::min(chunk, sizes[rank] - got);
-        MPI_Recv(&GmshBuffer[0], count, MPI_BYTE, rank, 0, MPI_COMM_WORLD,
-                 MPI_STATUS_IGNORE);
-        if(PostStream) fwrite(&GmshBuffer[0], 1, count, PostStream);
-      }
-    }
-  }
-#endif
-  std::string().swap(GmshBuffer);
 }
 
 static void Gmsh_PrintElementNodeData(struct PostSubOperation *PSO_P,
@@ -956,8 +881,8 @@ static void ElementTable_PrintElement(int TimeStep, int NbTimeStep,
     ElementTable.clear();
   }
   int numEle = -1;
-  if(PE->Index >= 0 && PE->Index < Geo_GetNbrGeoElements()) {
-    numEle = Geo_GetGeoElement(PE->Index)->Num;
+  if(PE->NumElement || (PE->Index >= 0 && PE->Index < Geo_GetNbrGeoElements())) {
+    numEle = PE->NumElement ? PE->NumElement : Geo_GetGeoElement(PE->Index)->Num;
     int Size = 0;
     switch(PE->Value[0].Type) {
     case SCALAR: Size = 1; break;
@@ -1610,7 +1535,8 @@ void Format_PostFooter(struct PostSubOperation *PSO_P, int Store,
         }
         Gmsh_PrintElementNodeData(PSO_P, NbTimeStep, GmshNumComp[kind], N, L);
       }
-      if(GmshParallel) Gmsh_WriteParallelSections();
+      if(GmshParallel)
+        Message::WriteParallelSections(PostStream, PostFileName, GmshBuffer);
     }
     else if(PostStream && Flag_BIN) { /* bricolage */
       fprintf(PostStream, "%d ", List_Nbr(TimeValue_L));
@@ -1813,7 +1739,9 @@ void Format_PostElement(struct PostSubOperation *PSO_P, int Contour, int Store,
   }
   */
 
-  if(PE->Index != NO_ELEMENT)
+  if(PE->NumElement)
+    Num_Element = PE->NumElement;
+  else if(PE->Index != NO_ELEMENT)
     Num_Element = Geo_GetGeoElement(PE->Index)->Num;
   else
     Num_Element = 0;

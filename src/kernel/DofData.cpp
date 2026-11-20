@@ -9,6 +9,7 @@
 //
 
 #include <map>
+#include <stdarg.h>
 #include <vector>
 #include <algorithm>
 #include <unordered_map>
@@ -360,12 +361,51 @@ void Dof_SetCurrentDofData(struct DofData *DofData_P)
 /*  F i l e s   . . .                                                       */
 /* ------------------------------------------------------------------------ */
 
+// In parallel, when each rank only has the Dofs and the elements of its part of
+// the mesh, the .pre file is made of sections written by the ranks, one after
+// the other: for each system the Dofs of each rank, then the edges and facets
+// of the elements of each rank (see Geo_WriteFilePRE). The number of sections
+// follows the number of systems in the file (it is 1 without it); a Dof that
+// several ranks have is in the section of each of them. The ranks prepare
+// their sections in SectionPRE and write them at the same time (MPI-IO).
+static std::string Name_PRE, SectionPRE;
+static int NbrSectionsPRE = 1;
+
+void Dof_PrintfPRE(const char *fmt, ...)
+{
+  char str[1024];
+  va_list args;
+  va_start(args, fmt);
+  int n = vsnprintf(str, sizeof(str), fmt, args);
+  va_end(args);
+  SectionPRE.append(str, std::min(n, (int)sizeof(str) - 1));
+}
+
+// writes the sections prepared by all the ranks (byRank), or the one of the
+// rank that writes the file
+void Dof_WriteSectionPRE(bool byRank)
+{
+  if(byRank)
+    Message::WriteParallelSections(File_PRE, Name_PRE.c_str(), SectionPRE);
+  else if(File_PRE && !SectionPRE.empty())
+    fwrite(&SectionPRE[0], 1, SectionPRE.size(), File_PRE);
+  std::string().swap(SectionPRE);
+}
+
+static bool Dof_SectionsByRankPRE()
+{
+  return Dof_UseLocalDofs() && !Dof_GetAllDofsOnFirstRank();
+}
+
 /* ------------------------------------------------------------------------ */
 /*  D o f _ O p e n F i l e                                                 */
 /* ------------------------------------------------------------------------ */
 
 void Dof_OpenFile(int Type, char *Name, const char *Mode)
 {
+  // all the ranks need the name of the file they write together
+  if(Type == DOF_PRE) Name_PRE = std::string(Name) + ".pre";
+
   if((Message::GetIsCommWorld() && Message::GetCommRank()) &&
      (Mode[0] == 'w' || Mode[0] == 'a')) {
     switch(Type) {
@@ -447,7 +487,8 @@ void Dof_WriteFilePRE0(int Num_Resolution, char *Name_Resolution,
   if(Message::GetIsCommWorld() && Message::GetCommRank()) return;
 
   fprintf(File_PRE, "$Resolution /* '%s' */\n", Name_Resolution);
-  fprintf(File_PRE, "%d %d\n", Num_Resolution, Nbr_DofData);
+  fprintf(File_PRE, "%d %d %d\n", Num_Resolution, Nbr_DofData,
+          Dof_SectionsByRankPRE() ? Message::GetCommSize() : 1);
   fprintf(File_PRE, "$EndResolution\n");
 }
 
@@ -472,7 +513,10 @@ void Dof_ReadFilePRE0(int *Num_Resolution, int *Nbr_DofData)
   }
 
   if(!strncmp(&String[1], "Resolution", 10)) {
-    if(fscanf(File_PRE, "%d %d", Num_Resolution, Nbr_DofData) != 2) {
+    NbrSectionsPRE = 1;
+    if(!fgets(String, sizeof(String), File_PRE) ||
+       sscanf(String, "%d %d %d", Num_Resolution, Nbr_DofData,
+              &NbrSectionsPRE) < 2) {
       Message::Error("Could not read resolution data");
       return;
     }
@@ -553,8 +597,9 @@ static void Dof_WriteDofBinaryPRE(struct Dof *Dof_P)
     d[1] = (Dof_P->Type == DOF_LINKCPLX) ? Dof_P->Case.Link.Coef2 : 0.;
     break;
   }
-  fwrite(i, sizeof(int), 6, File_PRE);
-  fwrite(d, sizeof(double), Dof_NbrDoublesPRE(Dof_P->Type), File_PRE);
+  SectionPRE.append((const char *)i, 6 * sizeof(int));
+  SectionPRE.append((const char *)d,
+                    Dof_NbrDoublesPRE(Dof_P->Type) * sizeof(double));
 }
 
 static bool Dof_ReadDofBinaryPRE(struct Dof *Dof_P)
@@ -606,50 +651,40 @@ static bool Dof_ReadDofBinaryPRE(struct Dof *Dof_P)
 
 void Dof_WriteFilePRE(struct DofData *DofData_P)
 {
-  // the first rank writes the Dofs of all the ranks
-  List_T *own = NULL;
-  if(Dof_UseLocalDofs() && !Dof_GetAllDofsOnFirstRank() &&
-     !DofData_P->DofTree) {
-    List_T *all = Dof_GatherDofsOnFirstRank(DofData_P);
-    if(all) {
-      own = DofData_P->DofList;
-      DofData_P->DofList = all;
-      DofData_P->NbrAnyDof = List_Nbr(all);
-    }
-  }
-
-  if(Message::GetIsCommWorld() && Message::GetCommRank()) return;
+  // each rank writes its Dofs, or the rank that writes the file writes them all
+  const bool byRank = Dof_SectionsByRankPRE();
+  if(!byRank && Message::GetIsCommWorld() && Message::GetCommRank()) return;
 
   int i, Nbr_Index;
   struct Dof *Dof_P0;
 
-  fprintf(File_PRE, "$DofData /* #%d */\n", DofData_P->Num);
+  Dof_PrintfPRE("$DofData /* #%d */\n", DofData_P->Num);
 
-  fprintf(File_PRE, "%d %d\n", DofData_P->ResolutionIndex,
+  Dof_PrintfPRE("%d %d\n", DofData_P->ResolutionIndex,
           DofData_P->SystemIndex);
 
   Nbr_Index = List_Nbr(DofData_P->FunctionSpaceIndex);
-  fprintf(File_PRE, "%d", Nbr_Index);
+  Dof_PrintfPRE("%d", Nbr_Index);
   for(i = 0; i < Nbr_Index; i++)
-    fprintf(File_PRE, " %d",
+    Dof_PrintfPRE(" %d",
             *((int *)List_Pointer(DofData_P->FunctionSpaceIndex, i)));
-  fprintf(File_PRE, "\n");
+  Dof_PrintfPRE("\n");
 
   Nbr_Index = List_Nbr(DofData_P->TimeFunctionIndex);
-  fprintf(File_PRE, "%d", Nbr_Index);
+  Dof_PrintfPRE("%d", Nbr_Index);
   for(i = 0; i < Nbr_Index; i++)
-    fprintf(File_PRE, " %d",
+    Dof_PrintfPRE(" %d",
             *((int *)List_Pointer(DofData_P->TimeFunctionIndex, i)));
-  fprintf(File_PRE, "\n");
+  Dof_PrintfPRE("\n");
 
-  fprintf(File_PRE, "%d", 1);
-  for(i = 0; i < 1; i++) fprintf(File_PRE, " %d", 0);
-  fprintf(File_PRE, "\n");
+  Dof_PrintfPRE("%d", 1);
+  for(i = 0; i < 1; i++) Dof_PrintfPRE(" %d", 0);
+  Dof_PrintfPRE("\n");
 
   // with -bin, the Dofs are written in binary (see Dof_WriteDofPRE)
   extern int Flag_BIN;
   Dof_BinaryPRE = Flag_BIN;
-  fprintf(File_PRE, "%d %d%s\n",
+  Dof_PrintfPRE("%d %d%s\n",
           (DofData_P->DofTree) ? Tree_Nbr(DofData_P->DofTree) :
                                  DofData_P->NbrAnyDof,
           DofData_P->NbrDof, Dof_BinaryPRE ? " binary" : "");
@@ -663,20 +698,24 @@ void Dof_WriteFilePRE(struct DofData *DofData_P)
         Dof_WriteDofPRE(Dof_P0 + i, NULL);
     }
   }
-  if(Dof_BinaryPRE) fprintf(File_PRE, "\n");
-  fprintf(File_PRE, "$EndDofData\n");
-  fflush(File_PRE);
-
-  if(own) {
-    List_Delete(DofData_P->DofList);
-    DofData_P->DofList = own;
-    DofData_P->NbrAnyDof = List_Nbr(own);
-  }
+  if(Dof_BinaryPRE) Dof_PrintfPRE("\n");
+  Dof_PrintfPRE("$EndDofData\n");
+  Dof_WriteSectionPRE(byRank);
 }
 
 /* ------------------------------- */
 /*  D o f _ W r i t e D o f P R E  */
 /* ------------------------------- */
+
+static void Dof_PrintScalarPRE(gScalar *S)
+{
+  double d[2];
+  Dof_GetScalarPRE(S, d);
+  if(gSCALAR_SIZE == 2)
+    Dof_PrintfPRE("%.16g %.16g", d[0], d[1]);
+  else
+    Dof_PrintfPRE("%.16g", d[0]);
+}
 
 void Dof_WriteDofPRE(void *a, void *b)
 {
@@ -689,39 +728,39 @@ void Dof_WriteDofPRE(void *a, void *b)
     return;
   }
 
-  fprintf(File_PRE, "%d %d %d %d ", Dof_P->NumType, Dof_P->Entity,
+  Dof_PrintfPRE("%d %d %d %d ", Dof_P->NumType, Dof_P->Entity,
           Dof_P->Harmonic, Dof_P->Type);
 
   switch(Dof_P->Type) {
   case DOF_UNKNOWN:
-    fprintf(File_PRE, "%d %d\n", Dof_P->Case.Unknown.NumDof,
+    Dof_PrintfPRE("%d %d\n", Dof_P->Case.Unknown.NumDof,
             Dof_P->Case.Unknown.PartitionOrNonLocal);
     break;
   case DOF_FIXEDWITHASSOCIATE:
-    fprintf(File_PRE, "%d ", Dof_P->Case.FixedAssociate.NumDof);
-    LinAlg_PrintScalar(File_PRE, &Dof_P->Val);
-    fprintf(File_PRE, " %d\n", Dof_P->Case.FixedAssociate.TimeFunctionIndex);
+    Dof_PrintfPRE("%d ", Dof_P->Case.FixedAssociate.NumDof);
+    Dof_PrintScalarPRE(&Dof_P->Val);
+    Dof_PrintfPRE(" %d\n", Dof_P->Case.FixedAssociate.TimeFunctionIndex);
     break;
   case DOF_FIXED:
-    LinAlg_PrintScalar(File_PRE, &Dof_P->Val);
-    fprintf(File_PRE, " %d\n", Dof_P->Case.FixedAssociate.TimeFunctionIndex);
+    Dof_PrintScalarPRE(&Dof_P->Val);
+    Dof_PrintfPRE(" %d\n", Dof_P->Case.FixedAssociate.TimeFunctionIndex);
     break;
   case DOF_FIXED_SOLVE:
-    fprintf(File_PRE, "%d\n", Dof_P->Case.FixedAssociate.TimeFunctionIndex);
+    Dof_PrintfPRE("%d\n", Dof_P->Case.FixedAssociate.TimeFunctionIndex);
     break;
   case DOF_UNKNOWN_INIT:
-    fprintf(File_PRE, "%d ", Dof_P->Case.Unknown.NumDof);
-    LinAlg_PrintScalar(File_PRE, &Dof_P->Val);
-    fprintf(File_PRE, " ");
-    LinAlg_PrintScalar(File_PRE, &Dof_P->Val2);
-    fprintf(File_PRE, " %d\n", Dof_P->Case.Unknown.PartitionOrNonLocal);
+    Dof_PrintfPRE("%d ", Dof_P->Case.Unknown.NumDof);
+    Dof_PrintScalarPRE(&Dof_P->Val);
+    Dof_PrintfPRE(" ");
+    Dof_PrintScalarPRE(&Dof_P->Val2);
+    Dof_PrintfPRE(" %d\n", Dof_P->Case.Unknown.PartitionOrNonLocal);
     break;
   case DOF_LINK:
-    fprintf(File_PRE, "%.16g %d\n", Dof_P->Case.Link.Coef,
+    Dof_PrintfPRE("%.16g %d\n", Dof_P->Case.Link.Coef,
             Dof_P->Case.Link.EntityRef);
     break;
   case DOF_LINKCPLX:
-    fprintf(File_PRE, "%.16g %.16g %d\n", Dof_P->Case.Link.Coef,
+    Dof_PrintfPRE("%.16g %.16g %d\n", Dof_P->Case.Link.Coef,
             Dof_P->Case.Link.Coef2, Dof_P->Case.Link.EntityRef);
     break;
   }
@@ -731,15 +770,23 @@ void Dof_WriteDofPRE(void *a, void *b)
 /*  D o f _ R e a d F i l e P R E                                           */
 /* ------------------------------------------------------------------------ */
 
-void Dof_ReadFilePRE(struct DofData *DofData_P)
+// Reads the Dofs of a section and adds them to the list; last is the last
+// unknown of each mesh partition.
+static bool Dof_ReadSectionPRE(struct DofData *DofData_P, bool first,
+                               std::map<int, int> &last)
 {
-  Message::Barrier();
-
-  int i, Nbr_Index, Int, Dummy;
+  int i, Nbr_Index, Int, Dummy, Nbr_Dof;
   struct Dof Dof;
   char String[256];
 
-  std::map<int, std::set<int>> partitions;
+  auto unknown = [&](struct Dof &Dof) {
+    if(Dof.Case.Unknown.PartitionOrNonLocal < 0)
+      DofData_P->NonLocalEquations.push_back(Dof.Case.Unknown.NumDof);
+    else {
+      int &l = last[Dof.Case.Unknown.PartitionOrNonLocal];
+      l = std::max(l, Dof.Case.Unknown.NumDof);
+    }
+  };
 
   do {
     if(!fgets(String, sizeof(String), File_PRE)) break;
@@ -748,85 +795,81 @@ void Dof_ReadFilePRE(struct DofData *DofData_P)
 
   if(feof(File_PRE)) {
     Message::Error("$DofData field not found in file");
-    return;
+    return false;
   }
 
   if(!strncmp(&String[1], "DofData", 7)) {
     if(fscanf(File_PRE, "%d %d", &DofData_P->ResolutionIndex,
               &DofData_P->SystemIndex) != 2) {
       Message::Error("Could not read Resolution and DofData indices");
-      return;
+      return false;
     }
 
     if(fscanf(File_PRE, "%d", &Nbr_Index) != 1) {
       Message::Error("Could not read number of function spaces");
-      return;
+      return false;
     }
+    if(!first) List_Delete(DofData_P->FunctionSpaceIndex);
     DofData_P->FunctionSpaceIndex = List_Create(Nbr_Index, 1, sizeof(int));
     for(i = 0; i < Nbr_Index; i++) {
       if(fscanf(File_PRE, "%d", &Int) != 1) {
         Message::Error("Could not read FunctionSpace index");
-        return;
+        return false;
       }
       List_Add(DofData_P->FunctionSpaceIndex, &Int);
     }
 
     if(fscanf(File_PRE, "%d", &Nbr_Index) != 1) {
       Message::Error("Could not read number of time functions");
-      return;
+      return false;
     }
+    if(!first) List_Delete(DofData_P->TimeFunctionIndex);
     DofData_P->TimeFunctionIndex = List_Create(Nbr_Index, 1, sizeof(int));
     for(i = 0; i < Nbr_Index; i++) {
       if(fscanf(File_PRE, "%d", &Int) != 1) {
         Message::Error("Could not read TimeFunction index");
-        return;
+        return false;
       }
       List_Add(DofData_P->TimeFunctionIndex, &Int);
     }
 
     if(fscanf(File_PRE, "%d", &Dummy) != 1) {
       Message::Error("Format error");
-      return;
+      return false;
     }
     for(i = 0; i < 1; i++) {
       if(fscanf(File_PRE, "%d", &Dummy) != 1) {
         Message::Error("Format error");
-        return;
+        return false;
       }
     }
 
-    if(fscanf(File_PRE, "%d %d", &DofData_P->NbrAnyDof, &DofData_P->NbrDof) !=
-       2) {
+    if(fscanf(File_PRE, "%d %d", &Nbr_Dof, &DofData_P->NbrDof) != 2) {
       Message::Error("Could not read number of dofs");
-      return;
+      return false;
     }
     // the rest of the line tells if the Dofs are in binary
     if(!fgets(String, sizeof(String), File_PRE)) {
       Message::Error("Could not read number of dofs");
-      return;
+      return false;
     }
     bool binary = strstr(String, "binary");
 
-    DofData_P->DofList =
-      List_Create(DofData_P->NbrAnyDof, 1, sizeof(struct Dof));
-    Tree_Delete(DofData_P->DofTree);
-    DofData_P->DofTree = NULL;
-    delete DofData_P->DofIndex;
-    DofData_P->DofIndex = NULL;
+    if(first) {
+      DofData_P->DofList = List_Create(Nbr_Dof + 1, 1, sizeof(struct Dof));
+      Tree_Delete(DofData_P->DofTree);
+      DofData_P->DofTree = NULL;
+      delete DofData_P->DofIndex;
+      DofData_P->DofIndex = NULL;
+    }
 
-    for(i = 0; i < DofData_P->NbrAnyDof; i++) {
+    for(i = 0; i < Nbr_Dof; i++) {
       if(binary) {
         if(!Dof_ReadDofBinaryPRE(&Dof)) {
           Message::Error("Could not read dof");
-          return;
+          return false;
         }
-        if(Dof.Type == DOF_UNKNOWN || Dof.Type == DOF_UNKNOWN_INIT) {
-          if(Dof.Case.Unknown.PartitionOrNonLocal < 0)
-            DofData_P->NonLocalEquations.push_back(Dof.Case.Unknown.NumDof);
-          else
-            partitions[Dof.Case.Unknown.PartitionOrNonLocal].insert(
-              Dof.Case.Unknown.NumDof);
-        }
+        if(Dof.Type == DOF_UNKNOWN || Dof.Type == DOF_UNKNOWN_INIT) unknown(Dof);
         List_Add(DofData_P->DofList, &Dof);
         continue;
       }
@@ -834,7 +877,7 @@ void Dof_ReadFilePRE(struct DofData *DofData_P)
       if(fscanf(File_PRE, "%d %d %d %d", &Dof.NumType, &Dof.Entity,
                 &Dof.Harmonic, &Dof.Type) != 4) {
         Message::Error("Could not dof");
-        return;
+        return false;
       }
 
       switch(Dof.Type) {
@@ -842,24 +885,20 @@ void Dof_ReadFilePRE(struct DofData *DofData_P)
         if(fscanf(File_PRE, "%d %d", &Dof.Case.Unknown.NumDof,
                   &Dof.Case.Unknown.PartitionOrNonLocal) != 2) {
           Message::Error("Could not read DOF_UNKNOWN");
-          return;
+          return false;
         }
-        if(Dof.Case.Unknown.PartitionOrNonLocal < 0)
-          DofData_P->NonLocalEquations.push_back(Dof.Case.Unknown.NumDof);
-        else
-          partitions[Dof.Case.Unknown.PartitionOrNonLocal].insert
-            (Dof.Case.Unknown.NumDof);
+        unknown(Dof);
         break;
       case DOF_FIXEDWITHASSOCIATE:
         if(fscanf(File_PRE, "%d", &Dof.Case.FixedAssociate.NumDof) != 1) {
           Message::Error("Could not read DOF_FIXEDWITHASSOCIATE");
-          return;
+          return false;
         }
         LinAlg_ScanScalar(File_PRE, &Dof.Val);
         if(fscanf(File_PRE, "%d", &Dof.Case.FixedAssociate.TimeFunctionIndex) !=
            1) {
           Message::Error("Could not read DOF_FIXEDWITHASSOCIATE");
-          return;
+          return false;
         }
         break;
       case DOF_FIXED:
@@ -867,38 +906,34 @@ void Dof_ReadFilePRE(struct DofData *DofData_P)
         if(fscanf(File_PRE, "%d", &Dof.Case.FixedAssociate.TimeFunctionIndex) !=
            1) {
           Message::Error("Could not read DOF_FIXED");
-          return;
+          return false;
         }
         break;
       case DOF_FIXED_SOLVE:
         if(fscanf(File_PRE, "%d", &Dof.Case.FixedAssociate.TimeFunctionIndex) !=
            1) {
           Message::Error("Could not read DOF_FIXED_SOLVED");
-          return;
+          return false;
         }
         break;
       case DOF_UNKNOWN_INIT:
         if(fscanf(File_PRE, "%d", &Dof.Case.Unknown.NumDof) != 1) {
           Message::Error("Could not read DOF_UNKNOWN_INIT");
-          return;
+          return false;
         }
         LinAlg_ScanScalar(File_PRE, &Dof.Val);
         LinAlg_ScanScalar(File_PRE, &Dof.Val2);
         if(fscanf(File_PRE, "%d", &Dof.Case.Unknown.PartitionOrNonLocal) != 1) {
           Message::Error("Could not read DOF_UNKNOWN_INIT");
-          return;
+          return false;
         }
-        if(Dof.Case.Unknown.PartitionOrNonLocal < 0)
-          DofData_P->NonLocalEquations.push_back(Dof.Case.Unknown.NumDof);
-        else
-          partitions[Dof.Case.Unknown.PartitionOrNonLocal].insert
-            (Dof.Case.Unknown.NumDof);
+        unknown(Dof);
         break;
       case DOF_LINK:
         if(fscanf(File_PRE, "%lf %d", &Dof.Case.Link.Coef,
                   &Dof.Case.Link.EntityRef) != 2) {
           Message::Error("Could not read DOF_LINK");
-          return;
+          return false;
         }
         Dof.Case.Link.Dof = NULL;
         break;
@@ -906,7 +941,7 @@ void Dof_ReadFilePRE(struct DofData *DofData_P)
         if(fscanf(File_PRE, "%lf %lf %d", &Dof.Case.Link.Coef,
                   &Dof.Case.Link.Coef2, &Dof.Case.Link.EntityRef) != 3) {
           Message::Error("Could not read DOF_LINKCPLX");
-          return;
+          return false;
         }
         Dof.Case.Link.Dof = NULL;
         break;
@@ -919,16 +954,42 @@ void Dof_ReadFilePRE(struct DofData *DofData_P)
   do {
     if(!fgets(String, sizeof(String), File_PRE) || feof(File_PRE)) {
       Message::Error("Premature end of file");
-      break;
+      return false;
     }
   } while(String[0] != '$');
+  return true;
+}
+
+void Dof_ReadFilePRE(struct DofData *DofData_P)
+{
+  Message::Barrier();
+
+  std::map<int, int> last;
+  for(int i = 0; i < NbrSectionsPRE; i++)
+    if(!Dof_ReadSectionPRE(DofData_P, i == 0, last)) return;
+
+  if(NbrSectionsPRE > 1) {
+    // a Dof is in the section of each rank that has it
+    List_Sort(DofData_P->DofList, fcmp_Dof);
+    int n = List_Nbr(DofData_P->DofList), k = 0;
+    struct Dof *d = n ? (struct Dof *)List_Pointer(DofData_P->DofList, 0) : NULL;
+    for(int i = 0; i < n; i++)
+      if(!i || fcmp_Dof(&d[k - 1], &d[i])) d[k++] = d[i];
+    List_T *all = List_Create(k + 1, 1, sizeof(struct Dof));
+    for(int i = 0; i < k; i++) List_Add(all, &d[i]);
+    List_Delete(DofData_P->DofList);
+    DofData_P->DofList = all;
+    std::vector<int> &nl = DofData_P->NonLocalEquations;
+    std::sort(nl.begin(), nl.end());
+    nl.erase(std::unique(nl.begin(), nl.end()), nl.end());
+  }
+  DofData_P->NbrAnyDof = List_Nbr(DofData_P->DofList);
 
   DofData_P->PartitionSplit.clear();
   DofData_P->PartitionSplit.push_back(0);
   // add last dof num for each partition
-  for(auto &p : partitions) {
-    if(p.first > 0 && !p.second.empty())
-      DofData_P->PartitionSplit.push_back(*(p.second.rbegin()));
+  for(auto &p : last) {
+    if(p.first > 0) DofData_P->PartitionSplit.push_back(p.second);
   }
   DofData_P->PartitionSplit.push_back(DofData_P->NbrDof);
 
@@ -1347,8 +1408,8 @@ void Dof_ReadFileRES(List_T *DofData_L, struct DofData *Read_DofData_P,
 // and the constraints that they use. The first rank only keeps them all, at the
 // cost of the memory of one rank, if the problem has such a Print (see
 // WhatNeedsAllDofsOnFirstRank); otherwise it gets them when it needs them, to
-// write the .pre file or to transfer a solution that the ranks cannot transfer
-// by themselves.
+// transfer a solution that the ranks cannot transfer by themselves (each rank
+// writes its own Dofs in the .pre file).
 static bool AllDofsOnFirstRank = true;
 bool Dof_GetAllDofsOnFirstRank() { return AllDofsOnFirstRank; }
 void Dof_SetAllDofsOnFirstRank(bool all) { AllDofsOnFirstRank = all; }

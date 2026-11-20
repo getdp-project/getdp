@@ -66,6 +66,8 @@ public:
   static void SetCommRank(int val) { _commRank = val; }
   static void SetCommSize(int val) { _commSize = val; }
   static void Barrier();
+  static void WriteParallelSections(FILE *stream, const char *fileName,
+                                    std::string &section);
   static int GetIsCommWorld() { return _isCommWorld; }
   static void SetIsCommWorld(int val) { _isCommWorld = val; }
   // when true, Cpu() (hence Info() with _infoCpu) doesn't reduce its values over

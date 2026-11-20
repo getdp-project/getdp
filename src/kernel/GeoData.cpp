@@ -186,9 +186,13 @@ void Geo_GetLinkRegions(std::unordered_set<int> &regions)
 //   on a surface with a boundary condition), a rank must have all the elements
 //   that contain them;
 //
-// with their nodes. The first rank keeps the whole mesh, for what it still
-// does alone: the numbering of the edges and facets, the trees, the
-// post-processing that is not parallel.
+// with their nodes. The first rank then only keeps its own part, unless the
+// problem has something that it still does alone on the whole mesh: the trees,
+// the post-processing that is not parallel, SaveMesh (see
+// Geo_SetWholeMeshOnFirstRank).
+static bool WholeMeshOnFirstRank = true;
+void Geo_SetWholeMeshOnFirstRank(bool whole) { WholeMeshOnFirstRank = whole; }
+
 static bool Geo_CanDistributeMesh(char *Name_AdaptFile)
 {
 #if defined(HAVE_MPI)
@@ -265,7 +269,7 @@ static void Geo_SendParts(struct GeoData *GeoData_P)
       if(allRanksOfNode[i]) all = true;
       for(int rank : ranksOfNode[i]) has[rank] = 1;
     }
-    for(int rank = 1; rank < np; rank++)
+    for(int rank = 0; rank < np; rank++)
       if(all || has[rank]) elementsOfRank[rank].push_back(e);
   }
   std::vector<std::vector<int> >().swap(ranksOfNode);
@@ -317,6 +321,35 @@ static void Geo_SendParts(struct GeoData *GeoData_P)
     MPI_Send(&reals[0], (int)reals.size(), MPI_DOUBLE, rank, 0, MPI_COMM_WORLD);
   }
   GeoData_P->HasParts = true;
+  if(WholeMeshOnFirstRank) return;
+
+  // keep the elements of the part of the first rank, and their nodes
+  std::vector<char> keepElement(nElements, 0), keepNode(nNodes, 0);
+  for(int e : elementsOfRank[0]) {
+    keepElement[e] = 1;
+    struct Geo_Element *ge = element(e);
+    for(int k = 0; k < ge->NbrNodes; k++) keepNode[nodeIndex(ge->NumNodes[k])] = 1;
+  }
+  List_T *elements = List_Create(elementsOfRank[0].size() + 1, 1000,
+                                 sizeof(struct Geo_Element));
+  for(int e = 0; e < nElements; e++) {
+    if(keepElement[e])
+      List_Add(elements, element(e));
+    else
+      Free(element(e)->NumNodes);
+  }
+  List_T *nodes = List_Create(nNodes / np + 1, 1000, sizeof(struct Geo_Node));
+  for(int i = 0; i < nNodes; i++)
+    if(keepNode[i]) List_Add(nodes, &node0[i]);
+  Message::Info("The first rank keeps its part of the mesh (%d elements out "
+                "of %d)", List_Nbr(elements), nElements);
+  List_Delete(GeoData_P->Elements);
+  List_Delete(GeoData_P->Nodes);
+  GeoData_P->Elements = elements;
+  GeoData_P->Nodes = nodes;
+  GeoData_P->NodeIndex->size = GeoData_P->ElementIndex->size = -1;
+  GeoData_P->HasParts = false;
+  GeoData_P->IsPart = true;
 }
 
 static void Geo_ReceivePart(struct GeoData *GeoData_P)
