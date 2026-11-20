@@ -1914,6 +1914,7 @@ static Mat _getOperator(KSP ksp, Mat M)
 struct AMSEdges {
   struct Edge {
     int num, row, n[2], s[2];
+    bool own; // in an element of the mesh partition of this rank
   };
   std::vector<Edge> edges;
   std::unordered_map<int, int> nodeIndex; // node number -> index in nodes
@@ -1964,22 +1965,26 @@ static bool _getAMSEdges(AMSEdges &a)
   // increasing order of the node numbers, sorted by nodes (they are taken from
   // the elements, as the table of the edges is not there when the edges were
   // read from the .pre file)
-  std::map<std::pair<int, int>, int> edges;
+  std::map<std::pair<int, int>, std::pair<int, bool> > edges;
   for(int i = 0; i < Geo_GetNbrGeoElements(); i++) {
     struct Geo_Element *ge = Geo_GetGeoElement(i);
+    const bool own = Dof_IsPartitionOfThisRank(ge->Partition);
     for(int k = 0; k < ge->NbrEdges; k++) {
       int *local = Geo_GetNodesOfEdgeInElement(ge, k);
       if(!local[0] || !local[1] || local[2]) continue;
       int n0 = abs(ge->NumNodes[abs(local[0]) - 1]);
       int n1 = abs(ge->NumNodes[abs(local[1]) - 1]);
-      edges[std::make_pair(std::min(n0, n1), std::max(n0, n1))] =
-        abs(ge->NumEdges[k]);
+      std::pair<int, bool> &e =
+        edges[std::make_pair(std::min(n0, n1), std::max(n0, n1))];
+      e.first = abs(ge->NumEdges[k]);
+      if(own) e.second = true;
     }
   }
   for(auto &e : edges) {
-    const int Num = e.second, nodes[2] = {e.first.first, e.first.second};
+    const int Num = e.second.first, nodes[2] = {e.first.first, e.first.second};
     AMSEdges::Edge ed;
     ed.num = Num;
+    ed.own = e.second.second;
     if(localDofs) {
       auto it = rows.find(Num);
       ed.row = (it == rows.end()) ? -1 : it->second;
@@ -2142,8 +2147,12 @@ static void _setupAMS(PC pc, Mat A)
 // a <- a - G psi, with psi such that a - G psi vanishes on the tree edges,
 // computed by walking the tree from the nodes outside G (psi = 0 there, e.g.
 // on Dirichlet boundaries). The curl is unchanged, and the result is the
-// solution of the problem gauged by the tree. Every rank has the whole
-// solution, so all compute the same psi (or the first rank alone, see below).
+// solution of the problem gauged by the tree.
+//
+// The walk is done by the first rank, on the tree alone: each rank sends it
+// the tree edges of the elements of its partition, with the value of a, and
+// gets psi at the nodes of the tree, with which it corrects the rows of the
+// edges of its elements.
 static void _gaugeOnTreeForAMS(PC pc, gVector *X)
 {
   char name[256];
@@ -2163,9 +2172,6 @@ static void _gaugeOnTreeForAMS(PC pc, gVector *X)
     Message::Error("Group '%s' is not defined with EdgesOfTreeIn", name);
     return;
   }
-  // when the ranks only have a part of the mesh, the first one, which has it
-  // all (and gets the whole solution), walks the tree and corrects all the rows
-  const bool onlyFirst = CurrentGeoData->IsPart || CurrentGeoData->HasParts;
   if(!Group_P->ExtendedList) Generate_ExtendedGroup(Group_P);
   std::set<int> tree;
   for(int j = 0; j < List_Nbr(Group_P->ExtendedList); j++) {
@@ -2176,70 +2182,129 @@ static void _gaugeOnTreeForAMS(PC pc, gVector *X)
 
   AMSEdges a;
   if(!_getAMSEdges(a)) return;
-  if(onlyFirst && Message::GetCommRank()) a.edges.clear();
-  std::vector<PetscScalar> xall;
-  _gather(X, xall, !onlyFirst);
-  const PetscScalar *x = xall.data();
-  // tree adjacency, then psi by breadth-first walks from the nodes outside G
-  std::vector<std::vector<int> > adj(a.nodes.size());
-  for(std::size_t e = 0; e < a.edges.size(); e++) {
-    if(!tree.count(a.edges[e].num)) continue;
-    adj[a.edges[e].n[0]].push_back(e);
-    adj[a.edges[e].n[1]].push_back(e);
+  auto value = [&](const AMSEdges::Edge &ed) {
+    return (ed.row >= 0) ? PetscRealPart(_getValue(X, ed.row)) : 0.;
+  };
+
+  // the tree edges of this rank: the numbers of their two nodes, whether
+  // these are outside G, and the value of a
+  MPI_Comm comm = PetscObjectComm((PetscObject)X->V);
+  PetscMPIInt np, me;
+  MPI_Comm_size(comm, &np);
+  MPI_Comm_rank(comm, &me);
+  std::vector<int> ints, counts(np), displs(np);
+  std::vector<double> vals;
+  for(auto &ed : a.edges) {
+    if(!ed.own || !tree.count(ed.num)) continue;
+    for(int j = 0; j < 2; j++) ints.push_back(a.nodes[ed.n[j]]);
+    for(int j = 0; j < 2; j++) ints.push_back(a.outside[ed.n[j]]);
+    vals.push_back(value(ed));
   }
-  std::vector<double> psi(a.nodes.size(), 0.);
-  std::vector<char> done(a.nodes.size(), 0);
-  std::vector<int> queue;
-  for(int pass = 0; pass < 2; pass++) {
-    // first from the nodes outside G, then from any node left (a tree of its
-    // own, with psi = 0 at its first node)
-    for(std::size_t n = 0; n < a.nodes.size(); n++) {
-      if(done[n] || (!pass && !a.outside[n])) continue;
-      done[n] = 1;
-      queue.assign(1, n);
-      for(std::size_t q = 0; q < queue.size(); q++) {
-        int k = queue[q];
-        for(int e : adj[k]) {
-          const AMSEdges::Edge &ed = a.edges[e];
-          int j = (ed.n[0] == k) ? 1 : 0, u = ed.n[j];
-          if(done[u]) continue;
-          done[u] = 1;
-          // (G psi)_e = s_k psi_k + s_u psi_u must equal a_e (0 if fixed),
-          // and psi = 0 at nodes outside G
-          if(!a.outside[u]) {
-            double ae = (ed.row >= 0) ? PetscRealPart(x[ed.row]) : 0.;
-            double pk = a.outside[k] ? 0. : psi[k];
-            psi[u] = (ae - ed.s[1 - j] * pk) / ed.s[j];
+  int count = (int)vals.size(), total = 0;
+  MPI_Gather(&count, 1, MPI_INT, &counts[0], 1, MPI_INT, 0, comm);
+  for(int r = 0; r < np; r++) {
+    displs[r] = total;
+    total += counts[r];
+  }
+  std::vector<int> allInts(me ? 1 : 4 * total + 1);
+  std::vector<double> allVals(me ? 1 : total + 1);
+  ints.push_back(0);
+  vals.push_back(0.);
+  MPI_Gatherv(&vals[0], count, MPI_DOUBLE, &allVals[0], &counts[0], &displs[0],
+              MPI_DOUBLE, 0, comm);
+  for(int r = 0; r < np; r++) {
+    counts[r] *= 4;
+    displs[r] *= 4;
+  }
+  MPI_Gatherv(&ints[0], 4 * count, MPI_INT, &allInts[0], &counts[0], &displs[0],
+              MPI_INT, 0, comm);
+
+  // on the first rank: the nodes of the tree, sorted by number, and psi by
+  // breadth-first walks from the nodes outside G, then from any node left (a
+  // tree of its own, with psi = 0 at its first node)
+  std::vector<int> nodes;
+  std::vector<double> psi;
+  if(!me) {
+    for(int e = 0; e < total; e++) {
+      nodes.push_back(allInts[4 * e]);
+      nodes.push_back(allInts[4 * e + 1]);
+    }
+    std::sort(nodes.begin(), nodes.end());
+    nodes.erase(std::unique(nodes.begin(), nodes.end()), nodes.end());
+    auto index = [&](int num) {
+      return (int)(std::lower_bound(nodes.begin(), nodes.end(), num) -
+                   nodes.begin());
+    };
+    std::vector<char> outside(nodes.size(), 0), done(nodes.size(), 0);
+    std::vector<std::vector<int> > adj(nodes.size());
+    for(int e = 0; e < total; e++) {
+      for(int j = 0; j < 2; j++) {
+        int k = index(allInts[4 * e + j]);
+        allInts[4 * e + j] = k;
+        if(allInts[4 * e + 2 + j]) outside[k] = 1;
+        adj[k].push_back(e);
+      }
+    }
+    psi.assign(nodes.size(), 0.);
+    std::vector<int> queue;
+    for(int pass = 0; pass < 2; pass++) {
+      for(std::size_t n = 0; n < nodes.size(); n++) {
+        if(done[n] || (!pass && !outside[n])) continue;
+        done[n] = 1;
+        queue.assign(1, n);
+        for(std::size_t q = 0; q < queue.size(); q++) {
+          int k = queue[q];
+          for(int e : adj[k]) {
+            // an edge goes from its first node (sign 1) to its second (-1)
+            int j = (allInts[4 * e] == k) ? 1 : 0, u = allInts[4 * e + j];
+            if(done[u]) continue;
+            done[u] = 1;
+            // (G psi)_e = s_k psi_k + s_u psi_u must equal a_e (0 if fixed),
+            // and psi = 0 at nodes outside G
+            if(!outside[u]) {
+              double sk = j ? 1. : -1., su = -sk;
+              double pk = outside[k] ? 0. : psi[k];
+              psi[u] = (allVals[e] - sk * pk) / su;
+            }
+            queue.push_back(u);
           }
-          queue.push_back(u);
         }
       }
     }
   }
-  // a <- a - G psi on the local rows
-  PetscInt rstart, rend;
-  _try(VecGetOwnershipRange(X->V, &rstart, &rend));
+  int nbNodes = (int)nodes.size();
+  MPI_Bcast(&nbNodes, 1, MPI_INT, 0, comm);
+  nodes.resize(nbNodes + 1);
+  psi.resize(nbNodes + 1);
+  MPI_Bcast(&nodes[0], nbNodes, MPI_INT, 0, comm);
+  MPI_Bcast(&psi[0], nbNodes, MPI_DOUBLE, 0, comm);
+  nodes.resize(nbNodes);
+  auto psiOf = [&](int num) {
+    auto it = std::lower_bound(nodes.begin(), nodes.end(), num);
+    return (it == nodes.end() || *it != num) ? 0. : psi[it - nodes.begin()];
+  };
+
+  // a <- a - G psi on the rows of the edges of the elements of this rank
   std::vector<PetscInt> rows;
-  std::vector<PetscScalar> vals;
+  std::vector<PetscScalar> newVals;
   double treeMax = 0.;
   for(auto &ed : a.edges) {
-    if(ed.row < 0 || (!onlyFirst && (ed.row < rstart || ed.row >= rend)))
-      continue;
+    if(!ed.own || ed.row < 0) continue;
     double g = 0.;
     for(int j = 0; j < 2; j++)
-      if(!a.outside[ed.n[j]]) g += ed.s[j] * psi[ed.n[j]];
-    double v = PetscRealPart(x[ed.row]) - g;
+      if(!a.outside[ed.n[j]]) g += ed.s[j] * psiOf(a.nodes[ed.n[j]]);
+    double v = value(ed) - g;
     if(tree.count(ed.num)) treeMax = std::max(treeMax, fabs(v));
     rows.push_back(ed.row);
-    vals.push_back(v);
+    newVals.push_back(v);
   }
-  _try(VecSetValues(X->V, rows.size(), rows.data(), vals.data(), INSERT_VALUES));
+  _try(VecSetValues(X->V, rows.size(), rows.data(), newVals.data(),
+                    INSERT_VALUES));
   _try(VecAssemblyBegin(X->V));
   _try(VecAssemblyEnd(X->V));
   _fillseq(X);
   double glob;
-  MPI_Allreduce(&treeMax, &glob, 1, MPI_DOUBLE, MPI_MAX,
-                PetscObjectComm((PetscObject)X->V));
+  MPI_Allreduce(&treeMax, &glob, 1, MPI_DOUBLE, MPI_MAX, comm);
   Message::Info("AMS: solution gauged on tree '%s' (%d edges), max |a| on the "
                 "tree %g", name, (int)tree.size(), glob);
 }

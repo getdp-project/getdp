@@ -76,6 +76,20 @@ public:
     memcpy(_entities[i].NumEntities, list, n * sizeof(int));
     return _entities[i];
   }
+  // removes the entities whose number is not marked in used
+  void keepOnly(const std::vector<char> &used)
+  {
+    std::vector<struct Entity2XEntity1> kept;
+    for(auto &x : _entities) {
+      if(x.Num >= 0 && x.Num < (int)used.size() && used[x.Num])
+        kept.push_back(x);
+      else
+        Free(x.NumEntities);
+    }
+    _index.clear();
+    _entities.swap(kept);
+    for(int i = 0; i < (int)_entities.size(); i++) _index.insert(i);
+  }
   // all the entities, sorted by number of sub-entities and then by list
   std::vector<struct Entity2XEntity1 *> sorted()
   {

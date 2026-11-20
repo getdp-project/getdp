@@ -95,10 +95,15 @@ struct GeoData {
   // been numbered over the ranks (1: edges, 2: edges and facets).
   bool HasParts, IsPart;
   int EntitiesLevel;
+  // the positions of the elements of the part of the first rank, as long as it
+  // keeps the whole mesh to build the trees (see Geo_KeepPartOnFirstRank)
+  std::vector<int> *FirstRankPart;
 };
 
 void Geo_GetLinkRegions(std::unordered_set<int> &regions);
-void Geo_SetWholeMeshOnFirstRank(bool whole);
+void Geo_SetWholeMeshOnFirstRank(int whole);
+int Geo_GetWholeMeshOnFirstRank();
+void Geo_KeepPartOnFirstRank(struct GeoData *GeoData_P);
 int Geo_AddGeoData(List_T *GeoData_L, char *Name_MshFile,
                    char *Name_DefaultMshFile, char *Name_AdaptFile,
                    char *Name_DefaultAdaptFile);

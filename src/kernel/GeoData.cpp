@@ -188,11 +188,13 @@ void Geo_GetLinkRegions(std::unordered_set<int> &regions)
 //   that contain them;
 //
 // with their nodes. The first rank then only keeps its own part, unless the
-// problem has something that it still does alone on the whole mesh: the trees,
-// the post-processing that is not parallel, SaveMesh (see
-// Geo_SetWholeMeshOnFirstRank).
-static bool WholeMeshOnFirstRank = true;
-void Geo_SetWholeMeshOnFirstRank(bool whole) { WholeMeshOnFirstRank = whole; }
+// problem has something that it still does alone on the whole mesh: the
+// post-processing that is not parallel, SaveMesh (WholeMeshOnFirstRank = 2),
+// or the trees, which it builds in the pre-processing and sends to the others
+// (1: it only keeps its part after that); see Geo_SetWholeMeshOnFirstRank.
+static int WholeMeshOnFirstRank = 2;
+void Geo_SetWholeMeshOnFirstRank(int whole) { WholeMeshOnFirstRank = whole; }
+int Geo_GetWholeMeshOnFirstRank() { return WholeMeshOnFirstRank; }
 
 static bool Geo_CanDistributeMesh(char *Name_AdaptFile)
 {
@@ -205,6 +207,62 @@ static bool Geo_CanDistributeMesh(char *Name_AdaptFile)
 #else
   return false;
 #endif
+}
+
+// Leaves on the first rank the elements of its part of the mesh (those that
+// Geo_SendParts found for it), with their nodes, edges and facets.
+void Geo_KeepPartOnFirstRank(struct GeoData *GeoData_P)
+{
+  if(!GeoData_P->HasParts || !GeoData_P->FirstRankPart) return;
+  const int nElements = List_Nbr(GeoData_P->Elements);
+  const int nNodes = List_Nbr(GeoData_P->Nodes);
+  struct Geo_Node *node0 =
+    nNodes ? (struct Geo_Node *)List_Pointer(GeoData_P->Nodes, 0) : NULL;
+  std::vector<char> keepElement(nElements, 0), keepNode(nNodes, 0);
+  std::vector<char> keepEdge(GeoData_P->NumCurrentEdge + 1, 0),
+    keepFacet(GeoData_P->NumCurrentFacet + 1, 0);
+  for(int e : *GeoData_P->FirstRankPart) {
+    keepElement[e] = 1;
+    struct Geo_Element *ge =
+      (struct Geo_Element *)List_Pointer(GeoData_P->Elements, e);
+    for(int k = 0; k < ge->NbrNodes; k++)
+      keepNode[Geo_FindNode(GeoData_P, abs(ge->NumNodes[k])) - node0] = 1;
+    for(int k = 0; k < ge->NbrEdges; k++) keepEdge[abs(ge->NumEdges[k])] = 1;
+    for(int k = 0; k < ge->NbrFacets; k++) keepFacet[abs(ge->NumFacets[k])] = 1;
+  }
+  List_T *elements = List_Create(GeoData_P->FirstRankPart->size() + 1, 1000,
+                                 sizeof(struct Geo_Element));
+  for(int e = 0; e < nElements; e++) {
+    struct Geo_Element *ge =
+      (struct Geo_Element *)List_Pointer(GeoData_P->Elements, e);
+    if(keepElement[e])
+      List_Add(elements, ge);
+    else {
+      Free(ge->NumNodes);
+      Free(ge->NumEdges);
+      Free(ge->NumFacets);
+    }
+  }
+  List_T *nodes = List_Create(List_Nbr(elements) + 1, 1000, sizeof(struct Geo_Node));
+  for(int i = 0; i < nNodes; i++)
+    if(keepNode[i]) List_Add(nodes, &node0[i]);
+  {
+    // (with -cpu a message asks all the ranks for their time and memory)
+    MessageLocalCpu localCpu(true);
+    Message::Info("The first rank keeps its part of the mesh (%d elements out "
+                  "of %d)", List_Nbr(elements), nElements);
+  }
+  List_Delete(GeoData_P->Elements);
+  List_Delete(GeoData_P->Nodes);
+  GeoData_P->Elements = elements;
+  GeoData_P->Nodes = nodes;
+  GeoData_P->NodeIndex->size = GeoData_P->ElementIndex->size = -1;
+  if(GeoData_P->EdgesXNodes) GeoData_P->EdgesXNodes->keepOnly(keepEdge);
+  if(GeoData_P->FacetsXEdges) GeoData_P->FacetsXEdges->keepOnly(keepFacet);
+  delete GeoData_P->FirstRankPart;
+  GeoData_P->FirstRankPart = NULL;
+  GeoData_P->HasParts = false;
+  GeoData_P->IsPart = true;
 }
 
 #if defined(HAVE_MPI)
@@ -325,35 +383,12 @@ static void Geo_SendParts(struct GeoData *GeoData_P)
     MPI_Send(&reals[0], (int)reals.size(), MPI_DOUBLE, rank, 0, MPI_COMM_WORLD);
   }
   GeoData_P->HasParts = true;
-  if(WholeMeshOnFirstRank) return;
 
-  // keep the elements of the part of the first rank, and their nodes
-  std::vector<char> keepElement(nElements, 0), keepNode(nNodes, 0);
-  for(int e : elementsOfRank[0]) {
-    keepElement[e] = 1;
-    struct Geo_Element *ge = element(e);
-    for(int k = 0; k < ge->NbrNodes; k++) keepNode[nodeIndex(ge->NumNodes[k])] = 1;
-  }
-  List_T *elements = List_Create(elementsOfRank[0].size() + 1, 1000,
-                                 sizeof(struct Geo_Element));
-  for(int e = 0; e < nElements; e++) {
-    if(keepElement[e])
-      List_Add(elements, element(e));
-    else
-      Free(element(e)->NumNodes);
-  }
-  List_T *nodes = List_Create(nNodes / np + 1, 1000, sizeof(struct Geo_Node));
-  for(int i = 0; i < nNodes; i++)
-    if(keepNode[i]) List_Add(nodes, &node0[i]);
-  Message::Info("The first rank keeps its part of the mesh (%d elements out "
-                "of %d)", List_Nbr(elements), nElements);
-  List_Delete(GeoData_P->Elements);
-  List_Delete(GeoData_P->Nodes);
-  GeoData_P->Elements = elements;
-  GeoData_P->Nodes = nodes;
-  GeoData_P->NodeIndex->size = GeoData_P->ElementIndex->size = -1;
-  GeoData_P->HasParts = false;
-  GeoData_P->IsPart = true;
+  // the first rank keeps the whole mesh, or only until the trees are built
+  // (they are read from the .pre file after the pre-processing), or not at all
+  if(WholeMeshOnFirstRank == 2) return;
+  GeoData_P->FirstRankPart = new std::vector<int>(elementsOfRank[0]);
+  if(WholeMeshOnFirstRank == 0 || !Flag_PRE) Geo_KeepPartOnFirstRank(GeoData_P);
 }
 
 static void Geo_ReceivePart(struct GeoData *GeoData_P)
@@ -602,6 +637,7 @@ void Geo_InitGeoData(struct GeoData *GeoData_P, int Num, char *Name)
   GeoData_P->ElementIndex = new Geo_NumberIndex;
 
   GeoData_P->HasParts = GeoData_P->IsPart = false;
+  GeoData_P->FirstRankPart = NULL;
   GeoData_P->EntitiesLevel = 0;
 }
 
@@ -626,6 +662,7 @@ void Geo_FreeGeoData(struct GeoData *GeoData_P)
   delete GeoData_P->FacetsXEdges;
   delete GeoData_P->NodeIndex;
   delete GeoData_P->ElementIndex;
+  delete GeoData_P->FirstRankPart;
   if(GeoData_P->NodesXElements) {
     Tree_Action(GeoData_P->NodesXElements, free_E2XE1);
     Tree_Delete(GeoData_P->NodesXElements);

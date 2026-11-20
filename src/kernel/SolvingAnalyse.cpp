@@ -159,6 +159,9 @@ void Treatment_Preprocessing(int Nbr_DefineSystem, struct DofData *DofData_P0,
       if(Current.GeoData->HasParts || Current.GeoData->IsPart) {
         Generate_TreesOnFirstRank();
         F_ComputeRegionMeasures();
+        // the trees were the last thing that needed the whole mesh
+        if(Geo_GetWholeMeshOnFirstRank() == 1)
+          Geo_KeepPartOnFirstRank(Current.GeoData);
       }
     }
 
@@ -714,20 +717,29 @@ static const char *WhatNeedsAllDofsOnFirstRank()
 
 // With rank-local Dofs, what the first rank does alone on the whole mesh, which
 // it then keeps instead of its own part only (see Geo_SendParts): the Prints
-// for which it also keeps all the Dofs, the trees and SaveMesh.
-static const char *WhatNeedsWholeMeshOnFirstRank()
+// for which it also keeps all the Dofs, and SaveMesh. It only needs it in the
+// pre-processing (*untilTrees) to build the trees, which it sends to the other
+// ranks.
+static const char *WhatNeedsWholeMeshOnFirstRank(bool *untilTrees)
 {
+  *untilTrees = false;
   if(Dof_GetAllDofsOnFirstRank())
     return "a Print that is not evaluated by all the ranks";
+  for(int i = 0; i < List_Nbr(Problem_S.Resolution); i++) {
+    List_T *operations =
+      ((struct Resolution *)List_Pointer(Problem_S.Resolution, i))->Operation;
+    if(AnyOperation(operations, [](struct Operation *o) {
+         return o->Type == OPERATION_SAVEMESH;
+       }))
+      return "SaveMesh";
+  }
   for(int i = 0; i < List_Nbr(Problem_S.Group); i++) {
     int type = ((struct Group *)List_Pointer(Problem_S.Group, i))->FunctionType;
-    if(type == EDGESOFTREEIN || type == FACETSOFTREEIN) return "a tree";
+    if(type == EDGESOFTREEIN || type == FACETSOFTREEIN) {
+      *untilTrees = true;
+      return "a tree";
+    }
   }
-  for(int i = 0; i < List_Nbr(Problem_S.Resolution); i++)
-    if(AnyOperation(
-         ((struct Resolution *)List_Pointer(Problem_S.Resolution, i))->Operation,
-         [](struct Operation *o) { return o->Type == OPERATION_SAVEMESH; }))
-      return "SaveMesh";
   return NULL;
 }
 
@@ -773,11 +785,12 @@ void SolvingAnalyse()
       Message::Info("The first rank gets all the Dofs (the problem has %s)",
                     what);
     Dof_SetAllDofsOnFirstRank(what != NULL);
-    what = WhatNeedsWholeMeshOnFirstRank();
-    if(what)
+    bool untilTrees;
+    what = WhatNeedsWholeMeshOnFirstRank(&untilTrees);
+    if(what && !untilTrees)
       Message::Info("The first rank keeps the whole mesh (the problem has %s)",
                     what);
-    Geo_SetWholeMeshOnFirstRank(what != NULL);
+    Geo_SetWholeMeshOnFirstRank(!what ? 0 : untilTrees ? 1 : 2);
   }
 
   /* -------------------- */

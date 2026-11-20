@@ -575,9 +575,12 @@ and only holds its part of the mesh. This is also the case in a later run
 mesh files as the pre-processing, where each process reads what it wrote in
 the @file{.pre} file; on another number of processes, all the processes read
 the whole mesh and all the degrees of freedom. The first process reads the whole
-mesh, sends their part to the others and only keeps its own, unless the
-problem has something that it does alone on the whole mesh (a tree, a
-@code{Print} that is not computed by all the processes, @code{SaveMesh}).
+mesh, sends their part to the others and only keeps its own. It keeps the
+whole mesh until it has built the trees of the problem
+(@code{EdgesOfTreeIn}, @code{FacetsOfTreeIn}), which it sends to the others,
+and during the whole run if the problem has something that it does alone on
+the whole mesh (a @code{Print} that is not computed by all the processes,
+@code{SaveMesh}).
 
 No process reads the whole mesh if Gmsh has written one file for each
 partition, with one layer of overlap:
