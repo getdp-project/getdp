@@ -119,6 +119,10 @@ def main():
                         help='other options for getdp (e.g. "-all-dofs")')
     parser.add_argument('--partition', action='store_true',
                         help='partition the mesh with Gmsh instead of GetDP')
+    parser.add_argument('--split', action='store_true',
+                        help='partition the mesh with Gmsh in one file for '
+                             'each rank, with the overlap that lets each rank '
+                             'read its own file')
     parser.add_argument('--workdir', default=None,
                         help='directory of the runs, kept (default: a '
                              'temporary directory, removed at the end)')
@@ -144,7 +148,9 @@ def main():
         print('{} rank(s), {} elements:'.format(np, 6 * n ** 3), flush=True)
         cmd = [args.gmsh, 'scaling.geo', '-3', '-bin', '-setnumber', 'N',
                str(n), '-v', '2']
-        if args.partition and np > 1:
+        if args.split and np > 1:
+            cmd += ['-part', str(np), '-part_split', '-overlap', '1']
+        elif args.partition and np > 1:
             cmd += ['-part', str(np)]
         if run(cmd, d, 'gmsh.log'):
             print('  gmsh failed, see {}'.format(os.path.join(d, 'gmsh.log')))

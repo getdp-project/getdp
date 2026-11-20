@@ -405,8 +405,103 @@ static void Geo_ReceivePart(struct GeoData *GeoData_P)
   }
   GeoData_P->IsPart = true;
 }
-#endif
 
+// A mesh that Gmsh has partitioned in one file for each partition, with one
+// layer of overlap (gmsh -part n -part_split -overlap 1, which writes
+// name_1.msh, ..., name_n.msh for name.msh), is read without the first rank:
+// each rank reads the file of its partition, which has its elements and those
+// of the other partitions that share a node with them, i.e. the part of the
+// mesh that Geo_SendParts gives it.
+//
+// These files are used if there is one for each rank, unless the problem needs
+// more: the whole mesh on the first rank (see Geo_SetWholeMeshOnFirstRank), or
+// the regions of the Link constraints on all the ranks.
+static std::string Geo_NameOfPartFile(const char *Name, int part)
+{
+  std::string base(Name);
+  std::size_t dot = base.rfind('.');
+  std::string ext = (dot == std::string::npos) ? "" : base.substr(dot);
+  if(dot != std::string::npos) base.resize(dot);
+  return base + "_" + std::to_string(part) + ext;
+}
+
+static bool Geo_FileExists(const std::string &name)
+{
+  FILE *fp = FOpen(name.c_str(), "rb");
+  if(fp) fclose(fp);
+  return fp != NULL;
+}
+
+static bool Geo_HasPartFiles(const char *Name)
+{
+  int use = 0;
+  if(!Message::GetCommRank()) {
+    int np = Message::GetCommSize();
+    if(Geo_FileExists(Geo_NameOfPartFile(Name, np)) &&
+       !Geo_FileExists(Geo_NameOfPartFile(Name, np + 1))) {
+      std::unordered_set<int> linkRegions;
+      Geo_GetLinkRegions(linkRegions);
+      const char *what = WholeMeshOnFirstRank ? "the whole mesh on the first rank" :
+                         !linkRegions.empty() ? "a Link constraint" : NULL;
+      if(!what)
+        use = 1;
+      else
+        Message::Info("The mesh files of the partitions are not used (the "
+                      "problem has %s)", what);
+    }
+  }
+  MPI_Bcast(&use, 1, MPI_INT, 0, MPI_COMM_WORLD);
+  return use;
+}
+
+static void Geo_ReadPartFile(struct GeoData *GeoData_P, const char *Name)
+{
+  const int np = Message::GetCommSize(), me = Message::GetCommRank();
+  std::string partName = Geo_NameOfPartFile(Name, me + 1);
+  Geo_OpenFile((char *)partName.c_str(), "rb");
+  Geo_ReadFile(GeoData_P);
+  Geo_CloseFile();
+
+  // the elements of the partition of the rank, and those of the overlap
+  long long count[2] = {0, 0};
+  for(int e = 0; e < List_Nbr(GeoData_P->Elements); e++)
+    count[Geo_RankOfPartition(((struct Geo_Element *)List_Pointer(
+                                 GeoData_P->Elements, e))
+                                ->Partition) == me ? 0 : 1]++;
+  long long mine = count[0];
+  MPI_Allreduce(MPI_IN_PLACE, count, 2, MPI_LONG_LONG, MPI_SUM, MPI_COMM_WORLD);
+  if(!mine || !count[1])
+    Message::Error("'%s' is not the mesh of partition %d out of %d with one "
+                   "layer of overlap (gmsh -part %d -part_split -overlap 1)",
+                   partName.c_str(), me + 1, np, np);
+  Message::Info("%lld elements in the mesh files of the %d partitions", count[0],
+                np);
+
+  // the box and the dimension of the whole mesh
+  double low[3] = {GeoData_P->Xmin, GeoData_P->Ymin, GeoData_P->Zmin};
+  double high[3] = {GeoData_P->Xmax, GeoData_P->Ymax, GeoData_P->Zmax};
+  if(!List_Nbr(GeoData_P->Nodes))
+    for(int i = 0; i < 3; i++) {
+      low[i] = 1e200;
+      high[i] = -1e200;
+    }
+  MPI_Allreduce(MPI_IN_PLACE, low, 3, MPI_DOUBLE, MPI_MIN, MPI_COMM_WORLD);
+  MPI_Allreduce(MPI_IN_PLACE, high, 3, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+  MPI_Allreduce(MPI_IN_PLACE, &GeoData_P->Dimension, 1, MPI_DOUBLE, MPI_MAX,
+                MPI_COMM_WORLD);
+  GeoData_P->Xmin = low[0];
+  GeoData_P->Ymin = low[1];
+  GeoData_P->Zmin = low[2];
+  GeoData_P->Xmax = high[0];
+  GeoData_P->Ymax = high[1];
+  GeoData_P->Zmax = high[2];
+  GeoData_P->CharacteristicLength =
+    sqrt(SQU(high[0] - low[0]) + SQU(high[1] - low[1]) + SQU(high[2] - low[2]));
+  if(!GeoData_P->CharacteristicLength) GeoData_P->CharacteristicLength = 1.;
+  GeoData_P->NbrPartitions = np;
+  GeoData_P->IsPart = true;
+}
+#endif
 
 int Geo_AddGeoData(List_T *GeoData_L, char *Name_MshFile,
                    char *Name_DefaultMshFile, char *Name_AdaptFile,
@@ -427,14 +522,19 @@ int Geo_AddGeoData(List_T *GeoData_L, char *Name_MshFile,
     // the messages of the first rank (with -cpu they ask all the ranks for
     // their time and memory) are then not reached by the others
     MessageLocalCpu localCpu(distribute);
-    if(!distribute || !Message::GetCommRank()) {
+    bool partFiles = false;
+#if defined(HAVE_MPI)
+    if(distribute && (partFiles = Geo_HasPartFiles(Name_MshFile)))
+      Geo_ReadPartFile(&GeoData_S, Name_MshFile);
+#endif
+    if(!partFiles && (!distribute || !Message::GetCommRank())) {
       Geo_OpenFile(Name_MshFile, "rb");
       Geo_ReadFile(&GeoData_S);
       Geo_CloseFile();
       Geo_SetPartitions(&GeoData_S);
     }
 #if defined(HAVE_MPI)
-    if(distribute) {
+    if(distribute && !partFiles) {
       if(!Message::GetCommRank()) {
         Message::Info("Sending their part of the mesh to the other ranks");
         Geo_SendParts(&GeoData_S);

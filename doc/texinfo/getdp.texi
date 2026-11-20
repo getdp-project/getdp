@@ -571,8 +571,27 @@ partitions of lesser quality.
 
 By default each process only defines the degrees of freedom of its partition
 and, if the pre-processing and the processing are done in the same run of
-GetDP, only holds its part of the mesh (the first process still reads the
-whole mesh and keeps it). Some features need all the degrees of freedom on
+GetDP, only holds its part of the mesh. The first process reads the whole
+mesh, sends their part to the others and only keeps its own, unless the
+problem has something that it does alone on the whole mesh (a tree, a
+@code{Print} that is not computed by all the processes, @code{SaveMesh}).
+
+No process reads the whole mesh if Gmsh has written one file for each
+partition, with one layer of overlap:
+
+@example
+> gmsh @var{filename}.geo -3 -part 8 -part_split -overlap 1
+> mpiexec -n 8 getdp @var{filename} -solve @var{resolution-id}
+@end example
+
+@noindent Each process then reads the file of its partition
+(@file{@var{filename}_1.msh}, @dots{}), which also has the elements of the
+other partitions that share a node with its own. These files are used if
+there is exactly one for each process, the pre-processing and the processing
+are done in the same run, and the problem has no @code{Link} constraint and
+nothing that the first process does on the whole mesh.
+
+Some features need all the degrees of freedom on
 all the processes: GetDP then defines them all, as with the @code{-all-dofs}
 option, and says so in an information message. This is the case for a moving
 band, global basis functions, integral quantities, constraints of type
