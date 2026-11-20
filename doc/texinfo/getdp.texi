@@ -496,7 +496,8 @@ Selects binary format for output files.
 
 Creates list-based Gmsh output files. By default the Gmsh output files are
 mesh-based when possible, i.e. when a quantity is printed on the elements of
-the mesh.
+the mesh: they are then MSH files (version 4.2), with the mesh (its nodes, its
+elements and their physical groups) and the values on its elements.
 
 @item -check
 
@@ -613,7 +614,8 @@ The post-processing operations are done as follows:
 @item
 a @code{Print} on the elements of the mesh in the default (mesh-based) Gmsh
 format is computed by all the processes, each one for its partition, and
-written in a single file;
+written in a single file, where each process also writes its part of the
+mesh;
 @item
 a @code{Print} at given points (@code{OnPoint}, @code{OnLine},
 @code{OnPlane}, @code{OnGrid}) is computed by all the processes, each one for

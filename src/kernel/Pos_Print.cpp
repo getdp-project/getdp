@@ -1019,26 +1019,6 @@ void Pos_PrintOnSection(struct PostQuantity *NCPQ_P, struct PostQuantity *CPQ_P,
   Array[(t)*Current.NbrHar * ((int)N[0] + 1) * ((int)N[1] + 1) +               \
         (k) * ((int)N[0] + 1) * ((int)N[1] + 1) + (j) * ((int)N[0] + 1) + (i)]
 
-#if defined(HAVE_MPI)
-// replaces a vector by the vectors of all the ranks on the first rank (in the
-// order of the ranks), and by nothing on the others
-template <class T>
-static void GatherOnFirstRank(std::vector<T> &v, MPI_Datatype type)
-{
-  int np = Message::GetCommSize(), n = (int)v.size(), total = 0;
-  std::vector<int> counts(np), displs(np, 0);
-  MPI_Gather(&n, 1, MPI_INT, &counts[0], 1, MPI_INT, 0, MPI_COMM_WORLD);
-  if(!Message::GetCommRank())
-    for(int i = 0; i < np; i++) {
-      displs[i] = total;
-      total += counts[i];
-    }
-  std::vector<T> all(total);
-  MPI_Gatherv(v.data(), n, type, all.data(), &counts[0], &displs[0], type, 0,
-              MPI_COMM_WORLD);
-  v.swap(all);
-}
-#endif
 
 void Pos_PrintOnGrid(struct PostQuantity *NCPQ_P, struct PostQuantity *CPQ_P,
                      int Order, struct DefineQuantity *DefineQuantity_P0,

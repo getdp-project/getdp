@@ -126,6 +126,7 @@ int Geo_GetNbrGeoElements(void);
 struct Geo_Element *Geo_GetGeoElement(int Index_Element);
 int Geo_GetGeoElementIndex(struct Geo_Element *GeoElement);
 struct Geo_Element *Geo_GetGeoElementOfNum(int Num_Element);
+int Geo_GetDimOfElement(int Type);
 
 int Geo_GetNbrGeoNodes(void);
 struct Geo_Node *Geo_GetGeoNode(int Index_Node);

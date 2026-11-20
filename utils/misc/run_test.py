@@ -242,14 +242,25 @@ def read_numbers(path):
         nb_tags = int(lines[i])
         tags = [int(x) for x in lines[i + 1:i + 1 + nb_tags]]
         i += 1 + nb_tags
-        step, nb_elements = tags[0], tags[2]
-        for line in lines[i:i + nb_elements]:
-            words = line.split()
-            key = (view, step, int(words[0]))
-            if key in values:  # an element written twice (by two ranks)
-                return None
-            values[key] = [float(x) for x in words[2:]]
-        i += nb_elements
+        step, nb_comp = tags[0], tags[1]
+        # MSH 4.2: the number of blocks, then for each block the type and the
+        # number of values of its elements, their number, their tags and then
+        # their values
+        nb_blocks = int(lines[i].split()[0])
+        i += 1
+        for _ in range(nb_blocks):
+            words = lines[i].split()
+            mult, n = int(words[1]), int(words[2])
+            tags = [int(x) for x in lines[i + 1:i + 1 + n]]
+            for tag, line in zip(tags, lines[i + 1 + n:i + 1 + 2 * n]):
+                key = (view, step, tag)
+                if key in values:  # an element written twice (by two ranks)
+                    return None
+                row = [float(x) for x in line.split()]
+                if len(row) != mult * nb_comp:
+                    return None
+                values[key] = row
+            i += 1 + 2 * n
     return [values[key] for key in sorted(values)]
 
 

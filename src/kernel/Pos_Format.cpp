@@ -12,6 +12,8 @@
 #include <stdarg.h>
 #include <math.h>
 #include <set>
+#include <climits>
+#include <algorithm>
 
 #include "GetDPVersion.h"
 #include "GetDPConfig.h"
@@ -198,14 +200,36 @@ static void Gmsh_Printf(const char *fmt, ...)
   Gmsh_Write(str, std::min(n, (int)sizeof(str) - 1));
 }
 
+static void Gmsh_WriteSizeTs(const std::size_t *v, int n, const char *sep)
+{
+  if(Flag_BIN)
+    Gmsh_Write(v, n * sizeof(std::size_t));
+  else
+    for(int i = 0; i < n; i++)
+      Gmsh_Printf("%zu%s", v[i], (i == n - 1) ? "\n" : sep);
+}
+
+// The values of a mesh-based view, as $ElementNodeData sections of MSH 4.2
+// (one for each time step and harmonic): one block for the elements of each
+// shape, with their tags and then their values.
 static void Gmsh_PrintElementNodeData(struct PostSubOperation *PSO_P,
                                       int numTimeStep, int numComp,
                                       int Nb[GmshNumShapes],
                                       std::vector<double> *L[GmshNumShapes])
 {
   if(!PostStream && !GmshParallel) return;
-  int N = 0;
-  for(int i = 0; i < GmshNumShapes; i++) N += Nb[i];
+  std::size_t N = 0, numBlocks = 0, minTag = 0, maxTag = 0;
+  for(int i = 0; i < GmshNumShapes; i++) {
+    if(!Nb[i]) continue;
+    N += Nb[i];
+    numBlocks++;
+    int stride = (*L[i]).size() / Nb[i];
+    for(unsigned int j = 0; j < (*L[i]).size(); j += stride) {
+      std::size_t num = (std::size_t)(*L[i])[j];
+      minTag = (minTag && minTag < num) ? minTag : num;
+      maxTag = std::max(maxTag, num);
+    }
+  }
   if(!N) return;
   int step = 0;
   for(int ts = 0; ts < numTimeStep; ts++) {
@@ -221,30 +245,41 @@ static void Gmsh_PrintElementNodeData(struct PostSubOperation *PSO_P,
                             PSO_P->OverrideTimeStepValue :
                             (Current.NbrHar > 1 ? step : (int)Current.TimeStep));
       Gmsh_Printf("%d\n", numComp);
-      Gmsh_Printf("%d\n", N);
+      Gmsh_Printf("%zu\n", N);
       Gmsh_Printf("%d\n", GmshParallel ? Message::GetCommRank() :
                                          CurrentPartitionNumber);
+      std::size_t header[4] = {numBlocks, N, minTag, maxTag};
+      Gmsh_WriteSizeTs(header, 4, " ");
       for(int i = 0; i < GmshNumShapes; i++) {
         if(!Nb[i]) continue;
         int stride = (*L[i]).size() / Nb[i];
+        int mult = (stride - 1) / numTimeStep / Current.NbrHar / numComp;
+        // (the element is in the mesh of the rank that evaluated it)
+        int type[2] = {
+          GetDP2Gmsh(Geo_GetGeoElementOfNum((int)(*L[i])[0])->Type), mult};
+        std::size_t n = Nb[i];
+        if(Flag_BIN) {
+          Gmsh_Write(type, 2 * sizeof(int));
+          Gmsh_Write(&n, sizeof(std::size_t));
+        }
+        else
+          Gmsh_Printf("%d %d %zu\n", type[0], type[1], n);
         for(unsigned int j = 0; j < (*L[i]).size(); j += stride) {
-          double *tmp = &(*L[i])[j];
-          int num = (int)tmp[0];
-          int mult = (stride - 1) / numTimeStep / Current.NbrHar / numComp;
-          if(Flag_BIN) {
-            Gmsh_Write(&num, sizeof(int));
-            Gmsh_Write(&mult, sizeof(int));
-            Gmsh_Write(&tmp[1 + step * mult * numComp],
-                       sizeof(double) * mult * numComp);
-          }
+          std::size_t num = (std::size_t)(*L[i])[j];
+          Gmsh_WriteSizeTs(&num, 1, "");
+        }
+        for(unsigned int j = 0; j < (*L[i]).size(); j += stride) {
+          double *values = &(*L[i])[j + 1 + step * mult * numComp];
+          if(Flag_BIN)
+            Gmsh_Write(values, sizeof(double) * mult * numComp);
           else {
-            Gmsh_Printf("%d %d", num, mult);
             for(int k = 0; k < mult * numComp; k++)
-              Gmsh_Printf(" %.16g", tmp[1 + step * mult * numComp + k]);
+              Gmsh_Printf((k ? " %.16g" : "%.16g"), values[k]);
             Gmsh_Printf("\n");
           }
         }
       }
+      if(Flag_BIN) Gmsh_Printf("\n");
       Gmsh_Printf("$EndElementNodeData\n");
       step++;
     }
@@ -1133,9 +1168,225 @@ void VTU_PrintNodeTable(FILE *PostStream, bool multiComponent)
 /*  F o r m a t _ P o s t F o r m a t                                       */
 /* ------------------------------------------------------------------------ */
 
+// The mesh of a mesh-based view, as the blocks of the $Nodes and $Elements
+// sections of MSH 4.2: one block for the elements of each entity and type, and
+// one for the nodes of each entity. The entities (dimension, tag) are given in
+// entities, with their physical groups: as one record (dimension, tag,
+// physical group, x, y, z) for each physical group of each entity, x, y, z
+// being the coordinates of a point. In parallel (GmshParallel) each rank gives
+// the elements of its mesh partition and the nodes that it owns (it is the
+// lowest rank of the elements that contain them: a rank has all the elements
+// that contain the nodes of its own, see Geo_SendParts). nodeHeader and
+// elementHeader get the headers of the sections, over all the ranks.
+static void Gmsh_BlockHeader(std::string &text, int a, int b, int c,
+                             std::size_t n)
+{
+  char str[100];
+  if(Flag_BIN) {
+    int abc[3] = {a, b, c};
+    text.append((const char *)abc, sizeof(abc));
+    text.append((const char *)&n, sizeof(n));
+  }
+  else
+    text.append(str, snprintf(str, sizeof(str), "%d %d %d %zu\n", a, b, c, n));
+}
+
+static void Gmsh_Tag(std::string &text, std::size_t tag, const char *end)
+{
+  if(Flag_BIN)
+    text.append((const char *)&tag, sizeof(tag));
+  else
+    text += std::to_string(tag) + end;
+}
+
+static void Gmsh_GetMesh(struct PostSubOperation *PSO_P, std::string &nodeText,
+                         std::string &elementText, std::size_t nodeHeader[4],
+                         std::size_t elementHeader[4],
+                         std::vector<double> &entities)
+{
+  List_T *Region_L = NULL;
+  if(PSO_P->SubType == PRINT_ONELEMENTSOF)
+    Region_L = ((struct Group *)List_Pointer(Problem_S.Group,
+                                             PSO_P->Case.OnRegion.RegionIndex))
+                 ->InitialList;
+  const int np = Message::GetCommSize();
+  const int me = GmshParallel ? Message::GetCommRank() : 0;
+
+  // the elements of this rank by entity (dimension, tag) and type, and the
+  // lowest rank of the elements that contain each node
+  std::map<std::vector<int>, std::vector<Geo_Element *> > elements;
+  std::map<int, int> lowest;
+  for(int i = 0; i < Geo_GetNbrGeoElements(); i++) {
+    Geo_Element *e = Geo_GetGeoElement(i);
+    if(Region_L && !List_Search(Region_L, &e->Region, fcmp_int)) continue;
+    int rank = !GmshParallel ? 0 : (e->Partition > 0) ? (e->Partition - 1) % np :
+                                                        np - 1;
+    if(rank == me)
+      elements[{Geo_GetDimOfElement(e->Type), e->ElementaryRegion,
+                GetDP2Gmsh(e->Type)}]
+        .push_back(e);
+    for(int j = 0; j < e->NbrNodes; j++) {
+      auto it = lowest.insert({abs(e->NumNodes[j]), rank}).first;
+      it->second = std::min(it->second, rank);
+    }
+  }
+  // the nodes of this rank, in the entity of the first of its elements that
+  // has them, and the physical groups of the entities
+  std::map<std::vector<int>, std::vector<int> > nodes;
+  std::set<int> done;
+  std::set<std::vector<int> > physicals;
+  for(auto &b : elements)
+    for(auto e : b.second) {
+      // (the elements made by GetDP, e.g. in a moving band, have none)
+      if(e->Region > 0 &&
+         physicals.insert({b.first[0], b.first[1], e->Region}).second) {
+        Geo_Node *n = Geo_GetGeoNodeOfNum(abs(e->NumNodes[0]));
+        double record[6] = {(double)b.first[0], (double)b.first[1],
+                            (double)e->Region, n->x, n->y, n->z};
+        entities.insert(entities.end(), record, record + 6);
+      }
+      for(int j = 0; j < e->NbrNodes; j++) {
+        int num = abs(e->NumNodes[j]);
+        if(lowest[num] == me && done.insert(num).second)
+          nodes[{b.first[0], b.first[1]}].push_back(num);
+      }
+    }
+
+  std::size_t min[2] = {SIZE_MAX, SIZE_MAX}, max[2] = {0, 0};
+  nodeHeader[0] = nodes.size();
+  nodeHeader[1] = done.size();
+  for(auto &b : nodes) {
+    Gmsh_BlockHeader(nodeText, b.first[0], b.first[1], 0, b.second.size());
+    for(int num : b.second) Gmsh_Tag(nodeText, num, "\n");
+    for(int num : b.second) {
+      Geo_Node *n = Geo_GetGeoNodeOfNum(num);
+      double x[3] = {n->x, n->y, n->z};
+      char str[100];
+      if(Flag_BIN)
+        nodeText.append((const char *)x, sizeof(x));
+      else
+        nodeText.append(str, snprintf(str, sizeof(str), "%.16g %.16g %.16g\n",
+                                      x[0], x[1], x[2]));
+      min[0] = std::min(min[0], (std::size_t)num);
+      max[0] = std::max(max[0], (std::size_t)num);
+    }
+  }
+  elementHeader[0] = elements.size();
+  elementHeader[1] = 0;
+  for(auto &b : elements) {
+    Gmsh_BlockHeader(elementText, b.first[0], b.first[1], b.first[2],
+                     b.second.size());
+    for(auto e : b.second) {
+      Gmsh_Tag(elementText, e->Num, " ");
+      for(int j = 0; j < e->NbrNodes; j++)
+        Gmsh_Tag(elementText, abs(e->NumNodes[j]),
+                 (j == e->NbrNodes - 1) ? "\n" : " ");
+      min[1] = std::min(min[1], (std::size_t)e->Num);
+      max[1] = std::max(max[1], (std::size_t)e->Num);
+      elementHeader[1]++;
+    }
+  }
+#if defined(HAVE_MPI)
+  if(GmshParallel) {
+    unsigned long long n[4] = {nodeHeader[0], nodeHeader[1], elementHeader[0],
+                               elementHeader[1]};
+    unsigned long long m[4] = {min[0], min[1], max[0], max[1]};
+    MPI_Allreduce(MPI_IN_PLACE, n, 4, MPI_UNSIGNED_LONG_LONG, MPI_SUM,
+                  MPI_COMM_WORLD);
+    MPI_Allreduce(MPI_IN_PLACE, m, 2, MPI_UNSIGNED_LONG_LONG, MPI_MIN,
+                  MPI_COMM_WORLD);
+    MPI_Allreduce(MPI_IN_PLACE, m + 2, 2, MPI_UNSIGNED_LONG_LONG, MPI_MAX,
+                  MPI_COMM_WORLD);
+    nodeHeader[0] = n[0];
+    nodeHeader[1] = n[1];
+    elementHeader[0] = n[2];
+    elementHeader[1] = n[3];
+    min[0] = m[0];
+    min[1] = m[1];
+    max[0] = m[2];
+    max[1] = m[3];
+  }
+#endif
+  nodeHeader[2] = nodeHeader[1] ? min[0] : 0;
+  nodeHeader[3] = max[0];
+  elementHeader[2] = elementHeader[1] ? min[1] : 0;
+  elementHeader[3] = max[1];
+}
+
+// Writes the $Entities section, from the records of Gmsh_GetMesh of all the
+// ranks (a point is at the coordinates of its node, the other entities have
+// no bounding box nor bounding entities)
+static void Gmsh_WriteEntities(std::vector<double> &records)
+{
+#if defined(HAVE_MPI)
+  if(GmshParallel) GatherOnFirstRank(records, MPI_DOUBLE);
+#endif
+  if(!PostStream) return;
+  // (dimension, tag) -> physical groups and coordinates
+  std::map<std::pair<int, int>, std::pair<std::set<int>, std::vector<double> > >
+    entities;
+  for(std::size_t i = 0; i < records.size(); i += 6) {
+    auto &e = entities[{(int)records[i], (int)records[i + 1]}];
+    e.first.insert((int)records[i + 2]);
+    e.second.assign(&records[i + 3], &records[i + 6]);
+  }
+  std::size_t num[4] = {0, 0, 0, 0};
+  for(auto &e : entities) num[e.first.first]++;
+  fprintf(PostStream, "$Entities\n");
+  if(Flag_BIN)
+    fwrite(num, sizeof(std::size_t), 4, PostStream);
+  else
+    fprintf(PostStream, "%zu %zu %zu %zu\n", num[0], num[1], num[2], num[3]);
+  for(auto &e : entities) {
+    int dim = e.first.first, tag = e.first.second;
+    std::vector<int> phys(e.second.first.begin(), e.second.first.end());
+    // a point: its coordinates; another entity: an empty box
+    std::vector<double> box = e.second.second;
+    if(dim) box.assign(6, 0.);
+    std::size_t nphys = phys.size(), zero[2] = {0, 0};
+    if(Flag_BIN) {
+      fwrite(&tag, sizeof(int), 1, PostStream);
+      fwrite(box.data(), sizeof(double), box.size(), PostStream);
+      fwrite(&nphys, sizeof(std::size_t), 1, PostStream);
+      fwrite(phys.data(), sizeof(int), nphys, PostStream);
+      // no bounding entities, no embedded entities
+      if(dim) fwrite(zero, sizeof(std::size_t), 2, PostStream);
+    }
+    else {
+      fprintf(PostStream, "%d", tag);
+      for(double x : box) fprintf(PostStream, " %.16g", x);
+      fprintf(PostStream, " %zu", nphys);
+      for(int p : phys) fprintf(PostStream, " %d", p);
+      fprintf(PostStream, dim ? " 0 0\n" : "\n");
+    }
+  }
+  fprintf(PostStream, Flag_BIN ? "\n$EndEntities\n" : "$EndEntities\n");
+}
+
+// Writes a section (e.g. "Nodes") with its header and the blocks of all the
+// ranks
+static void Gmsh_WriteSection(const char *name, const std::size_t header[4],
+                              std::string &blocks)
+{
+  if(PostStream) {
+    fprintf(PostStream, "$%s\n", name);
+    if(Flag_BIN)
+      fwrite(header, sizeof(std::size_t), 4, PostStream);
+    else
+      fprintf(PostStream, "%zu %zu %zu %zu\n", header[0], header[1], header[2],
+              header[3]);
+  }
+  if(GmshParallel)
+    Message::WriteParallelSections(PostStream, PostFileName, blocks);
+  else if(PostStream && !blocks.empty())
+    fwrite(&blocks[0], 1, blocks.size(), PostStream);
+  if(PostStream) fprintf(PostStream, Flag_BIN ? "\n$End%s\n" : "$End%s\n", name);
+}
+
 void Format_PostFormat(struct PostSubOperation *PSO_P)
 {
-  if(!PostStream || PSO_P->Type == POP_EXPRESSION) return;
+  // in parallel the mesh of a mesh-based view is written by all the ranks
+  if((!PostStream && !GmshParallel) || PSO_P->Type == POP_EXPRESSION) return;
 
   int Format = PSO_P->Format;
   int NoMesh = PSO_P->NoMesh;
@@ -1146,80 +1397,25 @@ void Format_PostFormat(struct PostSubOperation *PSO_P)
        !PSO_P->FileOut)
       break;
     if(Format_GmshMeshBased(PSO_P)) {
-      fprintf(PostStream, "$MeshFormat\n");
-      fprintf(PostStream, "2.2 %d %d\n", Flag_BIN, (int)sizeof(double));
-      if(Flag_BIN) {
-        int one = 1;
-        fwrite(&one, sizeof(int), 1, PostStream);
-        fprintf(PostStream, "\n");
+      if(PostStream) {
+        fprintf(PostStream, "$MeshFormat\n");
+        fprintf(PostStream, "4.2 %d %d\n", Flag_BIN, (int)sizeof(std::size_t));
+        if(Flag_BIN) {
+          int one = 1;
+          fwrite(&one, sizeof(int), 1, PostStream);
+          fprintf(PostStream, "\n");
+        }
+        fprintf(PostStream, "$EndMeshFormat\n");
       }
-      fprintf(PostStream, "$EndMeshFormat\n");
       if(!NoMesh) {
-        std::vector<Geo_Element *> elements;
-        std::set<int> nodes;
-        if(PSO_P->SubType == PRINT_ONELEMENTSOF) {
-          List_T *Region_L =
-            ((struct Group *)List_Pointer(Problem_S.Group,
-                                          PSO_P->Case.OnRegion.RegionIndex))
-              ->InitialList;
-          for(int i = 0; i < Geo_GetNbrGeoElements(); i++) {
-            Geo_Element *Geo_Element = Geo_GetGeoElement(i);
-            if(List_Search(Region_L, &Geo_Element->Region, fcmp_int)) {
-              elements.push_back(Geo_Element);
-              for(int j = 0; j < Geo_Element->NbrNodes; j++)
-                nodes.insert(Geo_Element->NumNodes[j]);
-            }
-          }
-        }
-        else {
-          for(int i = 0; i < Geo_GetNbrGeoElements(); i++) {
-            Geo_Element *Geo_Element = Geo_GetGeoElement(i);
-            elements.push_back(Geo_Element);
-            for(int j = 0; j < Geo_Element->NbrNodes; j++)
-              nodes.insert(Geo_Element->NumNodes[j]);
-          }
-        }
-        fprintf(PostStream, "$Nodes\n%d\n", (int)nodes.size());
-        for(int i = 0; i < Geo_GetNbrGeoNodes(); i++) {
-          Geo_Node *Geo_Node = Geo_GetGeoNode(i);
-          if(nodes.find(Geo_Node->Num) != nodes.end()) {
-            if(Flag_BIN) {
-              fwrite(&Geo_Node->Num, sizeof(int), 1, PostStream);
-              double data[3] = {Geo_Node->x, Geo_Node->y, Geo_Node->z};
-              fwrite(data, sizeof(double), 3, PostStream);
-            }
-            else {
-              fprintf(PostStream, "%d %.16g %.16g %.16g\n", Geo_Node->Num,
-                      Geo_Node->x, Geo_Node->y, Geo_Node->z);
-            }
-          }
-        }
-        fprintf(PostStream, "$EndNodes\n$Elements\n%d\n", (int)elements.size());
-        for(unsigned int i = 0; i < elements.size(); i++) {
-          Geo_Element *Geo_Element = elements[i];
-          int Type = GetDP2Gmsh(Geo_Element->Type);
-          if(Flag_BIN) {
-            int blob[6] = {Type,
-                           1,
-                           2,
-                           Geo_Element->Num,
-                           Geo_Element->Region,
-                           Geo_Element->ElementaryRegion};
-            fwrite(blob, sizeof(int), 6, PostStream);
-            std::vector<int> verts(Geo_Element->NbrNodes);
-            for(int j = 0; j < Geo_Element->NbrNodes; j++)
-              verts[j] = Geo_Element->NumNodes[j];
-            fwrite(&verts[0], sizeof(int), Geo_Element->NbrNodes, PostStream);
-          }
-          else {
-            fprintf(PostStream, "%d %d 2 %d %d ", Geo_Element->Num, Type,
-                    Geo_Element->Region, Geo_Element->ElementaryRegion);
-            for(int j = 0; j < Geo_Element->NbrNodes; j++)
-              fprintf(PostStream, "%d ", Geo_Element->NumNodes[j]);
-            fprintf(PostStream, "\n");
-          }
-        }
-        fprintf(PostStream, "$EndElements\n");
+        std::string nodes, elements;
+        std::size_t nodeHeader[4], elementHeader[4];
+        std::vector<double> entities;
+        Gmsh_GetMesh(PSO_P, nodes, elements, nodeHeader, elementHeader,
+                     entities);
+        Gmsh_WriteEntities(entities);
+        Gmsh_WriteSection("Nodes", nodeHeader, nodes);
+        Gmsh_WriteSection("Elements", elementHeader, elements);
       }
     }
     else if(PostStream && Flag_BIN) { /* bricolage */
