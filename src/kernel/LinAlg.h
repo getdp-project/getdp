@@ -135,6 +135,10 @@ void LinAlg_PrintMatrix(FILE *file, gMatrix *M, bool matlab = false,
 
 void LinAlg_WriteScalar(FILE *file, gScalar *S);
 void LinAlg_WriteVector(FILE *file, gVector *V);
+// Appends to text the entries of the vector that this rank owns, as
+// LinAlg_WriteVector (binary) or LinAlg_PrintVector do, and returns true if
+// the vector is distributed over the ranks (all its entries otherwise).
+bool LinAlg_PrintOwnedEntries(gVector *V, bool binary, std::string &text);
 void LinAlg_WriteMatrix(FILE *file, gMatrix *M);
 
 void LinAlg_GetVectorSize(gVector *V, int *i);

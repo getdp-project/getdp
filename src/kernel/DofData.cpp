@@ -1217,7 +1217,8 @@ void Dof_WriteFileRES_MHtoTime(char *Name_File, struct DofData *DofData_P,
 void Dof_WriteFileRES(char *Name_File, struct DofData *DofData_P, int Format,
                       double Val_Time, double Val_TimeImag, int Val_TimeStep)
 {
-  // the first rank writes the file, with the entries that the others send it
+  // the first rank writes the header of the solution in the file, and each
+  // rank writes the entries of the vector that it owns (MPI-IO)
   const bool write = !(Message::GetIsCommWorld() && Message::GetCommRank());
 
   if(!DofData_P->CurrentSolution) {
@@ -1232,11 +1233,14 @@ void Dof_WriteFileRES(char *Name_File, struct DofData *DofData_P, int Format,
             Val_TimeImag, Val_TimeStep);
   }
 
-  FILE *file = write ? File_RES : NULL;
-  Format ? LinAlg_WriteVector(file, &DofData_P->CurrentSolution->x) :
-           LinAlg_PrintVector(file, &DofData_P->CurrentSolution->x);
+  std::string entries;
+  if(LinAlg_PrintOwnedEntries(&DofData_P->CurrentSolution->x, Format, entries))
+    Message::WriteParallelSections(write ? File_RES : NULL, Name_File, entries);
+  else if(write && !entries.empty())
+    fwrite(&entries[0], 1, entries.size(), File_RES);
 
   if(write) {
+    if(Format) fprintf(File_RES, "\n");
     fprintf(File_RES, "$EndSolution\n");
     Dof_CloseFile(DOF_RES);
   }

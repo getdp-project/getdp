@@ -56,6 +56,11 @@ void LinAlg_PrintMatrix(FILE *file, gMatrix *M, bool matlab,
 }
 void LinAlg_WriteScalar(FILE *file, gScalar *S) { err; }
 void LinAlg_WriteVector(FILE *file, gVector *V) { err; }
+bool LinAlg_PrintOwnedEntries(gVector *V, bool binary, std::string &text)
+{
+  err;
+  return false;
+}
 void LinAlg_WriteMatrix(FILE *file, gMatrix *M) { err; }
 void LinAlg_GetVectorSize(gVector *V, int *i) { err; }
 void LinAlg_GetLocalVectorRange(gVector *V, int *low, int *high) { err; }

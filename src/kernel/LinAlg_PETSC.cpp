@@ -1122,6 +1122,29 @@ void LinAlg_WriteScalar(FILE *file, gScalar *S)
   Message::Error("WriteScalar not yet implemented");
 }
 
+bool LinAlg_PrintOwnedEntries(gVector *V, bool binary, std::string &text)
+{
+  PetscInt n;
+  const PetscScalar *a;
+  _try(VecGetLocalSize(V->V, &n));
+  _try(VecGetArrayRead(V->V, &a));
+  if(binary)
+    text.append((const char *)a, n * sizeof(PetscScalar));
+  else {
+    char str[64];
+    for(PetscInt i = 0; i < n; i++) {
+#if defined(PETSC_USE_COMPLEX)
+      snprintf(str, sizeof(str), "%.16g %.16g\n", real(a[i]), imag(a[i]));
+#else
+      snprintf(str, sizeof(str), "%.16g\n", a[i]);
+#endif
+      text += str;
+    }
+  }
+  _try(VecRestoreArrayRead(V->V, &a));
+  return V->G != NULL && MyComm != PETSC_COMM_SELF;
+}
+
 void LinAlg_WriteVector(FILE *file, gVector *V)
 {
   std::vector<PetscScalar> tmp;

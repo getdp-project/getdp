@@ -227,6 +227,20 @@ void LinAlg_WriteScalar(FILE *file, gScalar *S)
   Message::Error("'LinAlg_WriteScalar' not yet implemented");
 }
 
+bool LinAlg_PrintOwnedEntries(gVector *V, bool binary, std::string &text)
+{
+  if(binary)
+    text.append((const char *)V->V, V->N * sizeof(double));
+  else {
+    char str[64];
+    for(int i = 0; i < V->N; i++) {
+      snprintf(str, sizeof(str), "%.16g\n", V->V[i]);
+      text += str;
+    }
+  }
+  return false;
+}
+
 void LinAlg_WriteVector(FILE *file, gVector *V)
 {
   fwrite(V->V, sizeof(double), V->N, file);

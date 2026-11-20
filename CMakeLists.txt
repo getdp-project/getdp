@@ -1308,6 +1308,10 @@ if(${Python3_FOUND} AND GMSH)
            "parallel.pro -solve Periodic -pos Periodic")
   test_mpi(parallel_regions tests "parallel.geo -2"
            "parallel.pro -solve Laplace -pos Regions")
+  # a quantity evaluated at given coordinates, for which all the ranks define
+  # all the Dofs
+  test_mpi(parallel_coordinates tests "parallel.geo -2"
+           "parallel_all_dofs.pro -msh parallel.msh -solve Laplace -pos Mirror")
   # the same with all the Dofs on all the ranks, on a mesh partitioned by Gmsh
   # and with a pre-processing done by another run of getdp
   test_mpi(parallel_points_all_dofs tests "parallel.geo -2"
