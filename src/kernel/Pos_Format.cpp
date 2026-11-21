@@ -26,6 +26,7 @@
 #include "Pos_Format.h"
 #include "Pos_Element.h"
 #include "Pos_Formulation.h"
+#include "Pos_Print.h"
 #include "F.h"
 #include "Cal_Value.h"
 #include "Cal_Quantity.h"
@@ -1694,7 +1695,9 @@ void Format_PostFooter(struct PostSubOperation *PSO_P, int Store,
     break;
   case FORMAT_GMSH:
     if(Gmsh_StartNewView) Gmsh_ResetStaticLists(); // nothing to print!
-    if(PSO_P->StoreInField >= 0 || PSO_P->StoreInMeshBasedField >= 0) {
+    // (not while the file of a field stored by partition is written)
+    if((PSO_P->StoreInField >= 0 || PSO_P->StoreInMeshBasedField >= 0) &&
+       Pos_GetStoreFields()) {
 #if defined(HAVE_GMSH)
       int field = (PSO_P->StoreInField >= 0) ? PSO_P->StoreInField :
                                                PSO_P->StoreInMeshBasedField;

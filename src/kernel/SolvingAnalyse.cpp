@@ -683,8 +683,11 @@ static const char *WhatNeedsAllDofs()
       // Pos_PrintOnElementsOf)
       const bool point = (p->SubType == PRINT_ONGRID_0D);
       const bool gathered = Pos_IsGathered(p);
+      // (a field stored by partition, see Pos_IsStoredByPartition)
+      const bool byPartition = Pos_IsStoredByPartition(p);
       if(p->Type == POP_PRINT && p->SubType != PRINT_ONREGION &&
-         (p->StoreInField >= 0 || p->StoreInMeshBasedField >= 0 ||
+         ((p->StoreInField >= 0 && !byPartition) ||
+          p->StoreInMeshBasedField >= 0 ||
           (!point && (p->StoreInRegister >= 0 || p->StoreInVariable)) ||
           (!gathered &&
            (p->StoreMinInRegister >= 0 || p->StoreMaxInRegister >= 0 ||

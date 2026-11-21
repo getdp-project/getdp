@@ -9,6 +9,8 @@
 #include <math.h>
 #include <time.h>
 #include <algorithm>
+#include <string>
+#include <vector>
 #include <sys/stat.h>
 #include "GetDPConfig.h"
 #include "Message.h"
@@ -108,6 +110,9 @@ static void gslErrorHandler(const char *reason, const char *file, int line,
 }
 #endif
 
+// the command line arguments, given to Python when it starts
+static std::vector<std::string> _pythonArgs;
+
 void Message::Initialize(int argc, char **argv)
 {
   SetNumThreads(1);
@@ -130,23 +135,37 @@ void Message::Initialize(int argc, char **argv)
   oargv(1) = "-q";
   octave_main(2, oargv.c_str_vec(), 1);
 #endif
-#if defined(HAVE_PYTHON)
-#if(PY_MAJOR_VERSION < 3)
-  Py_SetProgramName(argv[0]);
-  Py_InitializeEx(0);
-  PySys_SetArgv(argc, argv);
-#else // requires Python 3.5
-  std::vector<wchar_t *> wargv(argc ? argc : 1);
-  for(int i = 0; i < argc; i++) wargv[i] = Py_DecodeLocale(argv[i], NULL);
-  Py_SetProgramName(wargv[0]);
-  Py_InitializeEx(0);
-  PySys_SetArgv(argc, &wargv[0]);
-#endif
-#endif
+  // (the arguments that Python will be given, if it is used)
+  _pythonArgs.assign(argv, argv + argc);
   // make sure to use the "C" locale; in particular this ensures that we will
   // use a dot for for the decimal separator when writing ASCII mesh files
   std::setlocale(LC_ALL, "C");
   std::setlocale(LC_NUMERIC, "C");
+}
+
+void Message::InitializePython()
+{
+#if defined(HAVE_PYTHON)
+  // (not if GetDP is itself run from Python)
+  if(Py_IsInitialized()) return;
+  std::vector<std::string> &args = _pythonArgs;
+  if(args.empty()) args.push_back("getdp");
+#if(PY_MAJOR_VERSION < 3)
+  std::vector<char *> argv(args.size());
+  for(std::size_t i = 0; i < args.size(); i++) argv[i] = &args[i][0];
+  Py_SetProgramName(argv[0]);
+  Py_InitializeEx(0);
+  PySys_SetArgv((int)argv.size(), &argv[0]);
+#else // requires Python 3.5
+  // (the program name and the arguments must live while Python runs)
+  static std::vector<wchar_t *> wargv;
+  for(std::size_t i = 0; i < args.size(); i++)
+    wargv.push_back(Py_DecodeLocale(args[i].c_str(), NULL));
+  Py_SetProgramName(wargv[0]);
+  Py_InitializeEx(0);
+  PySys_SetArgv((int)wargv.size(), &wargv[0]);
+#endif
+#endif
 }
 
 void Message::Finalize(bool finalizeMPI)
@@ -166,6 +185,9 @@ void Message::Finalize(bool finalizeMPI)
   // FIXME: this should be called, but it segfaults if the getdp lib is itself
   // wrapped into python with swig
   // Py_Finalize();
+  // (what Python printed is in its buffers, if its output is not a terminal)
+  if(Py_IsInitialized())
+    PyRun_SimpleString("import sys; sys.stdout.flush(); sys.stderr.flush()");
 #endif
 }
 

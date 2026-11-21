@@ -18,9 +18,10 @@ static const char *Name_Path = "";
 
 // This file defines a simple interface to Python.
 //
-// * The Python interpreter will be initialized when GetDP is started; you can
-//   then use the Python[argument_list]{string} function in the same way as
-//   other GetDP functions:
+// * The Python interpreter is started the first time a Python function is
+//   evaluated (so that the processes that do not use it do not load it); you
+//   can use the Python[argument_list]{string} function in the same way as other
+//   GetDP functions:
 //
 //   - `argument_list' contains standard GetDP arguments, e.g. X[], Norm[{d a}],
 //     etc. These arguments will be stored in Python as a list variable named
@@ -49,6 +50,7 @@ static const char *Name_Path = "";
 
 void F_Python(F_ARG)
 {
+  Message::InitializePython();
   if(!Fct->String) {
     Message::Error(
       "Missing Python expression: use Python[arguments]{\"expression\"}");

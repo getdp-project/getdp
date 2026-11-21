@@ -236,9 +236,47 @@ bool Pos_IsGathered(struct PostSubOperation *PSO_P)
          PSO_P->PostQuantitySupport[0] < 0 &&
          PSO_P->PostQuantityIndex[1] < 0 &&
          !(PSO_P->Format == FORMAT_GMSH && Format_GmshMeshBased(PSO_P)) &&
-         !PSO_P->Skin && !PSO_P->Adapt && PSO_P->StoreInField < 0 &&
+         !PSO_P->Skin && !PSO_P->Adapt &&
+         (PSO_P->StoreInField < 0 || !Pos_GetStoreFields()) &&
          PSO_P->StoreInMeshBasedField < 0 && PSO_P->StoreInRegister < 0 &&
          !PSO_P->StoreInVariable;
+#else
+  return false;
+#endif
+}
+
+// With rank-local Dofs, a Print on the elements that stores its values in a
+// list-based field (StoreInField) is evaluated by each rank on its mesh
+// partition, and each rank keeps the field of its partition: the field
+// functions (Field[], ScalarField[], ...) are evaluated by a rank at the points
+// of its elements (in the assembly, in a Print), where it has the field, if the
+// field and the elements are on the same regions. If the Print also writes a
+// file, the file is written as a gathered Print, while the fields are not
+// stored (see Pos_Formulation). The Prints that need the elements of several
+// partitions (Skin, Adapt, Smoothing, Sort), store other values, or store a
+// mesh-based field (StoreInMeshBasedField, which needs the mesh in a Gmsh
+// model, that the ranks given their part of the mesh by the first one do not
+// have) still need all the Dofs.
+static bool StoreFields = true;
+void Pos_SetStoreFields(bool store) { StoreFields = store; }
+bool Pos_GetStoreFields() { return StoreFields; }
+
+bool Pos_IsStoredByPartition(struct PostSubOperation *PSO_P)
+{
+#if defined(HAVE_MPI)
+  const struct PostSubOperation *p = PSO_P;
+  return Dof_UseLocalDofs() && Message::GetCommSize() > 1 &&
+         Message::GetIsCommWorld() && p->Type == POP_PRINT &&
+         p->SubType == PRINT_ONELEMENTSOF && p->Format == FORMAT_GMSH &&
+         p->StoreInField >= 0 && p->StoreInMeshBasedField < 0 &&
+         p->PostQuantityIndex[0] >= 0 && p->PostQuantitySupport[0] < 0 &&
+         p->PostQuantityIndex[1] < 0 && !p->Skin && !p->Adapt &&
+         !p->Smoothing && !p->Sort && p->StoreInRegister < 0 &&
+         !p->StoreInVariable && p->StoreMinInRegister < 0 &&
+         p->StoreMaxInRegister < 0 && p->StoreMinXinRegister < 0 &&
+         p->StoreMaxXinRegister < 0 && p->StoreMinYinRegister < 0 &&
+         p->StoreMaxYinRegister < 0 && p->StoreMinZinRegister < 0 &&
+         p->StoreMaxZinRegister < 0;
 #else
   return false;
 #endif
@@ -402,6 +440,7 @@ void Pos_PrintOnElementsOf(struct PostQuantity *NCPQ_P,
   const int phase = gather ? GatherPhase : POS_EVALUATE_AND_WRITE;
   const bool evaluate = (phase != POS_WRITE), write = (phase != POS_EVALUATE);
   const bool printHere = write && (!gather || !Message::GetCommRank());
+  const bool byPartition = Pos_IsStoredByPartition(PSO_P) && StoreFields;
   EvaluatedPostElements evaluated;
 
   /* Do we have to store min. and max. values? */
@@ -567,9 +606,9 @@ void Pos_PrintOnElementsOf(struct PostQuantity *NCPQ_P,
     else {
       List_Reset(PostElement_L);
       Element.GeoElement = Geo_GetGeoElement(iGeo);
-      // a view evaluated by all the ranks, or gathered on the first rank: each
-      // rank evaluates its mesh partition
-      if((Format_GetGmshParallel() || gather) &&
+      // a view evaluated by all the ranks, gathered on the first rank or
+      // stored by each rank: each rank evaluates its mesh partition
+      if((Format_GetGmshParallel() || gather || byPartition) &&
          !Dof_IsPartitionOfThisRank(Element.GeoElement->Partition))
         continue;
       if((Group_P->Type != ELEMENTLIST &&

@@ -604,9 +604,10 @@ quantities evaluated at given coordinates or on another mesh, the
 @code{CopyDegreesOfFreedom}, @code{FourierTransform}, @code{DeformMesh} and
 @code{SetCommSelf} operations, and, in the post-operations that are run, the
 @code{SingleProcess} option and the @code{Print} operations that store their
-result (other than the value at a point or on a region, or the minimum or
-maximum of a @code{Print} on the elements written by the first process) or
-that evaluate a quantity at the nodes of a region. The memory used by each
+result (other than the value at a point or on a region, the minimum or
+maximum of a @code{Print} on the elements written by the first process, or a
+field stored with @code{StoreInField}) or that evaluate a quantity at the
+nodes of a region. The memory used by each
 process then grows with the size of the whole problem.
 
 The post-processing operations are done as follows:
@@ -636,6 +637,14 @@ a value: the processes thus evaluate the successive @code{Print}
 operations without waiting for each other, which also spreads many small
 @code{Print} operations over the processes, each one evaluating those in its
 partition;
+@item
+a @code{Print} on the elements that stores its result in a field
+(@code{StoreInField}) is computed by all the processes, each one keeping the
+field of its partition: a process evaluates the field functions
+(@code{ScalarField}, @code{VectorField}, @dots{}) at points of its partition
+(in the assembly or in a @code{Print}), where it has the field if the field
+was stored on the regions where it is evaluated. Its file, if it has one, is
+written by the first process as above;
 @item
 the few that need the elements of several partitions at once (@code{Skin},
 @code{Adapt}), and the mesh-based Gmsh views that are not written by all the
@@ -5371,7 +5380,9 @@ of an @code{OnElementsOf} post-processing operation occurs, in the register
 @code{@var{expression-cst}}
 
 Store the result of a post-processing operation in the field (Gmsh
-list-based post-processing view) with tag @var{expression-cst}.
+list-based post-processing view) with tag @var{expression-cst}. In parallel,
+each process stores the field of its part of the mesh (see @ref{Running
+GetDP in parallel}).
 
 @item StoreInMeshBasedField
 @code{@var{expression-cst}}

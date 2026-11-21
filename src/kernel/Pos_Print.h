@@ -25,6 +25,13 @@ void Pos_PrintWithArgument(ARG);
 
 bool Pos_IsGathered(struct PostSubOperation *PostSubOperation_P);
 
+// A field stored by a Print on the elements, evaluated by each rank on its
+// mesh partition (see Pos_Print.cpp); while the file of such a Print is
+// written, the fields are not stored (Pos_SetStoreFields(false))
+bool Pos_IsStoredByPartition(struct PostSubOperation *PostSubOperation_P);
+void Pos_SetStoreFields(bool store);
+bool Pos_GetStoreFields();
+
 // The phases of a Print gathered on the first rank: evaluated and written at
 // once, or evaluated by all the ranks and written later, when the
 // post-operation reaches a point where the files must be complete (see

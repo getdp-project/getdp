@@ -59,6 +59,9 @@ private:
 public:
   Message() {}
   static void Initialize(int argc, char **argv);
+  // start the Python interpreter, if it is not running: on the first use of
+  // Python, so that the processes that do not use it do not load it
+  static void InitializePython();
   static void Finalize(bool finalizeMPI = true);
   static void Exit(int level);
   static int GetCommRank() { return _commRank; }

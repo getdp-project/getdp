@@ -399,9 +399,10 @@ bool Pos_IsParallelView(struct Formulation *Formulation_P,
 }
 
 // The other Prints on the mesh are evaluated by all the ranks and written by
-// the first rank (see Pos_IsGathered), or, for the few that need the elements
-// of several partitions at once or store their result, by the first rank
-// alone, which needs the Dofs of all the ranks for that: the others have
+// the first rank (see Pos_IsGathered), or stored in a field by each rank for
+// its partition (see Pos_IsStoredByPartition), or, for the few that need the
+// elements of several partitions at once or store other results, by the first
+// rank alone, which needs the Dofs of all the ranks for that: the others have
 // nothing to do. (A SingleProcess Print is done by a single rank, with all the
 // Dofs, see Treatment_PostOperation.)
 bool Pos_IsOnFirstRankOnly(struct Formulation *Formulation_P,
@@ -417,7 +418,8 @@ bool Pos_IsOnFirstRankOnly(struct Formulation *Formulation_P,
   case PRINT_ONGRID_PARAM: return false;
   default:
     return !Pos_IsParallelView(Formulation_P, PostSubOperation_P) &&
-           !Pos_IsGathered(PostSubOperation_P);
+           !Pos_IsGathered(PostSubOperation_P) &&
+           !Pos_IsStoredByPartition(PostSubOperation_P);
   }
 }
 
@@ -446,6 +448,20 @@ void Pos_Formulation(struct Formulation *Formulation_P,
     std::string name = Fix_RelativePath(PostSubOperation_P->FileOut, Name_Path);
     Message::Info("CreateDir[%s]", name.c_str());
     CreateDirs(name);
+    return;
+  }
+
+  // a field stored by each rank for its partition, with a file: the field is
+  // stored first (without the file), then the file is written as a gathered
+  // Print (without storing the field), as without MPI
+  if(Pos_IsStoredByPartition(PostSubOperation_P) &&
+     PostSubOperation_P->FileOut && Pos_GetStoreFields()) {
+    struct PostSubOperation field = *PostSubOperation_P;
+    field.FileOut = NULL;
+    Pos_Formulation(Formulation_P, PostProcessing_P, &field);
+    Pos_SetStoreFields(false);
+    Pos_Formulation(Formulation_P, PostProcessing_P, PostSubOperation_P);
+    Pos_SetStoreFields(true);
     return;
   }
 
@@ -583,6 +599,7 @@ void Pos_Formulation(struct Formulation *Formulation_P,
 
   if(Dof_UseLocalDofs() && PostSubOperation_P->Type == POP_PRINT &&
      PostSubOperation_P->SubType != PRINT_ONREGION &&
+     !Pos_IsStoredByPartition(PostSubOperation_P) &&
      (PostSubOperation_P->StoreInField >= 0 ||
       PostSubOperation_P->StoreInMeshBasedField >= 0 ||
       (PostSubOperation_P->SubType != PRINT_ONGRID_0D &&

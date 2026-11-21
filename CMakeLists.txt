@@ -1309,6 +1309,10 @@ if(${Python3_FOUND} AND GMSH)
   # operations done by a single process each (SingleProcess)
   test_mpi(parallel_single_process tests "parallel.geo -2"
            "parallel.pro -solve Laplace -pos Single")
+  # fields stored by each process for its part of the mesh (StoreInField), used
+  # in the assembly of a second problem and in Prints
+  test_mpi(parallel_fields tests "parallel.geo -2"
+           "parallel.pro -solve Fields -pos Fields")
   test_mpi(parallel_transfer tests "parallel.geo -2"
            "parallel.pro -solve Transfer")
   test_mpi(parallel_periodic tests "parallel.geo -2"

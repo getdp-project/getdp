@@ -17,6 +17,10 @@
    getdp parallel.pro -solve Periodic -pos Periodic
      a Link constraint, which relates degrees of freedom of different ranks
 
+   getdp parallel.pro -solve Fields -pos Fields
+     fields stored by each rank for its part of the mesh (StoreInField), used
+     in the assembly of a second problem and in Prints
+
    getdp parallel.pro -solve Laplace -pos Regions
      the quantities on regions: integrals, summed over the ranks, and values
      at the nodes of a region, which need all the degrees of freedom on all
@@ -114,6 +118,20 @@ Formulation {
       Galerkin { [ Dof{u}, {u} ]; In Domain; Jacobian Vol; Integration Int; }
     }
   }
+  // - Laplacian(v) + v = u, with u given by the field stored from the solution
+  // of Laplace, and v given on the left and right sides
+  { Name FromField; Type FemEquation;
+    Quantity {
+      { Name v; Type Local; NameOfSpace H_u; }
+    }
+    Equation {
+      Galerkin { [ Dof{d v}, {d v} ]; In Domain; Jacobian Vol;
+        Integration Int; }
+      Galerkin { [ Dof{v}, {v} ]; In Domain; Jacobian Vol; Integration Int; }
+      Galerkin { [ -ScalarField[XYZ[]]{10}, {v} ]; In Domain; Jacobian Vol;
+        Integration Int; }
+    }
+  }
   // - Laplacian(u) + u = f, with u periodic from left to right
   { Name Periodic; Type FemEquation;
     Quantity {
@@ -165,6 +183,19 @@ Resolution {
       Generate[A]; Solve[A]; SaveSolution[A];
     }
   }
+  // the solution of Laplace stored in fields, then used as the source of a
+  // second problem
+  { Name Fields;
+    System {
+      { Name A; NameOfFormulation Laplace; }
+      { Name B; NameOfFormulation FromField; }
+    }
+    Operation {
+      Generate[A]; Solve[A]; SaveSolution[A];
+      PostOperation[StoreFields];
+      Generate[B]; Solve[B]; SaveSolution[B];
+    }
+  }
 }
 
 PostProcessing {
@@ -195,6 +226,21 @@ PostProcessing {
       { Name u; Value { Term { [ {u} ]; In Domain; Jacobian Vol; } } }
       { Name int_u; Value {
           Integral { [ {u} ]; In Domain; Jacobian Vol; Integration Int; } } }
+    }
+  }
+  { Name FromField; NameOfFormulation FromField;
+    Quantity {
+      { Name v; Value { Term { [ {v} ]; In Domain; Jacobian Vol; } } }
+      { Name int_v; Value {
+          Integral { [ {v} ]; In Domain; Jacobian Vol; Integration Int; } } }
+      // the stored fields
+      { Name field_u; Value {
+          Term { [ ScalarField[XYZ[]]{10} ]; In Domain; Jacobian Vol; } } }
+      { Name field_grad_u; Value {
+          Term { [ VectorField[XYZ[]]{11} ]; In Domain; Jacobian Vol; } } }
+      { Name int_field_u; Value {
+          Integral { [ ScalarField[XYZ[]]{10} ]; In Domain; Jacobian Vol;
+            Integration Int; } } }
     }
   }
 }
@@ -307,6 +353,30 @@ PostOperation {
       Print[ u, OnLine {{0.013, 0.021, 0} {0.987, 0.933, 0}} {200}, Format Table,
         File "line_u.txt" ];
       Print[ u, OnElementsOf Domain, File "u.pos" ];
+    }
+  }
+  // fields stored by each process for its part of the mesh (the second one is
+  // also written to a file, as without MPI)
+  { Name StoreFields; NameOfPostProcessing Laplace;
+    Operation {
+      Print[ u, OnElementsOf Domain, StoreInField 10 ];
+      Print[ grad_u, OnElementsOf Domain, StoreInField 11,
+        File "field_grad_u.pos" ];
+    }
+  }
+  { Name Fields; NameOfPostProcessing FromField;
+    Operation {
+      Print[ int_v[Domain], OnGlobal, Format Table, File "integral_v.txt" ];
+      Print[ v, OnLine {{0.013, 0.021, 0} {0.987, 0.933, 0}} {50}, Format Table,
+        File "line_v.txt" ];
+      Print[ field_u, OnLine {{0.013, 0.021, 0} {0.987, 0.933, 0}} {50},
+        Format Table, File "line_field_u.txt" ];
+      Print[ field_grad_u, OnPoint {0.31, 0.47, 0}, Format Table,
+        File "point_field_grad_u.txt" ];
+      Print[ int_field_u[Domain], OnGlobal, Format Table,
+        File "integral_field_u.txt" ];
+      Print[ field_u, OnElementsOf Domain, Format Table,
+        File "elements_field_u.txt" ];
     }
   }
   { Name Regions; NameOfPostProcessing Laplace;
