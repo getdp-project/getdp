@@ -398,11 +398,12 @@ bool Pos_IsParallelView(struct Formulation *Formulation_P,
          Formulation_P->Type == FEMEQUATION;
 }
 
-// The other Prints on the mesh are evaluated by the first rank alone, which
-// needs the Dofs of all the ranks for that: the others have nothing to do. A
-// Distributed Print on the mesh is therefore written whole by the first rank,
-// as without Distributed: the other ranks must not open (and truncate) the
-// file.
+// The other Prints on the mesh are evaluated by all the ranks and written by
+// the first rank (see Pos_IsGathered), or, for the few that need the elements
+// of several partitions at once or store their result, by the first rank
+// alone, which needs the Dofs of all the ranks for that: the others have
+// nothing to do. (A SingleProcess Print is done by a single rank, with all the
+// Dofs, see Treatment_PostOperation.)
 bool Pos_IsOnFirstRankOnly(struct Formulation *Formulation_P,
                            struct PostSubOperation *PostSubOperation_P)
 {
@@ -414,7 +415,9 @@ bool Pos_IsOnFirstRankOnly(struct Formulation *Formulation_P,
   case PRINT_ONGRID_2D:
   case PRINT_ONGRID_3D:
   case PRINT_ONGRID_PARAM: return false;
-  default: return !Pos_IsParallelView(Formulation_P, PostSubOperation_P);
+  default:
+    return !Pos_IsParallelView(Formulation_P, PostSubOperation_P) &&
+           !Pos_IsGathered(PostSubOperation_P);
   }
 }
 
@@ -488,10 +491,13 @@ void Pos_Formulation(struct Formulation *Formulation_P,
 
     if(!strlen(PostFileName) ||
        (Message::GetIsCommWorld() && Message::GetCommRank() &&
-        (!PostSubOperation_P->Distributed || rootOnly))) {
+        (!PostSubOperation_P->Distributed || Dof_UseLocalDofs())) ||
+       Pos_GetGatherPhase() == POS_EVALUATE) {
       // in parallel (SetCommWorld) only the first rank writes to the file,
-      // unless the post-operation is Distributed (a view computed by all the
-      // ranks is written by Format_PostFooter, see Format_CanGmshParallel)
+      // unless the sub-operation is done by a single rank (SingleProcess); a
+      // view computed by all the ranks is written by Format_PostFooter (see
+      // Format_CanGmshParallel), and a Print evaluated now and written later
+      // opens its file then
       PostStream = NULL;
     }
     else if(!PostSubOperation_P->CatFile) {

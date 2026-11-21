@@ -5,6 +5,7 @@
 
 #include <sstream>
 #include <vector>
+#include <algorithm>
 #include <string.h>
 #include <math.h>
 #include "ProData.h"
@@ -216,6 +217,166 @@ static void Decompose_SkinPostElement(void *a, void *b)
   List_Add(SkinPostElement_L, &PE2);
 }
 
+// With rank-local Dofs, a Print on the elements of the mesh (or on a section of
+// them) that is not a view written by all the ranks (see Pos_IsParallelView) is
+// evaluated by all the ranks, each one on its mesh partition, and written by
+// the first rank, which gathers the evaluated elements of all the ranks and
+// formats them in the order of their numbers, as without MPI. The Prints that
+// need the elements of several partitions at once (Skin, Adapt), store their
+// result or are written in a mesh-based Gmsh view other than by all the ranks
+// are evaluated by the first rank alone (see Pos_IsOnFirstRankOnly).
+bool Pos_IsGathered(struct PostSubOperation *PSO_P)
+{
+#if defined(HAVE_MPI)
+  return Dof_UseLocalDofs() && Message::GetCommSize() > 1 &&
+         Message::GetIsCommWorld() && PSO_P->Type == POP_PRINT &&
+         (PSO_P->SubType == PRINT_ONELEMENTSOF ||
+          PSO_P->SubType == PRINT_ONSECTION_2D) &&
+         PSO_P->PostQuantityIndex[0] >= 0 &&
+         PSO_P->PostQuantitySupport[0] < 0 &&
+         PSO_P->PostQuantityIndex[1] < 0 &&
+         !(PSO_P->Format == FORMAT_GMSH && Format_GmshMeshBased(PSO_P)) &&
+         !PSO_P->Skin && !PSO_P->Adapt && PSO_P->StoreInField < 0 &&
+         PSO_P->StoreInMeshBasedField < 0 && PSO_P->StoreInRegister < 0 &&
+         !PSO_P->StoreInVariable;
+#else
+  return false;
+#endif
+}
+
+// The post elements that a rank has evaluated, with their values at each time
+// step: for each one, its number, type, depth, number of nodes and node numbers,
+// then the type of its values at each node and time step (in ints), and its
+// coordinates (u, v, w, x, y, z) and values (in reals)
+struct EvaluatedPostElements {
+  std::vector<int> ints;
+  std::vector<double> reals;
+  void addElement(struct PostElement *PE, int num)
+  {
+    ints.insert(ints.end(), {num, PE->Type, PE->Depth, PE->NbrNodes});
+    ints.insert(ints.end(), PE->NumNodes, PE->NumNodes + PE->NbrNodes);
+    for(double *c : {PE->u, PE->v, PE->w, PE->x, PE->y, PE->z})
+      reals.insert(reals.end(), c, c + PE->NbrNodes);
+  }
+  void addValues(struct PostElement *PE)
+  {
+    const int nbVal = Current.NbrHar * MAX_DIM;
+    for(int i = 0; i < PE->NbrNodes; i++) {
+      ints.push_back(PE->Value[i].Type);
+      reals.insert(reals.end(), PE->Value[i].Val, PE->Value[i].Val + nbVal);
+    }
+  }
+  // gathers the elements of all the ranks on the first rank, which then calls
+  // value(PE, iTime) for each one, in the order of their numbers (each one was
+  // evaluated by a single rank, in the order of the Print without MPI), at
+  // each time step, and then element(PE), which returns whether it keeps PE
+  template <class V, class E>
+  void gatherAndFormat(int NbTimeStep, List_T *TimeStep_L, V value, E element)
+  {
+#if defined(HAVE_MPI)
+    GatherOnFirstRank(ints, MPI_INT);
+    GatherOnFirstRank(reals, MPI_DOUBLE);
+#endif
+    if(Message::GetCommRank()) return;
+    const int nbVal = Current.NbrHar * MAX_DIM;
+    std::vector<std::pair<std::size_t, std::size_t> > start; // in ints, reals
+    std::vector<std::pair<int, int> > order; // number, index in start
+    for(std::size_t i = 0, r = 0; i < ints.size();) {
+      std::size_t n = ints[i + 3];
+      order.push_back({ints[i], (int)start.size()});
+      start.push_back({i, r});
+      i += 4 + n + NbTimeStep * n;
+      r += 6 * n + NbTimeStep * n * nbVal;
+    }
+    std::stable_sort(
+      order.begin(), order.end(),
+      [](const std::pair<int, int> &a, const std::pair<int, int> &b) {
+        return a.first < b.first;
+      });
+    for(auto &o : order) {
+      const int *I = &ints[start[o.second].first];
+      const double *R = &reals[start[o.second].second];
+      const int n = I[3];
+      struct PostElement *PE = Create_PostElement(NO_ELEMENT, I[1], n, I[2]);
+      PE->NumElement = I[0];
+      for(int i = 0; i < n; i++) PE->NumNodes[i] = I[4 + i];
+      double *c[6] = {PE->u, PE->v, PE->w, PE->x, PE->y, PE->z};
+      for(int j = 0; j < 6; j++) memcpy(c[j], R + j * n, n * sizeof(double));
+      for(int iTime = 0; iTime < NbTimeStep; iTime++) {
+        for(int i = 0; i < n; i++) {
+          PE->Value[i].Type = I[4 + n + iTime * n + i];
+          memcpy(PE->Value[i].Val, R + 6 * n + (iTime * n + i) * nbVal,
+                 nbVal * sizeof(double));
+        }
+        Pos_InitAllSolutions(TimeStep_L, iTime);
+        value(PE, iTime);
+      }
+      if(!element(PE)) Destroy_PostElement(PE);
+    }
+  }
+};
+
+// The Prints evaluated by all the ranks and written later (POS_EVALUATE), with
+// what each rank has evaluated, in the order of the post-operation
+static int GatherPhase = POS_EVALUATE_AND_WRITE;
+static std::vector<std::pair<struct PostSubOperation *, EvaluatedPostElements> >
+  EvaluatedLater;
+
+void Pos_SetGatherPhase(int phase) { GatherPhase = phase; }
+int Pos_GetGatherPhase() { return GatherPhase; }
+
+static void Pos_KeepEvaluated(struct PostSubOperation *PSO_P,
+                              EvaluatedPostElements &evaluated)
+{
+  EvaluatedLater.push_back({PSO_P, std::move(evaluated)});
+}
+
+static EvaluatedPostElements Pos_TakeEvaluated(struct PostSubOperation *PSO_P)
+{
+  EvaluatedPostElements evaluated;
+  for(auto it = EvaluatedLater.begin(); it != EvaluatedLater.end(); it++) {
+    if(it->first != PSO_P) continue;
+    evaluated = std::move(it->second);
+    EvaluatedLater.erase(it);
+    break;
+  }
+  return evaluated;
+}
+
+// A gathered Print is written later if it writes to a file of its own and
+// stores nothing (the minimum and maximum are found when it is written)
+bool Pos_IsWrittenLater(struct PostSubOperation *PSO_P)
+{
+  const struct PostSubOperation *p = PSO_P;
+  return Pos_IsGathered(PSO_P) && p->FileOut && !p->CatFile &&
+         p->StoreMinInRegister < 0 && p->StoreMaxInRegister < 0 &&
+         p->StoreMinXinRegister < 0 && p->StoreMaxXinRegister < 0 &&
+         p->StoreMinYinRegister < 0 && p->StoreMaxYinRegister < 0 &&
+         p->StoreMinZinRegister < 0 && p->StoreMaxZinRegister < 0;
+}
+
+// The Prints to be written later must be written before an operation that is
+// not a Print (which could use their files), a Print that stores something
+// (which their formatting could use), or a Print to the terminal or to one of
+// their files
+bool Pos_MustWriteBefore(struct PostSubOperation *PSO_P,
+                         const std::vector<struct PostSubOperation *> &later)
+{
+  const struct PostSubOperation *p = PSO_P;
+  if(later.empty()) return false;
+  if(p->Type != POP_PRINT || !p->FileOut || p->CatFile ||
+     p->StoreInRegister >= 0 || p->StoreInVariable || p->StoreInField >= 0 ||
+     p->StoreInMeshBasedField >= 0 || p->StoreMinInRegister >= 0 ||
+     p->StoreMaxInRegister >= 0 || p->StoreMinXinRegister >= 0 ||
+     p->StoreMaxXinRegister >= 0 || p->StoreMinYinRegister >= 0 ||
+     p->StoreMaxYinRegister >= 0 || p->StoreMinZinRegister >= 0 ||
+     p->StoreMaxZinRegister >= 0)
+    return true;
+  for(auto q : later)
+    if(!strcmp(q->FileOut, p->FileOut)) return true;
+  return false;
+}
+
 void Pos_PrintOnElementsOf(struct PostQuantity *NCPQ_P,
                            struct PostQuantity *CPQ_P, int Order,
                            struct DefineQuantity *DefineQuantity_P0,
@@ -237,6 +398,11 @@ void Pos_PrintOnElementsOf(struct PostQuantity *NCPQ_P,
   int NbrTimeStep, iTime, iNode;
   int Store = 0, DecomposeInSimplex = 0, Depth;
   bool StoreMinMax, ValueMinMaxInitialized;
+  const bool gather = Pos_IsGathered(PSO_P);
+  const int phase = gather ? GatherPhase : POS_EVALUATE_AND_WRITE;
+  const bool evaluate = (phase != POS_WRITE), write = (phase != POS_EVALUATE);
+  const bool printHere = write && (!gather || !Message::GetCommRank());
+  EvaluatedPostElements evaluated;
 
   /* Do we have to store min. and max. values? */
   if(PSO_P->StoreMinInRegister >= 0 || PSO_P->StoreMaxInRegister >= 0 ||
@@ -256,10 +422,11 @@ void Pos_PrintOnElementsOf(struct PostQuantity *NCPQ_P,
 
   NbrGeo = Geo_GetNbrGeoElements();
 
-  Format_PostHeader(PSO_P, NbrTimeStep, Order,
-                    PSO_P->Label ? PSO_P->Label :
-                                   (NCPQ_P ? NCPQ_P->Name : NULL),
-                    PSO_P->Label ? NULL : (CPQ_P ? CPQ_P->Name : NULL));
+  if(printHere)
+    Format_PostHeader(PSO_P, NbrTimeStep, Order,
+                      PSO_P->Label ? PSO_P->Label :
+                                     (NCPQ_P ? NCPQ_P->Name : NULL),
+                      PSO_P->Label ? NULL : (CPQ_P ? CPQ_P->Name : NULL));
 
   /* Get the region */
 
@@ -280,6 +447,8 @@ void Pos_PrintOnElementsOf(struct PostQuantity *NCPQ_P,
      perform adaption, we'll need to store all the PostElements */
 
   if(PSO_P->Smoothing || PSO_P->Skin || PSO_P->Adapt || PSO_P->Sort) Store = 1;
+  // (the gathered elements are stored by the first rank, see below)
+  if(gather) Store = 0;
 
   /* Check if everything is OK for Adaption */
 
@@ -391,15 +560,16 @@ void Pos_PrintOnElementsOf(struct PostQuantity *NCPQ_P,
 
   Message::ResetProgressMeter();
   ValueMinMaxInitialized = false;
-  for(iGeo = 0; iGeo < NbrGeo; iGeo += incGeo) {
+  for(iGeo = 0; evaluate && iGeo < NbrGeo; iGeo += incGeo) {
     if(Store) {
       if(iGeo) break;
     }
     else {
       List_Reset(PostElement_L);
       Element.GeoElement = Geo_GetGeoElement(iGeo);
-      // a view evaluated by all the ranks: each one has its mesh partition
-      if(Format_GetGmshParallel() &&
+      // a view evaluated by all the ranks, or gathered on the first rank: each
+      // rank evaluates its mesh partition
+      if((Format_GetGmshParallel() || gather) &&
          !Dof_IsPartitionOfThisRank(Element.GeoElement->Partition))
         continue;
       if((Group_P->Type != ELEMENTLIST &&
@@ -479,6 +649,7 @@ void Pos_PrintOnElementsOf(struct PostQuantity *NCPQ_P,
           Element.Type = Element.GeoElement->Type;
           Current.Region = Element.Region = Element.GeoElement->Region;
           Get_NodesCoordinatesOfElement(&Element);
+          if(gather) evaluated.addElement(PE, Element.Num);
 
           for(iTime = 0; iTime < NbrTimeStep; iTime++) {
             Pos_InitAllSolutions(PSO_P->TimeStep_L, iTime);
@@ -495,6 +666,10 @@ void Pos_PrintOnElementsOf(struct PostQuantity *NCPQ_P,
                 Combine_PostQuantity(PSO_P->CombinationType, Order,
                                      &PE->Value[iNode],
                                      &CumulativeValues[iTime]);
+            }
+            if(gather) {
+              evaluated.addValues(PE);
+              continue;
             }
             if(StoreMinMax) {
               if(!ValueMinMaxInitialized) {
@@ -520,8 +695,45 @@ void Pos_PrintOnElementsOf(struct PostQuantity *NCPQ_P,
     if(Message::GetErrorCount()) break;
   } /* for iGeo */
 
+  if(gather) { // (the elements of the loop are destroyed)
+    List_Reset(PostElement_L);
+    NbrPost = 0;
+    if(!write) { // written later, see Treatment_PostOperation
+      Pos_KeepEvaluated(PSO_P, evaluated);
+      List_Delete(PostElement_L);
+      return;
+    }
+    if(!evaluate) evaluated = Pos_TakeEvaluated(PSO_P);
+  }
+  if(gather) {
+    // the elements of all the ranks are stored (with their values at the
+    // last time step) for the Smoothing or the Sort, as without MPI
+    if(printHere) Store = (PSO_P->Smoothing || PSO_P->Sort) ? 1 : 0;
+    evaluated.gatherAndFormat(
+      NbrTimeStep, PSO_P->TimeStep_L,
+      [&](struct PostElement *PE, int iTime) {
+        if(StoreMinMax) {
+          if(!ValueMinMaxInitialized) {
+            InitValMinMax(&ValueMin, PE);
+            InitValMinMax(&ValueMax, PE);
+            ValueMinMaxInitialized = true;
+          }
+          EvalMinMax(PE, &ValueMin, &ValueMax);
+        }
+        if(!Store)
+          Format_PostElement(PSO_P, PSO_P->Iso, 0, Current.Time, iTime,
+                             NbrTimeStep, Current.NbrHar,
+                             PSO_P->HarmonicToTime, NULL, PE);
+      },
+      [&](struct PostElement *PE) {
+        if(Store) List_Add(PostElement_L, &PE);
+        return Store != 0;
+      });
+    NbrPost = List_Nbr(PostElement_L);
+  }
+
   /* Store minimum or maximum value in register */
-  if(StoreMinMax) {
+  if(StoreMinMax && printHere) {
     if(PSO_P->StoreMinInRegister >= 0)
       Cal_StoreInRegister(&ValueMin.Val, PSO_P->StoreMinInRegister);
     if(PSO_P->StoreMinXinRegister >= 0)
@@ -539,6 +751,13 @@ void Pos_PrintOnElementsOf(struct PostQuantity *NCPQ_P,
     if(PSO_P->StoreMaxZinRegister >= 0)
       Cal_StoreInRegister(&ValueMax.ValZ, PSO_P->StoreMaxZinRegister);
   }
+  // (from the first rank, which evaluated them with the gathered elements)
+  if(StoreMinMax && gather)
+    for(int r : {PSO_P->StoreMinInRegister, PSO_P->StoreMinXinRegister,
+                 PSO_P->StoreMinYinRegister, PSO_P->StoreMinZinRegister,
+                 PSO_P->StoreMaxInRegister, PSO_P->StoreMaxXinRegister,
+                 PSO_P->StoreMaxYinRegister, PSO_P->StoreMaxZinRegister})
+      if(r >= 0) Cal_BroadcastValueInRegister(r, 0);
 
   /* Perform Smoothing */
 
@@ -689,7 +908,7 @@ void Pos_PrintOnElementsOf(struct PostQuantity *NCPQ_P,
     }
   }
 
-  Format_PostFooter(PSO_P, Store);
+  if(printHere) Format_PostFooter(PSO_P, Store);
 
   if(Store)
     for(iPost = 0; iPost < NbrPost; iPost++) {
@@ -762,6 +981,7 @@ void normvec(double *a)
                     1);                                                        \
   for(iPost = 0; iPost < List_Nbr(PE_L); iPost++) {                            \
     PE = *(struct PostElement **)List_Pointer(PE_L, iPost);                    \
+    if(gather) evaluated.addElement(PE, Element.Num);                          \
     for(iTime = 0; iTime < NbTimeStep; iTime++) {                              \
       Pos_InitAllSolutions(PSO_P->TimeStep_L, iTime);                          \
       for(iNode = 0; iNode < PE->NbrNodes; iNode++) {                          \
@@ -780,9 +1000,12 @@ void normvec(double *a)
         else                                                                   \
           Cal_CopyValue(&CumulativeValues[iTime], &PE->Value[iNode]);          \
       }                                                                        \
-      Format_PostElement(PSO_P, PSO_P->Iso, 0, Current.Time, iTime,            \
-                         NbTimeStep, Current.NbrHar, PSO_P->HarmonicToTime,    \
-                         NULL, PE);                                            \
+      if(gather)                                                               \
+        evaluated.addValues(PE);                                               \
+      else                                                                     \
+        Format_PostElement(PSO_P, PSO_P->Iso, 0, Current.Time, iTime,          \
+                           NbTimeStep, Current.NbrHar, PSO_P->HarmonicToTime,  \
+                           NULL, PE);                                          \
     }                                                                          \
   }                                                                            \
   for(iPost = 0; iPost < List_Nbr(PE_L); iPost++)                              \
@@ -806,12 +1029,20 @@ void Pos_PrintOnSection(struct PostQuantity *NCPQ_P, struct PostQuantity *CPQ_P,
 
   NbTimeStep = Pos_InitTimeSteps(PSO_P);
 
+  // (see Pos_IsGathered)
+  const bool gather = Pos_IsGathered(PSO_P);
+  const int phase = gather ? GatherPhase : POS_EVALUATE_AND_WRITE;
+  const bool evaluate = (phase != POS_WRITE), write = (phase != POS_EVALUATE);
+  const bool printHere = write && (!gather || !Message::GetCommRank());
+  EvaluatedPostElements evaluated;
+
   PE_L = List_Create(10, 10, sizeof(struct PostElement *));
 
   for(iCut = 0; iCut < NBR_MAX_CUT; iCut++)
     e[iCut].Value = (struct Value *)Malloc(NbTimeStep * sizeof(struct Value));
 
-  Format_PostHeader(PSO_P, NbTimeStep, Order,
+  if(printHere)
+    Format_PostHeader(PSO_P, NbTimeStep, Order,
                     PSO_P->Label ? PSO_P->Label :
                                    (NCPQ_P ? NCPQ_P->Name : NULL),
                     PSO_P->Label ? NULL : (CPQ_P ? CPQ_P->Name : NULL));
@@ -850,8 +1081,10 @@ void Pos_PrintOnSection(struct PostQuantity *NCPQ_P, struct PostQuantity *CPQ_P,
     NbGeoElement = Geo_GetNbrGeoElements();
 
     Message::ResetProgressMeter();
-    for(iGeo = 0; iGeo < NbGeoElement; iGeo++) {
+    for(iGeo = 0; evaluate && iGeo < NbGeoElement; iGeo++) {
       Element.GeoElement = Geo_GetGeoElement(iGeo);
+      if(gather && !Dof_IsPartitionOfThisRank(Element.GeoElement->Partition))
+        continue;
       Element.Num = Element.GeoElement->Num;
       Element.Type = Element.GeoElement->Type;
       Current.Region = Element.Region = Element.GeoElement->Region;
@@ -997,7 +1230,21 @@ void Pos_PrintOnSection(struct PostQuantity *NCPQ_P, struct PostQuantity *CPQ_P,
       Message::ProgressMeter(iGeo + 1, NbGeoElement, "Post-processing (Cut)");
       if(Message::GetErrorCount()) break;
     }
-    Format_PostFooter(PSO_P, 0);
+    if(gather && !write) { // written later, see Treatment_PostOperation
+      Pos_KeepEvaluated(PSO_P, evaluated);
+      break;
+    }
+    if(gather && !evaluate) evaluated = Pos_TakeEvaluated(PSO_P);
+    if(gather)
+      evaluated.gatherAndFormat(
+        NbTimeStep, PSO_P->TimeStep_L,
+        [&](struct PostElement *PE, int iTime) {
+          Format_PostElement(PSO_P, PSO_P->Iso, 0, Current.Time, iTime,
+                             NbTimeStep, Current.NbrHar,
+                             PSO_P->HarmonicToTime, NULL, PE);
+        },
+        [](struct PostElement *) { return false; });
+    if(printHere) Format_PostFooter(PSO_P, 0);
     break;
 
   default: Message::Error("Unknown operation in Print OnSection"); break;

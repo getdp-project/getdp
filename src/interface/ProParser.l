@@ -435,6 +435,7 @@ SetTimeStep                  return tSetTimeStep;
 Sign                         return tSign;
 Sin                          return tSin;
 Sinh                         return tSinh;
+SingleProcess                return tDistributed;
 Skin                         return tSkin;
 Sleep                        return tSleep;
 Smoothing                    return tSmoothing;

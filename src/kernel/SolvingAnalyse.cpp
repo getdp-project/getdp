@@ -20,6 +20,7 @@
 #include "Cal_Quantity.h"
 #include "Get_DofOfElement.h"
 #include "Pos_Formulation.h"
+#include "Pos_Print.h"
 #include "Cal_Quantity.h"
 #include "SolvingOperations.h"
 #include "MallocUtils.h"
@@ -189,8 +190,8 @@ void Treatment_Preprocessing(int Nbr_DefineSystem, struct DofData *DofData_P0,
   }
 }
 
-// A Distributed sub-operation is run by rank i_POP % size alone: what it stores
-// in a variable or a register is sent from there to the other ranks
+// A SingleProcess sub-operation is done by rank i_POP % size alone: what it
+// stores in a variable or a register is sent from there to the other ranks
 static void Broadcast_StoredValues(struct PostSubOperation *PostSubOperation_P,
                                    int i_POP)
 {
@@ -298,70 +299,60 @@ void Treatment_PostOperation(struct Resolution *Resolution_P,
 
   Nbr_PostSubOperation = List_Nbr(PostOperation_P->PostSubOperation);
 
-  // With rank-local Dofs a rank only has the Dofs of its own partition (the
-  // first rank gets them all if a Print needs them): a Print is evaluated by
-  // all the ranks, each one on its partition, or by the first rank alone, and
-  // a quantity on a region is integrated by each rank on its partition and
-  // summed. Handing a whole sub-operation to one rank (Distributed) fits none
-  // of these, so the post-operation runs as without Distributed.
-  if(Dof_UseLocalDofs()) {
-    bool wasDistributed = PostOperation_P->Distributed;
-    PostOperation_P->Distributed = false;
-    for(i_POP = 0; i_POP < Nbr_PostSubOperation; i_POP++) {
-      PostSubOperation_P = (struct PostSubOperation *)List_Pointer(
-        PostOperation_P->PostSubOperation, i_POP);
-      wasDistributed = wasDistributed || PostSubOperation_P->Distributed;
-      PostSubOperation_P->Distributed = false;
-    }
-    if(wasDistributed)
-      Message::Info("PostOperation '%s' runs as without Distributed (which "
-                    "needs -all-dofs)", PostOperation_P->Name);
-  }
+  // A SingleProcess sub-operation is done by a single rank, on the whole mesh,
+  // which needs all the Dofs on all the ranks (see WhatNeedsAllDofs): with
+  // rank-local Dofs, it is done as without SingleProcess
+  const bool singleProcess = !Dof_UseLocalDofs() && Message::GetCommSize() > 1;
 
-  bool anyDistributed = false;
+  // The Prints gathered on the first rank that write to their own file are
+  // evaluated by all the ranks one after the other, without waiting for each
+  // other, and written together later: when the post-operation ends, or before
+  // an operation that could use their files or change their formatting (see
+  // Pos_MustWriteBefore)
+  std::vector<struct PostSubOperation *> later;
+  auto writeLater = [&]() {
+    Pos_SetGatherPhase(POS_WRITE);
+    for(auto p : later) Pos_Formulation(Formulation_P, PostProcessing_P, p);
+    Pos_SetGatherPhase(POS_EVALUATE_AND_WRITE);
+    later.clear();
+  };
+
+  bool anySingleProcess = false;
   for(i_POP = 0; i_POP < Nbr_PostSubOperation; i_POP++) {
     PostSubOperation_P = (struct PostSubOperation *)List_Pointer(
       PostOperation_P->PostSubOperation, i_POP);
-    if(!PostOperation_P->Distributed) {
-      // non-distributed post-operations: all ranks execute all sub-operations
-      Message::Info("PostSubOperation '%s' %d/%d", PostOperation_P->Name, i_POP + 1,
-        Nbr_PostSubOperation);
-      Pos_Formulation(Formulation_P, PostProcessing_P, PostSubOperation_P);
-    }
-    else {
-      // distributed post-operations: round-robin assignment of sub-operations to ranks
-      bool skip = false;
-      if(PostSubOperation_P->Distributed) {
-#if defined(HAVE_MPI)
-        anyDistributed = true;
-        if(i_POP % Message::GetCommSize() != Message::GetCommRank()){
-          skip = true;
-        }
-#else
-        Message::Info("Please compile with MPI to enable distributed post-operations. Running in serial mode.");
-#endif
-      }
-      if(PostSubOperation_P->Distributed) {
-        Message::Info("PostSubOperation (distributed) '%s' %d/%d", PostOperation_P->Name, i_POP + 1,
-          Nbr_PostSubOperation);
-      }
-      else {
-        Message::Info("PostSubOperation '%s' %d/%d", PostOperation_P->Name, i_POP + 1,
-          Nbr_PostSubOperation);
-      }
-      if(!skip) {
+    if(singleProcess && PostSubOperation_P->Distributed) {
+      // the SingleProcess sub-operations are shared among the ranks in turn
+      anySingleProcess = true;
+      Message::Info("PostSubOperation '%s' %d/%d (rank %d)",
+                    PostOperation_P->Name, i_POP + 1, Nbr_PostSubOperation,
+                    i_POP % Message::GetCommSize());
+      if(i_POP % Message::GetCommSize() == Message::GetCommRank())
         Pos_Formulation(Formulation_P, PostProcessing_P, PostSubOperation_P);
-      }
-      // a later sub-operation, run on another rank, may read what this one
+      // a later sub-operation, done by another rank, may read what this one
       // stored: it goes to all the ranks now, not after the PostOperation
-      if(PostSubOperation_P->Distributed)
-        Broadcast_StoredValues(PostSubOperation_P, i_POP);
+      Broadcast_StoredValues(PostSubOperation_P, i_POP);
+      continue;
     }
+    // the other sub-operations are done by all the ranks
+    Message::Info("PostSubOperation '%s' %d/%d", PostOperation_P->Name,
+                  i_POP + 1, Nbr_PostSubOperation);
+    if(Pos_MustWriteBefore(PostSubOperation_P, later)) writeLater();
+    if(Pos_IsWrittenLater(PostSubOperation_P)) {
+      Pos_SetGatherPhase(POS_EVALUATE);
+      Pos_Formulation(Formulation_P, PostProcessing_P, PostSubOperation_P);
+      Pos_SetGatherPhase(POS_EVALUATE_AND_WRITE);
+      later.push_back(PostSubOperation_P);
+    }
+    else
+      Pos_Formulation(Formulation_P, PostProcessing_P, PostSubOperation_P);
   }
 
-  // Synchronizing all ranks after distributed post-operations (what they
+  writeLater();
+
+  // Synchronizing all ranks after SingleProcess sub-operations (what they
   // stored is already on all the ranks, see Broadcast_StoredValues)
-  if(PostOperation_P->Distributed && anyDistributed) Message::Barrier();
+  if(anySingleProcess) Message::Barrier();
 
   if(PostOperation_P->ResampleTime) {
     for(int i = 0; i < List_Nbr(Current.DofData->Solutions); i++) {
@@ -658,9 +649,20 @@ static const char *WhatNeedsAllDofs()
          ->ResampleTime)
       return "a post-operation with ResampleTime";
 
-  // a Print on the mesh is evaluated by the first rank alone, and what it
-  // stores would be missing on the others (in the post-operations that can be
-  // run)
+  // a SingleProcess sub-operation is done by a single rank, on the whole mesh
+  // (in the post-operations that can be run)
+  for(int i = 0; i < List_Nbr(Problem_S.PostOperation); i++) {
+    struct PostOperation *po =
+      (struct PostOperation *)List_Pointer(Problem_S.PostOperation, i);
+    if(!PostOperationNames.count(po->Name)) continue;
+    for(int j = 0; j < List_Nbr(po->PostSubOperation); j++)
+      if(((struct PostSubOperation *)List_Pointer(po->PostSubOperation, j))
+           ->Distributed)
+        return "a SingleProcess operation";
+  }
+
+  // what a Print on the mesh stores would be missing on the ranks that did not
+  // evaluate it (in the post-operations that can be run)
   for(int i = 0; i < List_Nbr(Problem_S.PostOperation); i++) {
     struct PostOperation *po =
       (struct PostOperation *)List_Pointer(Problem_S.PostOperation, i);
@@ -676,15 +678,19 @@ static const char *WhatNeedsAllDofs()
              ->FunctionType != REGION)
         return "a Print on the nodes of a region";
       // (the value at a point is found by a rank, stored by the first one and
-      // sent to all, see Pos_PrintOnGrid)
+      // sent to all, see Pos_PrintOnGrid; the minimum and maximum of a Print
+      // gathered on the first rank are found there and sent to all, see
+      // Pos_PrintOnElementsOf)
       const bool point = (p->SubType == PRINT_ONGRID_0D);
+      const bool gathered = Pos_IsGathered(p);
       if(p->Type == POP_PRINT && p->SubType != PRINT_ONREGION &&
          (p->StoreInField >= 0 || p->StoreInMeshBasedField >= 0 ||
           (!point && (p->StoreInRegister >= 0 || p->StoreInVariable)) ||
-          p->StoreMinInRegister >= 0 || p->StoreMaxInRegister >= 0 ||
-          p->StoreMinXinRegister >= 0 || p->StoreMaxXinRegister >= 0 ||
-          p->StoreMinYinRegister >= 0 || p->StoreMaxYinRegister >= 0 ||
-          p->StoreMinZinRegister >= 0 || p->StoreMaxZinRegister >= 0))
+          (!gathered &&
+           (p->StoreMinInRegister >= 0 || p->StoreMaxInRegister >= 0 ||
+            p->StoreMinXinRegister >= 0 || p->StoreMaxXinRegister >= 0 ||
+            p->StoreMinYinRegister >= 0 || p->StoreMaxYinRegister >= 0 ||
+            p->StoreMinZinRegister >= 0 || p->StoreMaxZinRegister >= 0))))
         return "a Print that stores its result";
     }
   }

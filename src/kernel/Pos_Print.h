@@ -6,6 +6,7 @@
 #ifndef POS_PRINT_H
 #define POS_PRINT_H
 
+#include <vector>
 #include "ProData.h"
 
 #define ARG                                                                    \
@@ -21,6 +22,19 @@ void Pos_PrintOnGrid(ARG);
 void Pos_PrintWithArgument(ARG);
 
 #undef ARG
+
+bool Pos_IsGathered(struct PostSubOperation *PostSubOperation_P);
+
+// The phases of a Print gathered on the first rank: evaluated and written at
+// once, or evaluated by all the ranks and written later, when the
+// post-operation reaches a point where the files must be complete (see
+// Treatment_PostOperation)
+enum { POS_EVALUATE_AND_WRITE, POS_EVALUATE, POS_WRITE };
+void Pos_SetGatherPhase(int phase);
+int Pos_GetGatherPhase();
+bool Pos_IsWrittenLater(struct PostSubOperation *PostSubOperation_P);
+bool Pos_MustWriteBefore(struct PostSubOperation *PostSubOperation_P,
+                         const std::vector<struct PostSubOperation *> &later);
 
 void Pos_PrintGroup(struct PostSubOperation *PostSubOperation_P);
 void Pos_PrintExpression(struct PostSubOperation *PostSubOperation_P);

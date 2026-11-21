@@ -1302,6 +1302,13 @@ if(${Python3_FOUND} AND GMSH)
            "parallel.pro -solve Laplace -pos Points")
   test_mpi(parallel_elements tests "parallel.geo -2"
            "parallel.pro -solve Laplace -pos Elements")
+  # Prints on the elements in other formats than mesh-based views, gathered on
+  # the first rank
+  test_mpi(parallel_formats tests "parallel.geo -2"
+           "parallel.pro -solve Steps -pos Formats")
+  # operations done by a single process each (SingleProcess)
+  test_mpi(parallel_single_process tests "parallel.geo -2"
+           "parallel.pro -solve Laplace -pos Single")
   test_mpi(parallel_transfer tests "parallel.geo -2"
            "parallel.pro -solve Transfer")
   test_mpi(parallel_periodic tests "parallel.geo -2"

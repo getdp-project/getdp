@@ -597,16 +597,17 @@ other partitions that share a node with its own. These files are used if
 there is exactly one for each process, and the problem has no @code{Link}
 constraint and nothing that the first process does on the whole mesh.
 
-Some features need all the degrees of freedom on
-all the processes: GetDP then defines them all, as with the @code{-all-dofs}
-option, and says so in an information message. This is the case for a moving
-band, integral quantities, quantities evaluated at given coordinates or on
-another mesh, the @code{CopyDegreesOfFreedom}, @code{FourierTransform},
-@code{DeformMesh} and @code{SetCommSelf} operations, and, in the
-post-operations that are run, @code{Print} operations that store their result
-(other than the value at a point or on a region) or that evaluate a quantity
-at the nodes of a region. The memory used by each process then grows with the size of the
-whole problem.
+Some features need all the degrees of freedom on all the processes: GetDP
+then defines them all, as with the @code{-all-dofs} option, and says so in an
+information message. This is the case for a moving band, integral quantities,
+quantities evaluated at given coordinates or on another mesh, the
+@code{CopyDegreesOfFreedom}, @code{FourierTransform}, @code{DeformMesh} and
+@code{SetCommSelf} operations, and, in the post-operations that are run, the
+@code{SingleProcess} option and the @code{Print} operations that store their
+result (other than the value at a point or on a region, or the minimum or
+maximum of a @code{Print} on the elements written by the first process) or
+that evaluate a quantity at the nodes of a region. The memory used by each
+process then grows with the size of the whole problem.
 
 The post-processing operations are done as follows:
 
@@ -624,10 +625,23 @@ the points in its partition, and written by the first process;
 a global or integral quantity (@code{OnRegion}, @code{OnGlobal}) is summed
 over the processes;
 @item
-the other @code{Print} operations (other formats on the elements of the mesh,
-@code{OnSection}, @code{Depth} other than 1, @code{Skin}, @code{Smoothing},
-...) are done by the first process alone, which then gets all the degrees of
-freedom.
+the other @code{Print} operations on the elements of the mesh or on a section
+(@code{OnSection}) are computed by all the processes, each one for its
+partition, and written by the first process, in the same order as in a
+sequential run (this includes the other formats, @code{Depth} other than 1,
+@code{Smoothing}, @code{Sort} and @code{StoreMinInRegister}, ...). Those
+that write to a file of their own are written together at the end of the
+post-operation, or before an operation that could use their files or store
+a value: the processes thus evaluate the successive @code{Print}
+operations without waiting for each other, which also spreads many small
+@code{Print} operations over the processes, each one evaluating those in its
+partition;
+@item
+the few that need the elements of several partitions at once (@code{Skin},
+@code{Adapt}), and the mesh-based Gmsh views that are not written by all the
+processes (with @code{Smoothing}, @code{Sort} or @code{StoreMinInRegister}, or
+without @code{File}), are done by the first process alone, which then gets all
+the degrees of freedom.
 @end itemize
 
 The linear solver is selected with the PETSc options given on the command
@@ -4912,7 +4926,7 @@ PostOperation @{
     < NoMesh @var{expression-cst}; > < AppendToExistingFile @var{expression-cst}; >
     < ResampleTime[@var{expression-cst}, @var{expression-cst}, @var{expression-cst}]; >
     < AppendTimeStepToFileName < @var{expression-cst} >; >
-    < Distributed < @var{expression-cst} >; >
+    < SingleProcess < @var{expression-cst} >; >
     Operation @{
       < @var{post-operation-op}; > @dots{}
     @}
@@ -5165,21 +5179,22 @@ Output results for the specified imaginary time value(s) only.
 Output results for the last time step only (useful when calling a
 @code{PostOperation} directly in a @code{Resolution}, for example).
 
-@item Distributed
+@item SingleProcess
 
-Distributes the post-processing suboperations over all MPI processes
-(useful for very large number of post-processing suboperations). In this
-case, each suboperation is executed on a single, different MPI
-process. Default value is 0, meaning that all suboperations are executed
-on all MPI processes, with integral quantities distributed over all
-processes. This option is ignored unless all the degrees of freedom are
-defined on all the processes (see @ref{Running GetDP in parallel}). Do not
-use this option if
-@code{PostOperation} to be used for error estimation in
-@code{TimeLoopAdaptive} or @code{IterativeLoopAdvanced}. This is an
-expert-only option. An optional @var{expression-cst} can be given to
-enable or disable it, with the same meaning as omitting or specifying
-the keyword.
+In parallel, do the operation with a single process, on the whole mesh: the
+operations with this option are shared among the processes in turn, without
+communication (what an operation stores is then sent to all the
+processes). Without it, the processes evaluate each @code{Print} operation
+on their partition, one operation after the other without waiting for each
+other (@pxref{Running GetDP in parallel}), which already spreads many small
+operations over the processes; @code{SingleProcess} helps when many of them
+lie in the same part of the mesh. It needs all the degrees of freedom on all
+the processes, which GetDP then defines (as with @code{-all-dofs}). Given for
+a @code{PostOperation}, it applies to all its operations, and
+@code{SingleProcess 0} excludes one of them. Do not use it in a
+@code{PostOperation} used for error estimation in @code{TimeLoopAdaptive} or
+@code{IterativeLoopAdvanced}. (@code{Distributed} is a former name of this
+option.)
 
 @item AppendExpressionToFileName
 @var{expression}

@@ -17088,7 +17088,7 @@ yyreduce:
       PostSubOperation_S.TimeInterval_Flag = 0;
       PostSubOperation_S.TimeInterval[0] = 0.;
       PostSubOperation_S.TimeInterval[1] = 0.;
-      PostSubOperation_S.Distributed = false;
+      PostSubOperation_S.Distributed = -1;
      ;}
     break;
 
@@ -17114,7 +17114,7 @@ yyreduce:
           PostSubOperation_S.OverrideTimeStepValue = PostOperation_S.OverrideTimeStepValue;
 	if(!PostSubOperation_S.CatFile)
           PostSubOperation_S.CatFile = PostOperation_S.CatFile;
-  if(!PostSubOperation_S.Distributed)
+	if(PostSubOperation_S.Distributed < 0)
           PostSubOperation_S.Distributed = PostOperation_S.Distributed;
 
 	List_Add((yyval.l) = (yyvsp[(1) - (3)].l), &PostSubOperation_S);

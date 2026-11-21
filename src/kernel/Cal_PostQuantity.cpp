@@ -445,7 +445,8 @@ void Cal_PostQuantity(struct PostQuantity *PostQuantity_P,
 #endif
   if(Dof_UseLocalDofs()) partitioned = !Dof_GetPostOnRootOnly();
   if(distributedPostOperation) {
-    // all sub-operations are already distributed, so we don't further distribute the post-processing operation
+    // the sub-operation is done by a single rank (SingleProcess), which
+    // integrates over the whole region
     partitioned = false;
   }
 

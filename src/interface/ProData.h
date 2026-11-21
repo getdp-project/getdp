@@ -1539,7 +1539,9 @@ struct PostSubOperation {
   char *NewCoordinatesFile;
   int ValueIndex;
   int ChangeOfCoordinates[3], LastTimeStepOnly, AppendTimeStepToFileName;
-  bool Distributed;
+  // done by a single process (SingleProcess); -1 while parsing if not given,
+  // for the value of the post-operation
+  int Distributed;
   int AppendExpressionToFileName;
   char *AppendStringToFileName, *AppendExpressionFormat;
   int OverrideTimeStepValue, NoMesh;

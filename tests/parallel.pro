@@ -35,7 +35,8 @@ Group {
 }
 
 Function {
-  f[] = 10 * Sin[3 * X[]] * Cos[2 * Y[]];
+  // (scaled at each time step of the Steps resolution)
+  f[] = 10 * Sin[3 * X[]] * Cos[2 * Y[]] * (1 + $Time);
 }
 
 Jacobian {
@@ -146,6 +147,16 @@ Resolution {
       PostOperation[Transferred];
     }
   }
+  // the same problem at several time steps
+  { Name Steps;
+    System {
+      { Name A; NameOfFormulation Laplace; }
+    }
+    Operation {
+      InitSolution[A];
+      TimeLoopTheta[0, 2, 1, 1] { Generate[A]; Solve[A]; SaveSolution[A]; }
+    }
+  }
   { Name Periodic;
     System {
       { Name A; NameOfFormulation Periodic; }
@@ -244,6 +255,42 @@ PostOperation {
         File "elements_grad_u.txt" ];
       Print[ u, OnSection {{0.2, 0, 0} {0.7, 1, 0} {0.2, 0, 1}}, Format Table,
         File "section_u.txt" ];
+    }
+  }
+  // Prints on the elements in other formats than mesh-based Gmsh views, at all
+  // the time steps of the Steps resolution
+  { Name Formats; NameOfPostProcessing Laplace;
+    Operation {
+      Print[ u, OnElementsOf Domain, Format NodeTable, File "node_table_u.txt" ];
+      Print[ grad_u, OnElementsOf Domain, Format ElementTable,
+        File "element_table_grad_u.txt" ];
+      Print[ u, OnElementsOf Domain, Format TimeTable, File "time_table_u.txt" ];
+      Print[ u, OnElementsOf Domain, Depth 0, File "u_depth_0.pos" ];
+      Print[ u, OnElementsOf Domain, Depth 2, Format Table,
+        File "u_depth_2.txt" ];
+      Print[ u, OnElementsOf Domain, Smoothing, LastTimeStepOnly, Format Table,
+        File "smoothed_u.txt" ];
+      Print[ grad_u, OnElementsOf Domain, Sort Position, LastTimeStepOnly,
+        Format Table, File "sorted_grad_u.txt" ];
+      Print[ u, OnElementsOf Domain, StoreMaxInRegister 1, LastTimeStepOnly,
+        Format Table, File "u_again.txt" ];
+      Print[ {#1}, Format "%.10g", File "max_u.txt" ];
+      Print[ u, OnSection {{0.2, 0, 0} {0.7, 1, 0} {0.2, 0, 1}}, Format Table,
+        File "section_u.txt" ];
+    }
+  }
+  // operations shared among the processes in turn, each one done by a single
+  // process (with all the Dofs); the stored integral is read by another one,
+  // and the Print on a line is done by all of them
+  { Name Single; NameOfPostProcessing Laplace; SingleProcess;
+    Operation {
+      Print[ int_u[Domain], OnGlobal, Format Table, File "integral_u.txt",
+        StoreInRegister 2 ];
+      Print[ grad_u, OnElementsOf Domain, Format Table,
+        File "elements_grad_u.txt" ];
+      Print[ u, OnLine {{0.013, 0.021, 0} {0.987, 0.933, 0}} {20}, Format Table,
+        File "line_u.txt", SingleProcess 0 ];
+      Print[ {#2}, Format "%.10g", File "stored_integral_u.txt" ];
     }
   }
   { Name Transferred; NameOfPostProcessing Transferred;
