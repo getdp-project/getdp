@@ -5,6 +5,8 @@
 
 #include <sstream>
 #include <vector>
+#include <queue>
+#include <functional>
 #include <algorithm>
 #include <string.h>
 #include <math.h>
@@ -304,36 +306,40 @@ struct EvaluatedPostElements {
       reals.insert(reals.end(), PE->Value[i].Val, PE->Value[i].Val + nbVal);
     }
   }
-  // gathers the elements of all the ranks on the first rank, which then calls
-  // value(PE, iTime) for each one, in the order of their numbers (each one was
-  // evaluated by a single rank, in the order of the Print without MPI), at
-  // each time step, and then element(PE), which returns whether it keeps PE
+  // the first rank calls value(PE, iTime) for the elements of all the ranks,
+  // in the order of their numbers (each one was evaluated by a single rank, in
+  // the order of the Print without MPI), at each time step, and then
+  // element(PE), which returns whether it keeps PE. The first rank merges the
+  // elements of the ranks, each of which sends them in the order of their
+  // numbers, by blocks, when the first rank asks for the next one: it thus
+  // holds at most a block of each rank (64 MB in all, and at least 64 KB per
+  // rank), and not all the elements.
   template <class V, class E>
   void gatherAndFormat(int NbTimeStep, List_T *TimeStep_L, V value, E element)
   {
-#if defined(HAVE_MPI)
-    GatherOnFirstRank(ints, MPI_INT);
-    GatherOnFirstRank(reals, MPI_DOUBLE);
-#endif
-    if(Message::GetCommRank()) return;
     const int nbVal = Current.NbrHar * MAX_DIM;
-    std::vector<std::pair<std::size_t, std::size_t> > start; // in ints, reals
-    std::vector<std::pair<int, int> > order; // number, index in start
+    // the sizes of an element in ints and in reals
+    auto sizes = [&](const int *I) {
+      std::size_t n = I[3];
+      return std::make_pair(4 + n + NbTimeStep * n,
+                            6 * n + NbTimeStep * n * nbVal);
+    };
+    // the elements of this rank (their starts in ints and reals), in the order
+    // of their numbers
+    std::vector<std::pair<std::size_t, std::size_t> > start;
     for(std::size_t i = 0, r = 0; i < ints.size();) {
-      std::size_t n = ints[i + 3];
-      order.push_back({ints[i], (int)start.size()});
       start.push_back({i, r});
-      i += 4 + n + NbTimeStep * n;
-      r += 6 * n + NbTimeStep * n * nbVal;
+      auto s = sizes(&ints[i]);
+      i += s.first;
+      r += s.second;
     }
-    std::stable_sort(
-      order.begin(), order.end(),
-      [](const std::pair<int, int> &a, const std::pair<int, int> &b) {
-        return a.first < b.first;
-      });
-    for(auto &o : order) {
-      const int *I = &ints[start[o.second].first];
-      const double *R = &reals[start[o.second].second];
+    std::stable_sort(start.begin(), start.end(),
+                     [this](const std::pair<std::size_t, std::size_t> &a,
+                            const std::pair<std::size_t, std::size_t> &b) {
+                       return ints[a.first] < ints[b.first];
+                     });
+    // the element (ints I, reals R) made and given to value and element
+    auto format = [&](const int *I, const double *R) {
       const int n = I[3];
       struct PostElement *PE = Create_PostElement(NO_ELEMENT, I[1], n, I[2]);
       PE->NumElement = I[0];
@@ -350,6 +356,97 @@ struct EvaluatedPostElements {
         value(PE, iTime);
       }
       if(!element(PE)) Destroy_PostElement(PE);
+    };
+    const int np = Message::GetCommSize(), rank = Message::GetCommRank();
+#if defined(HAVE_MPI)
+    enum { REQUEST = 7301, INTS, REALS };
+    if(np > 1 && rank) {
+      // send the next block of elements each time the first rank asks for
+      // it, until an empty one
+      const std::size_t block = std::max<std::size_t>(1 << 16, (1 << 26) / np);
+      for(std::size_t k = 0;;) {
+        int request;
+        MPI_Recv(&request, 1, MPI_INT, 0, REQUEST, MPI_COMM_WORLD,
+                 MPI_STATUS_IGNORE);
+        std::vector<int> bi;
+        std::vector<double> br;
+        while(k < start.size() &&
+              bi.size() * sizeof(int) + br.size() * sizeof(double) < block) {
+          const int *I = &ints[start[k].first];
+          const double *R = &reals[start[k].second];
+          auto s = sizes(I);
+          bi.insert(bi.end(), I, I + s.first);
+          br.insert(br.end(), R, R + s.second);
+          k++;
+        }
+        MPI_Send(bi.data(), (int)bi.size(), MPI_INT, 0, INTS, MPI_COMM_WORLD);
+        MPI_Send(br.data(), (int)br.size(), MPI_DOUBLE, 0, REALS,
+                 MPI_COMM_WORLD);
+        if(bi.empty()) return;
+      }
+    }
+#endif
+    if(rank) return;
+    // the next element of each rank: its ints and reals, and where it is in
+    // the elements of this rank or in the block received from another
+    struct Next {
+      std::vector<int> I;
+      std::vector<double> R;
+      std::size_t i = 0, r = 0;
+    };
+    std::vector<Next> next(np);
+    std::size_t k0 = 0; // (in start, for this rank)
+    auto current = [&](int q) {
+      if(!q) return std::make_pair(&ints[start[k0].first],
+                                   &reals[start[k0].second]);
+      return std::make_pair(&next[q].I[next[q].i], &next[q].R[next[q].r]);
+    };
+    // whether rank q has another element (the next block is asked for if
+    // needed)
+    auto more = [&](int q) -> bool {
+      if(!q) return k0 < start.size();
+      Next &x = next[q];
+      if(x.i < x.I.size()) return true;
+#if defined(HAVE_MPI)
+      int request = 1, n;
+      MPI_Status status;
+      MPI_Send(&request, 1, MPI_INT, q, REQUEST, MPI_COMM_WORLD);
+      MPI_Probe(q, INTS, MPI_COMM_WORLD, &status);
+      MPI_Get_count(&status, MPI_INT, &n);
+      x.I.resize(n);
+      MPI_Recv(x.I.data(), n, MPI_INT, q, INTS, MPI_COMM_WORLD,
+               MPI_STATUS_IGNORE);
+      MPI_Probe(q, REALS, MPI_COMM_WORLD, &status);
+      MPI_Get_count(&status, MPI_DOUBLE, &n);
+      x.R.resize(n);
+      MPI_Recv(x.R.data(), n, MPI_DOUBLE, q, REALS, MPI_COMM_WORLD,
+               MPI_STATUS_IGNORE);
+      x.i = x.r = 0;
+      return !x.I.empty();
+#else
+      return false;
+#endif
+    };
+    // merge: the smallest number first, of the first rank if several
+    typedef std::pair<int, int> NumberRank;
+    std::priority_queue<NumberRank, std::vector<NumberRank>,
+                        std::greater<NumberRank> >
+      queue;
+    for(int q = 0; q < np; q++)
+      if(more(q)) queue.push({current(q).first[0], q});
+    while(!queue.empty()) {
+      const int q = queue.top().second;
+      queue.pop();
+      auto c = current(q);
+      format(c.first, c.second);
+      if(!q)
+        k0++;
+      else {
+        auto s = sizes(c.first);
+        next[q].i += s.first;
+        next[q].r += s.second;
+      }
+      if(more(q)) queue.push({current(q).first[0], q});
     }
   }
 };

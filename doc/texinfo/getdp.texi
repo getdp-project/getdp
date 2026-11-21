@@ -630,7 +630,9 @@ the other @code{Print} operations on the elements of the mesh or on a section
 (@code{OnSection}) are computed by all the processes, each one for its
 partition, and written by the first process, in the same order as in a
 sequential run (this includes the other formats, @code{Depth} other than 1,
-@code{Smoothing}, @code{Sort} and @code{StoreMinInRegister}, ...). Those
+@code{Smoothing}, @code{Sort} and @code{StoreMinInRegister}, ...). The first
+process receives the results of the others block by block, as it writes them,
+so that its memory does not grow with the size of the @code{Print}. Those
 that write to a file of their own are written together at the end of the
 post-operation, or before an operation that could use their files or store
 a value: the processes thus evaluate the successive @code{Print}

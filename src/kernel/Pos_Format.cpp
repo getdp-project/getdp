@@ -721,9 +721,9 @@ static void Gnuplot_PrintElement(int Format, double Time, int TimeStep,
 /*  Tabular format                                                          */
 /* ------------------------------------------------------------------------ */
 
-// global static list for tables output
+// the values of a table, kept in GetDPNumbers (see Format_PostFooter)
 static int TableList_StartNew = 0;
-static std::list<double> TableList;
+static std::vector<double> TableList;
 
 static void Tabular_PrintElement(struct PostSubOperation *PSO_P, int Format,
                                  double Time, int TimeStep, int NbrTimeSteps,
@@ -1849,10 +1849,13 @@ void Format_PostFooter(struct PostSubOperation *PSO_P, int Store,
   case FORMAT_SIMPLE_SPACE_TABLE:
   case FORMAT_VALUE_ONLY: {
     if(TableList.size()) {
-      std::vector<double> v(TableList.begin(), TableList.end());
-      GetDPNumbers[CurrentName] = v;
+      // (moved, not copied: a table on the elements can be large)
+      std::vector<double> &numbers = GetDPNumbers[CurrentName];
+      numbers.swap(TableList);
+      std::vector<double>().swap(TableList);
       if(SendToServer && PSO_P->SendToServer &&
          strcmp(PSO_P->SendToServer, "No")) {
+        std::vector<double> v(numbers);
         if(PSO_P->Format == FORMAT_VALUE_ONLY && PSO_P->SendToServerList)
           pruneHarmonics(v, PSO_P->SendToServerList);
         Message::AddOnelabNumberChoice(PSO_P->SendToServer, v, PSO_P->Color,

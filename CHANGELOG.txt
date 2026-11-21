@@ -14,21 +14,22 @@ meshes; Gmsh post-processing files of field maps on the elements of the mesh
 are mesh-based by default, in MSH 4.2 (-list-based for the previous format),
 and in parallel field maps, evaluations at points and the other Prints on the
 mesh are computed by all the processes, the field maps and their mesh being
-written with MPI-IO, the other Prints by the first process, and the fields
-stored by Prints (StoreInField) are kept by each process for its partition;
-faster search of the element that contains a point (tree of bounding boxes),
-which is a surface or a curve only if the point is on it; the unknowns are
-numbered by mesh partition (the order of the unknowns in .pre and .res files
-has changed); fixed and more accurate Gauss integration rules; fixed
-hierarchical edge functions on lines; the Distance function returns a signed
-distance; added support for 2nd order edge elements on quadrangles; new
-resolution operation (ReadTable); new post-operation option (SingleProcess);
-new current variable ($KSPConvergedReason); new integration type (Collocation);
-new built-in functions (GetRank, ValueFromMap, ValueFromFile, ...); renamed
-IterativeLoopN[] as IterativeLoopAdvanced[]; the Python interpreter is only
-started if a Python function is used; GetDP now requires C++17 and CMake 3.10;
-bug fixes (SaveMesh, adaptive time stepping with MPI, duplicate values in
-ONELAB parameter choices).
+written with MPI-IO, the other Prints by the first process (which receives the
+results of the others block by block, as it writes them), and the fields stored
+by Prints (StoreInField) are kept by each process for its partition; faster
+search of the element that contains a point (tree of bounding boxes), which is
+a surface or a curve only if the point is on it; less memory for the Prints in
+table formats; the unknowns are numbered by mesh partition (the order of the
+unknowns in .pre and .res files has changed); fixed and more accurate Gauss
+integration rules; fixed hierarchical edge functions on lines; the Distance
+function returns a signed distance; added support for 2nd order edge elements
+on quadrangles; new resolution operation (ReadTable); new post-operation option
+(SingleProcess); new current variable ($KSPConvergedReason); new integration
+type (Collocation); new built-in functions (GetRank, ValueFromMap,
+ValueFromFile, ...); renamed IterativeLoopN[] as IterativeLoopAdvanced[]; the
+Python interpreter is only started if a Python function is used; GetDP now
+requires C++17 and CMake 3.10; bug fixes (SaveMesh, adaptive time stepping with
+MPI, duplicate values in ONELAB parameter choices).
 
 3.5.0 (May 13, 2022): generalized Trace operator on non-conforming meshes; new
 Errf function; source code reorganization.

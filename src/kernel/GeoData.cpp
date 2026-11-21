@@ -42,7 +42,9 @@ struct GeoData *CurrentGeoData;
 
 // Whether the ranks read their part of the mesh together (the numbers of the
 // elements that Geo_ReadFileWithGmsh creates then depend on the whole mesh)
+#if defined(HAVE_MPI)
 static bool ReadsPart = false;
+#endif
 static void Geo_ReadFileWithGmsh(struct GeoData *GeoData_P, bool loaded = false);
 
 static void swapBytes(char *array, int size, int n)
