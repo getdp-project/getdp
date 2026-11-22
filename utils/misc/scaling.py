@@ -128,8 +128,8 @@ def main():
                         help='partition the mesh with Gmsh instead of GetDP')
     parser.add_argument('--split', action='store_true',
                         help='partition the mesh with Gmsh in one file for '
-                             'each rank, with the overlap that lets each rank '
-                             'read its own file')
+                             'each rank, with its ghost cells, so that each '
+                             'rank reads its own file')
     parser.add_argument('--ghosts', action='store_true',
                         help='partition the mesh with Gmsh in a single file '
                              'with ghost cells, from which each rank reads '
@@ -160,7 +160,7 @@ def main():
         cmd = [args.gmsh, 'scaling.geo', '-3', '-bin', '-setnumber', 'N',
                str(n), '-v', '2']
         if args.split and np > 1:
-            cmd += ['-part', str(np), '-part_split', '-overlap', '1']
+            cmd += ['-part', str(np), '-part_split', '-part_ghosts']
         elif args.ghosts and np > 1:
             cmd += ['-part', str(np), '-part_ghosts']
         elif args.partition and np > 1:

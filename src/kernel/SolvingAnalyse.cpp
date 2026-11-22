@@ -158,7 +158,7 @@ void Treatment_Preprocessing(int Nbr_DefineSystem, struct DofData *DofData_P0,
       }
       if(edges) Geo_CreateEdgesAndFacets(facets);
       if(Current.GeoData->HasParts || Current.GeoData->IsPart) {
-        Generate_TreesOnFirstRank();
+        Generate_TreesOverRanks();
         F_ComputeRegionMeasures();
         // the trees were the last thing that needed the whole mesh
         if(Geo_GetWholeMeshOnFirstRank() == 1)
@@ -727,8 +727,8 @@ static const char *WhatNeedsAllDofsOnFirstRank()
 // With rank-local Dofs, what the first rank does alone on the whole mesh, which
 // it then keeps instead of its own part only (see Geo_SendParts): the Prints
 // for which it also keeps all the Dofs, and SaveMesh. It only needs it in the
-// pre-processing (*untilTrees) to build the trees, which it sends to the other
-// ranks.
+// pre-processing (*untilTrees) to build the trees that are not built over the
+// ranks (Group_IsTreeOverRanks), which it sends to the other ranks.
 static const char *WhatNeedsWholeMeshOnFirstRank(bool *untilTrees)
 {
   *untilTrees = false;
@@ -743,8 +743,10 @@ static const char *WhatNeedsWholeMeshOnFirstRank(bool *untilTrees)
       return "SaveMesh";
   }
   for(int i = 0; i < List_Nbr(Problem_S.Group); i++) {
-    int type = ((struct Group *)List_Pointer(Problem_S.Group, i))->FunctionType;
-    if(type == EDGESOFTREEIN || type == FACETSOFTREEIN) {
+    struct Group *Group_P = (struct Group *)List_Pointer(Problem_S.Group, i);
+    int type = Group_P->FunctionType;
+    if((type == EDGESOFTREEIN || type == FACETSOFTREEIN) &&
+       !Group_IsTreeOverRanks(Group_P)) {
       *untilTrees = true;
       return "a tree";
     }

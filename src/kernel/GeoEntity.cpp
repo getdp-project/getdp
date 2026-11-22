@@ -785,6 +785,18 @@ void Geo_WriteFilePRE(struct GeoData *GeoData_P, List_T *Group_L)
       Geo_PrintElementEntitiesPRE(GeoData_P, 0, byRank);
     if(GeoData_P->NumCurrentFacet)
       Geo_PrintElementEntitiesPRE(GeoData_P, 1, byRank);
+    // the groups that each rank has its own part of (Geo_AddGroupForPRE)
+    for(int i = 0; byRank && i < List_Nbr(GeoData_P->GroupForPREByRank); i++) {
+      int index;
+      List_Read(GeoData_P->GroupForPREByRank, i, &index);
+      struct Group *Group_P = (struct Group *)List_Pointer(Group_L, index);
+      int n = List_Nbr(Group_P->ExtendedList);
+      Dof_PrintfPRE("$ExtendedGroup  /* %s */\n%d %d\n", Group_P->Name, index, n);
+      for(int j = 0; j < n; j++)
+        Dof_PrintfPRE((j % 10 == 9 || j == n - 1) ? "%d\n" : "%d ",
+                      *(int *)List_Pointer(Group_P->ExtendedList, j));
+      Dof_PrintfPRE("$EndExtendedGroup\n");
+    }
     Dof_WriteSectionPRE(byRank);
   }
 
@@ -1029,13 +1041,25 @@ void Geo_ReadFilePRE(struct GeoData *GeoData_P0, int NbrGeoData,
         return;
       }
       Group_P = (struct Group *)List_Pointer(Group_L, Index_Group);
-      Group_P->ExtendedList = List_Create(Nbr_Entities, 1, sizeof(int));
+      // (a group written by each rank in its section, read from several
+      // sections, is their union)
+      const bool merge = (Group_P->ExtendedList != NULL);
+      if(!merge)
+        Group_P->ExtendedList = List_Create(Nbr_Entities + 1, 1, sizeof(int));
       for(i = 0; i < Nbr_Entities; i++) {
         if(fscanf(File_PRE, "%d", &Num_Entity) != 1) {
           Message::Error("Could not read entity");
           return;
         }
         List_Add(Group_P->ExtendedList, &Num_Entity);
+      }
+      if(merge) {
+        int *a = (int *)List_Pointer(Group_P->ExtendedList, 0);
+        std::vector<int> all(a, a + List_Nbr(Group_P->ExtendedList));
+        std::sort(all.begin(), all.end());
+        all.erase(std::unique(all.begin(), all.end()), all.end());
+        List_Reset(Group_P->ExtendedList);
+        for(int num : all) List_Add(Group_P->ExtendedList, &num);
       }
     }
 
@@ -1050,10 +1074,10 @@ void Geo_ReadFilePRE(struct GeoData *GeoData_P0, int NbrGeoData,
 /*  G e o  _ A d d G r o u p F o r P R E                                    */
 /* ------------------------------------------------------------------------ */
 
-void Geo_AddGroupForPRE(int Num)
+void Geo_AddGroupForPRE(int Num, bool byRank)
 {
-  if(CurrentGeoData->GroupForPRE == NULL)
-    CurrentGeoData->GroupForPRE = List_Create(2, 2, sizeof(int));
-
-  List_Add(CurrentGeoData->GroupForPRE, &Num);
+  List_T *&list =
+    byRank ? CurrentGeoData->GroupForPREByRank : CurrentGeoData->GroupForPRE;
+  if(list == NULL) list = List_Create(2, 2, sizeof(int));
+  List_Add(list, &Num);
 }

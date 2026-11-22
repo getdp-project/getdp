@@ -14,6 +14,13 @@
 #include "TreeUtils.h"
 #include "Get_Geometry.h"
 #include "Message.h"
+#include "GetDPConfig.h"
+
+#if defined(HAVE_MPI)
+#include <mpi.h>
+#endif
+
+extern struct GeoData *CurrentGeoData;
 
 static int Tree_IndexToChange, Tree_NewIndex;
 
@@ -319,6 +326,277 @@ void Geo_GenerateEdgesOfTree(List_T *InitialList, bool isInitialListEL,
 
   List_Sort(*ExtendedList, fcmp_int);
 }
+
+#if defined(HAVE_MPI)
+// A tree of edges built over the ranks, each one having only its part of the
+// mesh: the elements of its partition and those of the other partitions that
+// share a node with them, so that a rank has all the elements around the
+// nodes of its partition. The tree is the one of the serial algorithm.
+//
+// The serial algorithm takes the edges in the order of the elements (those of
+// the lines and then of the surfaces of the StartingOn region, then those of
+// the region, each in the order of their numbers) and keeps an edge if it
+// connects two nodes not yet connected. This is Kruskal's algorithm, with the
+// position of the first element of an edge as its weight: the tree is the
+// minimum spanning forest for these weights, which is unique. This forest is
+// built in two steps:
+//
+// 1. Each edge is treated by one rank, its owner: the lowest rank of the
+//    partitions of the elements that contain it, which has all of them and
+//    thus knows its weight. Each rank builds the minimum spanning forest of
+//    the edges it owns. An edge that is not in it is the heaviest of a cycle,
+//    and is thus not in the tree.
+//
+// 2. A node is shared if the elements around it are in the partitions of
+//    several ranks; the other nodes are only reached by the edges of one rank.
+//    A cycle of the union of the forests of the ranks thus goes from rank to
+//    rank through shared nodes, along paths of each forest between shared
+//    nodes. Each rank removes from its forest the branches without shared
+//    nodes (which are in the tree), and sends each remaining path between
+//    shared nodes or forks to the first rank, as a link between its two ends
+//    with the weight of its heaviest edge. The first rank applies Kruskal's
+//    algorithm to these links, and a rank removes the heaviest edge of each
+//    path whose link is not kept.
+//
+// Each rank then has the edges of the tree that it owns. For the other edges
+// of its part of the mesh, it asks a rank chosen from the number of the edge,
+// to which the owners send their edges.
+
+namespace {
+struct Geo_UnionFind {
+  std::vector<int> parent;
+  int add()
+  {
+    parent.push_back((int)parent.size());
+    return (int)parent.size() - 1;
+  }
+  int root(int i)
+  {
+    while(parent[i] != i) i = parent[i] = parent[parent[i]];
+    return i;
+  }
+  bool merge(int i, int j)
+  {
+    i = root(i);
+    j = root(j);
+    if(i == j) return false;
+    parent[j] = i;
+    return true;
+  }
+};
+
+// the index of a node from its number, in a union-find structure
+struct Geo_NodesOfForest {
+  std::unordered_map<int, int> index;
+  std::vector<int> num;
+  Geo_UnionFind sets;
+  int get(int n)
+  {
+    auto it = index.find(n);
+    if(it != index.end()) return it->second;
+    num.push_back(n);
+    return index[n] = sets.add();
+  }
+};
+} // namespace
+
+void Geo_GenerateEdgesOfTreeOverRanks(List_T *InitialList,
+                                      List_T *InitialSuppList,
+                                      List_T **ExtendedList)
+{
+  const int np = Message::GetCommSize(), me = Message::GetCommRank();
+  const int nElements = Geo_GetNbrGeoElements();
+
+  // the lowest rank of the elements of the part of the mesh that contain each
+  // edge (its owner if it is this rank, which then has all these elements),
+  // and the rank of the elements around each node (-1 if several)
+  std::unordered_map<int, int> lowest, rankOfNode;
+  for(int i = 0; i < nElements; i++) {
+    struct Geo_Element *ge = Geo_GetGeoElement(i);
+    int rank = Geo_RankOfPartition(ge->Partition);
+    for(int k = 0; k < ge->NbrEdges; k++) {
+      auto it = lowest.emplace(abs(ge->NumEdges[k]), rank).first;
+      it->second = std::min(it->second, rank);
+    }
+    for(int k = 0; k < ge->NbrNodes; k++) {
+      auto it = rankOfNode.emplace(abs(ge->NumNodes[k]), rank).first;
+      if(it->second != rank) it->second = -1;
+    }
+  }
+
+  // 1. the minimum spanning forest of the edges of this rank, with as weight
+  // of an edge its first position (pass, element number, edge in the element),
+  // the edges being taken in this order
+  struct Edge {
+    long long weight;
+    int a, b, num; // its nodes (in nodes) and its number
+  };
+  std::vector<Edge> forest;
+  Geo_NodesOfForest nodes;
+  auto pass = [&](int p, int dim, List_T *List) {
+    for(int i = 0; i < nElements; i++) {
+      struct Geo_Element *ge = Geo_GetGeoElement(i);
+      if(!ge->NbrEdges || !List_Search(List, &ge->Region, fcmp_int)) continue;
+      int d, n;
+      Get_JacobianFunction(JACOBIAN_VOL, ge->Type, &d);
+      if(dim >= 0 && d != dim) continue;
+      int *D = Geo_GetIM_Den(ge->Type, &n);
+      for(int k = 0; k < ge->NbrEdges; k++) {
+        int num = abs(ge->NumEdges[k]);
+        if(lowest[num] != me) continue;
+        int *ends = D + k * NBR_MAX_SUBENTITIES_IN_ELEMENT;
+        int a = nodes.get(abs(ge->NumNodes[abs(ends[0]) - 1]));
+        int b = nodes.get(abs(ge->NumNodes[abs(ends[1]) - 1]));
+        if(nodes.sets.merge(a, b))
+          forest.push_back({((long long)p << 50) | ((long long)ge->Num << 4) | k,
+                            a, b, num});
+      }
+    }
+  };
+  if(InitialSuppList) { // StartingOn
+    pass(0, 1, InitialSuppList);
+    pass(1, 2, InitialSuppList);
+  }
+  if(InitialList) pass(2, -1, InitialList);
+
+  // 2. the paths of the forest between shared nodes or forks, after removing
+  // the branches without shared nodes: degree counts the edges of a node that
+  // are still on such paths
+  const int nNodes = (int)nodes.num.size();
+  auto shared = [&](int i) { return rankOfNode[nodes.num[i]] < 0; };
+  std::vector<std::vector<int> > edgesOfNode(nNodes);
+  for(int e = 0; e < (int)forest.size(); e++) {
+    edgesOfNode[forest[e].a].push_back(e);
+    edgesOfNode[forest[e].b].push_back(e);
+  }
+  auto other = [&](int e, int i) {
+    return (forest[e].a == i) ? forest[e].b : forest[e].a;
+  };
+  std::vector<int> degree(nNodes), leaves;
+  std::vector<char> onPath(forest.size(), 1);
+  for(int i = 0; i < nNodes; i++) {
+    degree[i] = (int)edgesOfNode[i].size();
+    if(degree[i] == 1 && !shared(i)) leaves.push_back(i);
+  }
+  while(!leaves.empty()) {
+    int i = leaves.back();
+    leaves.pop_back();
+    for(int e : edgesOfNode[i]) {
+      if(!onPath[e]) continue;
+      onPath[e] = 0;
+      degree[i]--;
+      int j = other(e, i);
+      if(--degree[j] == 1 && !shared(j)) leaves.push_back(j);
+    }
+  }
+  auto end = [&](int i) { return shared(i) || degree[i] != 2; };
+  std::vector<int> links, heaviest; // the ends of each path, its heaviest edge
+  std::vector<long long> weights;
+  std::vector<char> walked(forest.size(), 0);
+  for(int i = 0; i < nNodes; i++) {
+    if(!degree[i] || !end(i)) continue;
+    for(int e0 : edgesOfNode[i]) {
+      if(!onPath[e0] || walked[e0]) continue;
+      int j = i, e = e0, max = e0;
+      while(1) {
+        walked[e] = 1;
+        if(forest[e].weight > forest[max].weight) max = e;
+        j = other(e, j);
+        if(end(j)) break;
+        for(int f : edgesOfNode[j])
+          if(onPath[f] && f != e) {
+            e = f;
+            break;
+          }
+      }
+      links.push_back(nodes.num[i]);
+      links.push_back(nodes.num[j]);
+      heaviest.push_back(max);
+      weights.push_back(forest[max].weight);
+    }
+  }
+
+  // the first rank applies Kruskal's algorithm to the links of all the ranks,
+  // and tells each rank which ones it keeps
+  int count = (int)weights.size(), total = 0;
+  std::vector<int> counts(np), displs(np), allLinks;
+  std::vector<long long> allWeights;
+  MPI_Gather(&count, 1, MPI_INT, &counts[0], 1, MPI_INT, 0, MPI_COMM_WORLD);
+  if(!me) {
+    for(int r = 1; r < np; r++) displs[r] = displs[r - 1] + counts[r - 1];
+    total = displs[np - 1] + counts[np - 1];
+  }
+  allWeights.resize(total + 1);
+  MPI_Gatherv(weights.data(), count, MPI_LONG_LONG, &allWeights[0], &counts[0],
+              &displs[0], MPI_LONG_LONG, 0, MPI_COMM_WORLD);
+  for(int r = 0; r < np; r++) {
+    counts[r] *= 2;
+    displs[r] *= 2;
+  }
+  allLinks.resize(2 * total + 1);
+  MPI_Gatherv(links.data(), 2 * count, MPI_INT, &allLinks[0], &counts[0],
+              &displs[0], MPI_INT, 0, MPI_COMM_WORLD);
+  std::vector<int> keep(total + 1), kept(count + 1), order(total);
+  for(int j = 0; j < total; j++) order[j] = j;
+  std::sort(order.begin(), order.end(),
+            [&](int x, int y) { return allWeights[x] < allWeights[y]; });
+  Geo_NodesOfForest ends;
+  for(int j : order)
+    keep[j] = ends.sets.merge(ends.get(allLinks[2 * j]),
+                              ends.get(allLinks[2 * j + 1]));
+  for(int r = 0; r < np; r++) {
+    counts[r] /= 2;
+    displs[r] /= 2;
+  }
+  MPI_Scatterv(&keep[0], &counts[0], &displs[0], MPI_INT, &kept[0], count,
+               MPI_INT, 0, MPI_COMM_WORLD);
+  std::vector<int> tree;
+  std::vector<char> removed(forest.size(), 0);
+  long long stats[3] = {0, count, 0}; // edges, paths, paths cut
+  for(int j = 0; j < count; j++) {
+    if(kept[j]) continue;
+    removed[heaviest[j]] = 1;
+    stats[2]++;
+  }
+  for(std::size_t e = 0; e < forest.size(); e++)
+    if(!removed[e]) tree.push_back(forest[e].num);
+  stats[0] = tree.size();
+  MPI_Allreduce(MPI_IN_PLACE, stats, 3, MPI_LONG_LONG, MPI_SUM, MPI_COMM_WORLD);
+  Message::Info("  %lld edges in the tree, %lld paths between the ranks "
+                "checked (%lld cut)", stats[0], stats[1], stats[2]);
+
+  // the edges of the part of the mesh owned by other ranks: each one is asked
+  // to the rank chosen from its number, to which its owner sent it if it is
+  // in the tree
+  const long long nEdges = CurrentGeoData->NumCurrentEdge;
+  auto rankOfEdge = [&](int num) { return (int)((num - 1) * np / nEdges); };
+  std::vector<std::vector<int> > send(np), recv;
+  if(nEdges) {
+    for(int num : tree) send[rankOfEdge(num)].push_back(num);
+    Message::Exchange(send, recv);
+    std::vector<int> known;
+    for(int r = 0; r < np; r++)
+      known.insert(known.end(), recv[r].begin(), recv[r].end());
+    std::sort(known.begin(), known.end());
+    for(int r = 0; r < np; r++) send[r].clear();
+    for(auto &it : lowest)
+      if(it.second != me) send[rankOfEdge(it.first)].push_back(it.first);
+    Message::Exchange(send, recv);
+    for(int r = 0; r < np; r++) {
+      send[r].clear();
+      for(int num : recv[r])
+        if(std::binary_search(known.begin(), known.end(), num))
+          send[r].push_back(num);
+    }
+    Message::Exchange(send, recv);
+    for(int r = 0; r < np; r++)
+      tree.insert(tree.end(), recv[r].begin(), recv[r].end());
+  }
+  std::sort(tree.begin(), tree.end());
+  *ExtendedList = List_Create((int)tree.size() + 1, 1000, sizeof(int));
+  for(int num : tree) List_Add(*ExtendedList, &num);
+}
+#endif
 
 /* ------------------------------------------------------------------------ */
 /*  G e o _ G e n e r a t e F a c e t s O f T r e e                         */

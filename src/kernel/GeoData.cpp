@@ -197,8 +197,9 @@ void Geo_GetLinkRegions(std::unordered_set<int> &regions)
 // with their nodes. The first rank then only keeps its own part, unless the
 // problem has something that it still does alone on the whole mesh: the
 // post-processing that is not parallel, SaveMesh (WholeMeshOnFirstRank = 2),
-// or the trees, which it builds in the pre-processing and sends to the others
-// (1: it only keeps its part after that); see Geo_SetWholeMeshOnFirstRank.
+// or the trees that are not built over the ranks, which it builds in the
+// pre-processing and sends to the others (1: it only keeps its part after
+// that); see Geo_SetWholeMeshOnFirstRank.
 static int WholeMeshOnFirstRank = 2;
 void Geo_SetWholeMeshOnFirstRank(int whole) { WholeMeshOnFirstRank = whole; }
 int Geo_GetWholeMeshOnFirstRank() { return WholeMeshOnFirstRank; }
@@ -272,13 +273,13 @@ void Geo_KeepPartOnFirstRank(struct GeoData *GeoData_P)
   GeoData_P->IsPart = true;
 }
 
-#if defined(HAVE_MPI)
-static int Geo_RankOfPartition(int partition)
+int Geo_RankOfPartition(int partition)
 {
   int np = Message::GetCommSize(); // as Dof_IsPartitionOfThisRank
   return (partition > 0) ? (partition - 1) % np : np - 1;
 }
 
+#if defined(HAVE_MPI)
 // The positions of the elements of the part of the mesh of each rank (of the
 // ranks below last), in the whole mesh
 static std::vector<std::vector<int> >
@@ -476,12 +477,13 @@ static void Geo_ReceivePart(struct GeoData *GeoData_P)
   GeoData_P->IsPart = true;
 }
 
-// A mesh that Gmsh has partitioned in one file for each partition, with one
-// layer of overlap (gmsh -part n -part_split -overlap 1, which writes
-// name_1.msh, ..., name_n.msh for name.msh), is read without the first rank:
-// each rank reads the file of its partition, which has its elements and those
-// of the other partitions that share a node with them, i.e. the part of the
-// mesh that Geo_SendParts gives it.
+#if defined(HAVE_GMSH)
+// A mesh that Gmsh has partitioned in one file for each partition, with its
+// ghost cells (gmsh -part n -part_split -part_ghosts, which writes name_1.msh,
+// ..., name_n.msh for name.msh), is read without the first rank: each rank
+// reads the file of its partition, which has its elements and those of the
+// other partitions that share a node with them, i.e. the part of the mesh that
+// Geo_SendParts gives it.
 //
 // These files are used if there is one for each rank, unless the problem needs
 // more: the whole mesh on the first rank (see Geo_SetWholeMeshOnFirstRank),
@@ -504,7 +506,8 @@ static bool Geo_FileExists(const std::string &name)
 }
 
 // Whether the first rank reads the whole mesh while the others read their part:
-// to build the trees in the pre-processing (see Generate_TreesOnFirstRank)
+// to build the trees that are not built over the ranks in the pre-processing
+// (see Generate_TreesOverRanks)
 static bool Geo_FirstRankReadsWholeMesh()
 {
   return WholeMeshOnFirstRank == 1 && Flag_PRE;
@@ -543,8 +546,8 @@ static bool Geo_HasPartFiles(const char *Name)
 }
 
 // Completes the part of the mesh that a rank has read, with its elements (of
-// its partition) and those of the overlap (of other partitions), or the whole
-// mesh that the first rank has read (whole), in which it finds its part
+// its partition) and its ghost cells (of other partitions), or the whole mesh
+// that the first rank has read (whole), in which it finds its part
 static void Geo_EndReadPart(struct GeoData *GeoData_P, const char *Name,
                             const char *how, bool whole)
 {
@@ -557,8 +560,8 @@ static void Geo_EndReadPart(struct GeoData *GeoData_P, const char *Name,
   long long mine = count[0];
   MPI_Allreduce(MPI_IN_PLACE, count, 2, MPI_LONG_LONG, MPI_SUM, MPI_COMM_WORLD);
   if(!mine || !count[1])
-    Message::Error("'%s' is not the mesh of partition %d out of %d with one "
-                   "layer of overlap (%s)", Name, me + 1, np, how);
+    Message::Error("'%s' is not the mesh of partition %d out of %d with its "
+                   "ghost cells (%s)", Name, me + 1, np, how);
   Message::Info("%lld elements in the %d partitions", count[0], np);
 
   // the box and the dimension of the whole mesh
@@ -589,28 +592,49 @@ static void Geo_EndReadPart(struct GeoData *GeoData_P, const char *Name,
     GeoData_P->IsPart = true;
 }
 
-static void Geo_ReadPartFile(struct GeoData *GeoData_P, const char *Name)
+// Reads the file of the partition of the rank, if the files of all the ranks
+// have their ghost cells. Files with an overlap instead (gmsh -part n
+// -part_split -overlap 1) only have the elements of the other partitions that
+// are of the dimension of the mesh: not those on a boundary or on an electrode
+// that share a node with the partition, which the rank needs.
+static bool Geo_ReadPartFile(struct GeoData *GeoData_P, const char *Name)
 {
-  std::string partName = Geo_NameOfPartFile(Name, Message::GetCommRank() + 1);
-  int np = Message::GetCommSize();
+  const int np = Message::GetCommSize(), part = Message::GetCommRank() + 1;
+  std::string partName = Geo_NameOfPartFile(Name, part);
   std::string how = "gmsh -part " + std::to_string(np) +
-                    " -part_split -overlap 1";
+                    " -part_split -part_ghosts";
+  gmsh::clear();
+  gmsh::merge(partName);
+  std::vector<std::size_t> ghosts;
+  std::vector<int> partitions;
+  gmsh::model::mesh::getGhostElements(part, ghosts, partitions);
+  int all = !ghosts.empty();
+  MPI_Allreduce(MPI_IN_PLACE, &all, 1, MPI_INT, MPI_MIN, MPI_COMM_WORLD);
+  if(!all) {
+    gmsh::clear();
+    if(part == 1)
+      Message::Warning("The mesh files of the partitions are not used (they "
+                       "do not all have ghost cells: %s)", how.c_str());
+    return false;
+  }
+  name = (char *)partName.c_str();
   ReadsPart = true;
-  Geo_OpenFile((char *)partName.c_str(), "rb");
-  Geo_ReadFile(GeoData_P);
-  Geo_CloseFile();
+  Geo_ReadFileWithGmsh(GeoData_P, true);
   ReadsPart = false;
+  name = (char *)Name;
+  gmsh::clear();
   Geo_EndReadPart(GeoData_P, partName.c_str(), how.c_str(), false);
+  return true;
 }
 
-#if defined(HAVE_GMSH)
 // A mesh that Gmsh has partitioned in a single MSH 4 file with ghost cells
 // (gmsh -part n -part_ghosts), with one partition for each rank, is read in
 // parallel: each rank reads its partition and the elements of the other
 // partitions that share a node with it (gmsh::model::mesh::merge), i.e. the
-// part of the mesh that Geo_SendParts gives it. If the problem has trees, the
-// first rank reads the whole mesh in the pre-processing to build them, and
-// only keeps its part after that.
+// part of the mesh that Geo_SendParts gives it. If the problem has trees that
+// are not built over the ranks (Group_IsTreeOverRanks), the first rank reads
+// the whole mesh in the pre-processing to build them, and only keeps its part
+// after that.
 
 // Whether the file is a partitioned MSH 4 file (whose $PartitionedEntities
 // section follows $Entities)
@@ -710,13 +734,11 @@ int Geo_AddGeoData(List_T *GeoData_L, char *Name_MshFile,
     // their time and memory) are then not reached by the others
     MessageLocalCpu localCpu(distribute);
     bool partFiles = false;
-#if defined(HAVE_MPI)
-    if(distribute && (partFiles = Geo_HasPartFiles(Name_MshFile)))
-      Geo_ReadPartFile(&GeoData_S, Name_MshFile);
-#if defined(HAVE_GMSH)
-    else if(distribute)
+#if defined(HAVE_MPI) && defined(HAVE_GMSH)
+    if(distribute && Geo_HasPartFiles(Name_MshFile))
+      partFiles = Geo_ReadPartFile(&GeoData_S, Name_MshFile);
+    if(distribute && !partFiles)
       partFiles = Geo_ReadPartition(&GeoData_S, Name_MshFile);
-#endif
 #endif
     if(!partFiles && (!distribute || !Message::GetCommRank())) {
       Geo_OpenFile(Name_MshFile, "rb");
@@ -775,7 +797,7 @@ void Geo_InitGeoData(struct GeoData *GeoData_P, int Num, char *Name)
   GeoData_P->NodesXElements = NULL;
   GeoData_P->Normals = Tree_Create(sizeof(struct EntityXVector), fcmp_EXVector);
 
-  GeoData_P->GroupForPRE = NULL;
+  GeoData_P->GroupForPRE = GeoData_P->GroupForPREByRank = NULL;
 
   GeoData_P->ElementSearch = NULL;
 
@@ -821,6 +843,7 @@ void Geo_FreeGeoData(struct GeoData *GeoData_P)
   }
   Tree_Delete(GeoData_P->Normals);
   List_Delete(GeoData_P->GroupForPRE);
+  List_Delete(GeoData_P->GroupForPREByRank);
   Free_ElementSearch(GeoData_P);
   Free(GeoData_P->H);
   Free(GeoData_P->P);

@@ -64,7 +64,9 @@ struct GeoData {
   Tree_T *NodesXElements;
   Tree_T *Normals;
 
-  List_T *GroupForPRE;
+  // the groups written in the .pre file: by the first rank, or by each rank in
+  // its section for those that each one has its own part of (ByRank)
+  List_T *GroupForPRE, *GroupForPREByRank;
 
   double Xmin, Xmax, Ymin, Ymax, Zmin, Zmax;
   double Dimension, CharacteristicLength;
@@ -104,6 +106,7 @@ void Geo_GetLinkRegions(std::unordered_set<int> &regions);
 void Geo_SetWholeMeshOnFirstRank(int whole);
 int Geo_GetWholeMeshOnFirstRank();
 void Geo_KeepPartOnFirstRank(struct GeoData *GeoData_P);
+int Geo_RankOfPartition(int partition);
 int Geo_AddGeoData(List_T *GeoData_L, char *Name_MshFile,
                    char *Name_DefaultMshFile, char *Name_AdaptFile,
                    char *Name_DefaultAdaptFile);
@@ -168,6 +171,9 @@ void Geo_GenerateEdgesOfTree(List_T *InitialList, bool isInitialListEL,
                              List_T *InitialSuppList2,
                              bool isInitialSuppList2EL, int SuppListType2,
                              List_T **ExtendedList);
+void Geo_GenerateEdgesOfTreeOverRanks(List_T *InitialList,
+                                      List_T *InitialSuppList,
+                                      List_T **ExtendedList);
 void Geo_GenerateFacetsOfTree(List_T *InitialList, List_T *InitialSuppList,
                               List_T *InitialSuppList2, List_T **ExtendedList);
 
@@ -184,7 +190,7 @@ void Geo_ReadFilePRE(struct GeoData *GeoData_P, int NbrGeoData,
 
 void Geo_WriteEntities2XEntities1(void *a, void *b);
 
-void Geo_AddGroupForPRE(int Num);
+void Geo_AddGroupForPRE(int Num, bool byRank = false);
 
 void Geo_CreateNodesXElements(int NumNode, int InIndex, int *NbrElements,
                               int **NumElements);

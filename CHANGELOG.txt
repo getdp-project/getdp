@@ -10,8 +10,9 @@ each write their part of the .pre and .res files; in the .pre file the elements
 are now identified by their number, and read theirs in a later run on the same
 number of processes; each process reads its partition of a mesh file that Gmsh
 has partitioned with ghost cells, or its own file if Gmsh has written one per
-partition with an overlap, the first process reading the whole mesh in the
-pre-processing if the problem has trees); improved support for high-order
+partition with its ghost cells; the trees of edges are built by all the
+processes, the same as in serial, and the first process reads the whole mesh
+in the pre-processing for the trees of facets); improved support for high-order
 meshes; Gmsh post-processing files of field maps on the elements of the mesh
 are mesh-based by default, in MSH 4.2 (-list-based for the previous format),
 and in parallel field maps, evaluations at points and the other Prints on the

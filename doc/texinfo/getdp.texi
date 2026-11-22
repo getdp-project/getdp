@@ -576,12 +576,14 @@ and only holds its part of the mesh. This is also the case in a later run
 mesh files as the pre-processing, where each process reads what it wrote in
 the @file{.pre} file; on another number of processes, all the processes read
 the whole mesh and all the degrees of freedom. The first process reads the whole
-mesh, sends their part to the others and only keeps its own. It keeps the
-whole mesh until it has built the trees of the problem
-(@code{EdgesOfTreeIn}, @code{FacetsOfTreeIn}), which it sends to the others,
-and during the whole run if the problem has something that it does alone on
-the whole mesh (a @code{Print} that is not computed by all the processes,
-@code{SaveMesh}).
+mesh, sends their part to the others and only keeps its own. The trees of edges
+(@code{EdgesOfTreeIn}) are built by all the processes, each on its part of the
+mesh, and are the same as in a serial run. The first process keeps the whole
+mesh until it has built the other trees (@code{FacetsOfTreeIn}, and
+@code{EdgesOfTreeIn} with a sliding surface or on a group of elements), which
+it sends to the others, and during the whole run if the problem has something
+that it does alone on the whole mesh (a @code{Print} that is not computed by
+all the processes, @code{SaveMesh}).
 
 No process reads the whole mesh if Gmsh has partitioned it in a single file
 with ghost cells (the elements of the other partitions that share a node with
@@ -593,15 +595,18 @@ a partition):
 @end example
 
 @noindent Each process then reads its partition and its ghost cells from the
-file. Gmsh can also write one file for each partition, with one layer of
-overlap (@code{gmsh @var{filename}.geo -3 -part 8 -part_split -overlap 1}):
-each process then reads the file of its partition
-(@file{@var{filename}_1.msh}, @dots{}). The partitions are used if there is
+file. Gmsh can also write one file for each partition, with its ghost cells
+(@code{gmsh @var{filename}.geo -3 -part 8 -part_split -part_ghosts}): each
+process then reads the file of its partition
+(@file{@var{filename}_1.msh}, @dots{}). Files with an overlap instead of ghost
+cells (@code{-overlap 1}) are not used: they lack the elements of the other
+partitions that are not of the dimension of the mesh, on a boundary or an
+electrode that touches the partition. The partitions are used if there is
 exactly one for each process, and the problem has no @code{Link} constraint
-and nothing that the first process does on the whole mesh. The trees are an
-exception for a single file: the first process reads the whole mesh in the
-pre-processing to build them, while the others read their partition, and it
-then only keeps its own.
+and nothing that the first process does on the whole mesh. The trees that are
+not built by all the processes are an exception for a single file: the first
+process reads the whole mesh in the pre-processing to build them, while the
+others read their partition, and it then only keeps its own.
 
 Some features need all the degrees of freedom on all the processes: GetDP
 then defines them all, as with the @code{-all-dofs} option, and says so in an
