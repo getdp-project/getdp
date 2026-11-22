@@ -1352,6 +1352,12 @@ if(${Python3_FOUND} AND GMSH)
   # on 3 ranks each rank reads its partition of a mesh file with ghost cells
   test_mpi(parallel_ghosts tests "parallel_ghosts.geo -"
            "scaling.pro -msh parallel_ghosts.msh -setnumber Space 1 -solve Solve")
+  # the same with a tree (the gauge of tutorial 10): in the pre-processing the
+  # first rank reads the whole mesh to build it, and in a later run each rank
+  # only reads its partition
+  test_mpi(parallel_ghosts_tree tutorials/10-Gauging
+           "transfo.geo -3 -part 3 -part_ghosts -bin"
+           "transfo.pro -solve \#1 ; transfo.pro -pos \#1")
   test_mpi(parallel_scaling tests "scaling.geo -3 -setnumber N 6"
            "scaling.pro -solve Solve")
   if(PETSC_VARIABLES MATCHES "HYPRE_LIB = [^\n\r]*-lHYPRE")

@@ -583,19 +583,25 @@ and during the whole run if the problem has something that it does alone on
 the whole mesh (a @code{Print} that is not computed by all the processes,
 @code{SaveMesh}).
 
-No process reads the whole mesh if Gmsh has written one file for each
-partition, with one layer of overlap:
+No process reads the whole mesh if Gmsh has partitioned it in a single file
+with ghost cells (the elements of the other partitions that share a node with
+a partition):
 
 @example
-> gmsh @var{filename}.geo -3 -part 8 -part_split -overlap 1
+> gmsh @var{filename}.geo -3 -part 8 -part_ghosts
 > mpiexec -n 8 getdp @var{filename} -solve @var{resolution-id}
 @end example
 
-@noindent Each process then reads the file of its partition
-(@file{@var{filename}_1.msh}, @dots{}), which also has the elements of the
-other partitions that share a node with its own. These files are used if
-there is exactly one for each process, and the problem has no @code{Link}
-constraint and nothing that the first process does on the whole mesh.
+@noindent Each process then reads its partition and its ghost cells from the
+file. Gmsh can also write one file for each partition, with one layer of
+overlap (@code{gmsh @var{filename}.geo -3 -part 8 -part_split -overlap 1}):
+each process then reads the file of its partition
+(@file{@var{filename}_1.msh}, @dots{}). The partitions are used if there is
+exactly one for each process, and the problem has no @code{Link} constraint
+and nothing that the first process does on the whole mesh. The trees are an
+exception for a single file: the first process reads the whole mesh in the
+pre-processing to build them, while the others read their partition, and it
+then only keeps its own.
 
 Some features need all the degrees of freedom on all the processes: GetDP
 then defines them all, as with the @code{-all-dofs} option, and says so in an
