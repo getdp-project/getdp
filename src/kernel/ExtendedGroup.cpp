@@ -10,6 +10,7 @@
 #include <vector>
 #include <algorithm>
 #include <unordered_map>
+#include <unordered_set>
 #include "ProData.h"
 #include "ProDefine.h"
 #include "ExtendedGroup.h"
@@ -24,6 +25,7 @@
 #endif
 
 extern struct Problem Problem_S;
+extern struct GeoData *CurrentGeoData;
 
 int fcmp_int2(const void *a, const void *b)
 {
@@ -787,7 +789,15 @@ private:
 
   List_T *select_ElementsInBubbleNum();
 
+  bool is_Complete(struct Geo_Element *geoElement, int i_Entity);
+  bool is_Kept(struct Geo_Element *geoElement);
+
 private:
+  // On a part of the mesh (in parallel, see Geo_SendParts), the nodes of the
+  // elements of the partition of the rank
+  bool _isPart;
+  std::unordered_set<int> _partitionNodes;
+
   int _side, _type_Dimension_Sur;
   int _type_SuppList2, _flag_SuppList2_Type_Not, _flag_selectBubbleLater;
   class Map<int, EntityOnSur> _facetsOnSur;
@@ -813,6 +823,14 @@ List_T *GenEle_OnPositiveSideOf::gen_ExtendedList(List_T *InitialList,
   struct Geo_Element *geoElement;
 
   nb_Element = Geo_GetNbrGeoElements();
+
+  _isPart = CurrentGeoData->IsPart;
+  for(i_Element = 0; i_Element < nb_Element && _isPart; i_Element++) {
+    geoElement = Geo_GetGeoElement(i_Element);
+    if(Dof_IsPartitionOfThisRank(geoElement->Partition))
+      for(i_Node = 0; i_Node < geoElement->NbrNodes; i_Node++)
+        _partitionNodes.insert(geoElement->NumNodes[i_Node]);
+  }
 
   if(List_Nbr(InitialSuppList)) {
     // Create Facets (Edges/Nodes; depending on dimension) of InitialSuppList
@@ -1193,6 +1211,10 @@ void GenEle_OnPositiveSideOf::add_Facets(
       bubble_min_P = _bubble_perNum_P[num_bubble_min - 1];
     }
 
+    else if(!is_Complete(geoElement, i_Entity[0])) {
+      // (does not connect bubbles)
+    }
+
     else if(!(entityInBubble_P = _facetsInBubbles.Find(num_Entity[0]))) {
       _facetsInBubbles[num_Entity[0]] = entityInBubble; // New Facet
     }
@@ -1255,6 +1277,7 @@ List_T *GenEle_OnPositiveSideOf::select_ElementsInBubbleNum()
 
   for(std::list<K_ElementInBubble>::iterator it = _elementsInBubbles.begin();
       it != _elementsInBubbles.end(); ++it) {
+    if(!is_Kept(it->second.geoElement)) continue;
     //nb_elements++;
     num_bubble = it->second.bubble_P->get_numBubble();
     if(num_bubble == num_bubble_selected)
@@ -1290,13 +1313,42 @@ List_T *GenEle_OnPositiveSideOf::select_ElementsInBubbleNum()
     it->second.bubble_P->_num, it->second.bubble_P,
     it->second.bubble_P->_new_bubble_P);
     */
-    if(it->second.bubble_P->get_numBubble() == num_bubble) {
+    if(is_Kept(it->second.geoElement) &&
+       it->second.bubble_P->get_numBubble() == num_bubble) {
       num_element = abs(it->first);
       List_Add(_elements_L, &num_element);
     }
   }
 
   return _elements_L;
+}
+
+// On a part of the mesh, the rank has all the elements that contain a node of
+// an element of its partition, but not all those that contain the other nodes
+// of its overlap: a facet of an element of the overlap may be on the surface
+// without the element of the surface on it, and would then connect the bubbles
+// of both sides. The bubbles are thus only connected through the facets (edges,
+// nodes) that have a node of an element of the partition, around which the
+// rank has all the elements and all the facets on the surface; this gives the
+// side of the elements of the partition, which are the only ones kept.
+bool GenEle_OnPositiveSideOf::is_Complete(struct Geo_Element *geoElement,
+                                          int i_Entity)
+{
+  if(!_isPart) return true;
+  if(_type_Dimension_Sur == DIM_0D)
+    return _partitionNodes.count(geoElement->NumNodes[i_Entity]);
+  bool edge = (_type_Dimension_Sur == DIM_1D);
+  int *nodes = edge ? Geo_GetNodesOfEdgeInElement(geoElement, i_Entity) :
+                      Geo_GetNodesOfFacetInElement(geoElement, i_Entity);
+  for(int k = 0; (edge ? k < 2 : nodes[k] != 0); k++)
+    if(_partitionNodes.count(geoElement->NumNodes[abs(nodes[k]) - 1]))
+      return true;
+  return false;
+}
+
+bool GenEle_OnPositiveSideOf::is_Kept(struct Geo_Element *geoElement)
+{
+  return !_isPart || Dof_IsPartitionOfThisRank(geoElement->Partition);
 }
 
 void GenEle_OnPositiveSideOf::treat_ElementsOnBorder()
