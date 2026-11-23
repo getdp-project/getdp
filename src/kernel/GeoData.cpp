@@ -479,11 +479,13 @@ static void Geo_ReceivePart(struct GeoData *GeoData_P)
 
 #if defined(HAVE_GMSH)
 // A mesh that Gmsh has partitioned in one file for each partition, with its
-// ghost cells (gmsh -part n -part_split -part_ghosts, which writes name_1.msh,
-// ..., name_n.msh for name.msh), is read without the first rank: each rank
-// reads the file of its partition, which has its elements and those of the
-// other partitions that share a node with them, i.e. the part of the mesh that
-// Geo_SendParts gives it.
+// ghost cells (gmsh -part n -part_split -part_ghosts -setnumber
+// Mesh.PartitionSplitLocalBrep 1, which writes name_1.msh, ..., name_n.msh for
+// name.msh), is read without the first rank: each rank reads the file of its
+// partition, which has its elements and those of the other partitions that
+// share a node with them, i.e. the part of the mesh that Geo_SendParts gives
+// it. With PartitionSplitLocalBrep, a file only has the entities of the model
+// that its partition needs, instead of those of the whole model.
 //
 // These files are used if there is one for each rank, unless the problem needs
 // more: the whole mesh on the first rank (see Geo_SetWholeMeshOnFirstRank),
@@ -505,30 +507,22 @@ static bool Geo_FileExists(const std::string &name)
   return fp != NULL;
 }
 
-// Whether the first rank reads the whole mesh while the others read their part:
-// to build the trees that are not built over the ranks in the pre-processing
-// (see Generate_TreesOverRanks)
-static bool Geo_FirstRankReadsWholeMesh()
-{
-  return WholeMeshOnFirstRank == 1 && Flag_PRE;
-}
-
-// Whether the problem lets the ranks read their part of the mesh, the first
-// rank possibly reading the whole mesh if canReadWhole (on the first rank,
-// which tells it to the user if not)
-static bool Geo_CanReadPart(const char *what, bool canReadWhole)
+// Whether the problem lets each rank read the file of its partition (on the
+// first rank, which tells it to the user if not): not if the first rank needs
+// the whole mesh, for the whole run or to build the trees that are not built
+// over the ranks in the pre-processing (see Generate_TreesOverRanks)
+static bool Geo_CanReadPart()
 {
   std::unordered_set<int> linkRegions;
   Geo_GetLinkRegions(linkRegions);
   const char *need =
-    (WholeMeshOnFirstRank == 2) ? "the whole mesh on the first rank" :
-    (Geo_FirstRankReadsWholeMesh() && !canReadWhole) ?
-                                  "a tree, built on the whole mesh" :
-    !linkRegions.empty()        ? "a Link constraint" :
-                                  NULL;
+    (WholeMeshOnFirstRank == 2)              ? "the whole mesh on the first rank" :
+    (WholeMeshOnFirstRank == 1 && Flag_PRE) ? "a tree, built on the whole mesh" :
+    !linkRegions.empty()                     ? "a Link constraint" :
+                                               NULL;
   if(need)
-    Message::Info("The %s %s not used (the problem has %s)", what,
-                  strstr(what, "files") ? "are" : "is", need);
+    Message::Info("The mesh files of the partitions are not used (the problem "
+                  "has %s)", need);
   return !need;
 }
 
@@ -539,17 +533,16 @@ static bool Geo_HasPartFiles(const char *Name)
     int np = Message::GetCommSize();
     if(Geo_FileExists(Geo_NameOfPartFile(Name, np)) &&
        !Geo_FileExists(Geo_NameOfPartFile(Name, np + 1)))
-      use = Geo_CanReadPart("mesh files of the partitions", false);
+      use = Geo_CanReadPart();
   }
   MPI_Bcast(&use, 1, MPI_INT, 0, MPI_COMM_WORLD);
   return use;
 }
 
 // Completes the part of the mesh that a rank has read, with its elements (of
-// its partition) and its ghost cells (of other partitions), or the whole mesh
-// that the first rank has read (whole), in which it finds its part
+// its partition) and its ghost cells (of other partitions)
 static void Geo_EndReadPart(struct GeoData *GeoData_P, const char *Name,
-                            const char *how, bool whole)
+                            const char *how)
 {
   const int np = Message::GetCommSize(), me = Message::GetCommRank();
   long long count[2] = {0, 0};
@@ -586,10 +579,7 @@ static void Geo_EndReadPart(struct GeoData *GeoData_P, const char *Name,
     sqrt(SQU(high[0] - low[0]) + SQU(high[1] - low[1]) + SQU(high[2] - low[2]));
   if(!GeoData_P->CharacteristicLength) GeoData_P->CharacteristicLength = 1.;
   GeoData_P->NbrPartitions = np;
-  if(whole)
-    Geo_SetFirstRankPart(GeoData_P, Geo_ElementsOfRanks(GeoData_P, 1)[0]);
-  else
-    GeoData_P->IsPart = true;
+  GeoData_P->IsPart = true;
 }
 
 // Reads the file of the partition of the rank, if the files of all the ranks
@@ -602,7 +592,8 @@ static bool Geo_ReadPartFile(struct GeoData *GeoData_P, const char *Name)
   const int np = Message::GetCommSize(), part = Message::GetCommRank() + 1;
   std::string partName = Geo_NameOfPartFile(Name, part);
   std::string how = "gmsh -part " + std::to_string(np) +
-                    " -part_split -part_ghosts";
+                    " -part_split -part_ghosts -setnumber "
+                    "Mesh.PartitionSplitLocalBrep 1";
   gmsh::clear();
   gmsh::merge(partName);
   std::vector<std::size_t> ghosts;
@@ -623,92 +614,7 @@ static bool Geo_ReadPartFile(struct GeoData *GeoData_P, const char *Name)
   ReadsPart = false;
   name = (char *)Name;
   gmsh::clear();
-  Geo_EndReadPart(GeoData_P, partName.c_str(), how.c_str(), false);
-  return true;
-}
-
-// A mesh that Gmsh has partitioned in a single MSH 4 file with ghost cells
-// (gmsh -part n -part_ghosts), with one partition for each rank, is read in
-// parallel: each rank reads its partition and the elements of the other
-// partitions that share a node with it (gmsh::model::mesh::merge), i.e. the
-// part of the mesh that Geo_SendParts gives it. If the problem has trees that
-// are not built over the ranks (Group_IsTreeOverRanks), the first rank reads
-// the whole mesh in the pre-processing to build them, and only keeps its part
-// after that.
-
-// Whether the file is a partitioned MSH 4 file (whose $PartitionedEntities
-// section follows $Entities)
-static bool Geo_IsPartitionedMSH4(const char *Name)
-{
-  FILE *fp = FOpen(Name, "rb");
-  if(!fp) return false;
-  char line[256];
-  bool partitioned = false;
-  while(fgets(line, sizeof(line), fp)) {
-    double version;
-    if(!strncmp(line, "$MeshFormat", 11)) {
-      if(!fgets(line, sizeof(line), fp) || sscanf(line, "%lf", &version) != 1 ||
-         version < 4)
-        break;
-    }
-    else if(!strncmp(line, "$PartitionedEntities", 20)) {
-      partitioned = true;
-      break;
-    }
-    else if(!strncmp(line, "$Nodes", 6) || !strncmp(line, "$Elements", 9))
-      break;
-  }
-  fclose(fp);
-  return partitioned;
-}
-
-// Reads the partition of the rank with its ghost cells in the current Gmsh
-// model; returns the number of partitions of the file, or 0 without ghost cells
-static int Geo_MergePartition(const char *Name)
-{
-  int part = Message::GetCommRank() + 1;
-  gmsh::clear();
-  gmsh::model::mesh::merge(Name, {part}, true);
-  std::vector<std::size_t> ghosts;
-  std::vector<int> partitions;
-  gmsh::model::mesh::getGhostElements(part, ghosts, partitions);
-  return ghosts.empty() ? 0 : gmsh::model::getNumberOfPartitions();
-}
-
-static bool Geo_ReadPartition(struct GeoData *GeoData_P, char *Name)
-{
-  const int np = Message::GetCommSize();
-  const bool whole = !Message::GetCommRank() && Geo_FirstRankReadsWholeMesh();
-  int use = 0;
-  if(!Message::GetCommRank() && !Flag_CALLED_WITH_ONELAB_SERVER &&
-     Geo_IsPartitionedMSH4(Name) &&
-     Geo_CanReadPart("partitions of the mesh file", true)) {
-    // the first rank tries first, so that the others do not read the whole
-    // mesh if the file has no ghost cells
-    use = (Geo_MergePartition(Name) == np);
-    if(!use) {
-      Message::Info("The partitions of the mesh file are not used (they are "
-                    "not %d with ghost cells: gmsh -part %d -part_ghosts)", np,
-                    np);
-      gmsh::clear();
-    }
-  }
-  MPI_Bcast(&use, 1, MPI_INT, 0, MPI_COMM_WORLD);
-  if(!use) return false;
-  if(whole) {
-    Message::Info("The first rank reads the whole mesh to build the trees");
-    gmsh::clear();
-    gmsh::merge(Name);
-  }
-  else if(Message::GetCommRank())
-    Geo_MergePartition(Name);
-  name = Name;
-  ReadsPart = true;
-  Geo_ReadFileWithGmsh(GeoData_P, true);
-  ReadsPart = false;
-  gmsh::clear();
-  std::string how = "gmsh -part " + std::to_string(np) + " -part_ghosts";
-  Geo_EndReadPart(GeoData_P, Name, how.c_str(), whole);
+  Geo_EndReadPart(GeoData_P, partName.c_str(), how.c_str());
   return true;
 }
 #endif
@@ -737,8 +643,6 @@ int Geo_AddGeoData(List_T *GeoData_L, char *Name_MshFile,
 #if defined(HAVE_MPI) && defined(HAVE_GMSH)
     if(distribute && Geo_HasPartFiles(Name_MshFile))
       partFiles = Geo_ReadPartFile(&GeoData_S, Name_MshFile);
-    if(distribute && !partFiles)
-      partFiles = Geo_ReadPartition(&GeoData_S, Name_MshFile);
 #endif
     if(!partFiles && (!distribute || !Message::GetCommRank())) {
       Geo_OpenFile(Name_MshFile, "rb");
@@ -1122,7 +1026,7 @@ static void Geo_ReadFileWithGmsh(struct GeoData *GeoData_P, bool loaded)
       GModel::setCurrent(shown);
     }
   } restore;
-  if(loaded) {} // the part of the mesh of the rank (Geo_ReadPartition)
+  if(loaded) {} // the file of the partition of the rank (Geo_ReadPartFile)
   else if(Flag_CALLED_WITH_ONELAB_SERVER) {
     restore.shown = GModel::current();
     GModel::setCurrent(new GModel());

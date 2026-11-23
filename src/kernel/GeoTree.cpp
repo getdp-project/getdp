@@ -569,7 +569,11 @@ void Geo_GenerateEdgesOfTreeOverRanks(List_T *InitialList,
   // to the rank chosen from its number, to which its owner sent it if it is
   // in the tree
   const long long nEdges = CurrentGeoData->NumCurrentEdge;
-  auto rankOfEdge = [&](int num) { return (int)((num - 1) * np / nEdges); };
+  // (in 64 bits: the number of edges times the number of ranks overflows an
+  // int, e.g. 6M edges on 384 ranks)
+  auto rankOfEdge = [&](int num) {
+    return (int)((long long)(num - 1) * np / nEdges);
+  };
   std::vector<std::vector<int> > send(np), recv;
   if(nEdges) {
     for(int num : tree) send[rankOfEdge(num)].push_back(num);

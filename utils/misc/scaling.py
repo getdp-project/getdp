@@ -128,12 +128,9 @@ def main():
                         help='partition the mesh with Gmsh instead of GetDP')
     parser.add_argument('--split', action='store_true',
                         help='partition the mesh with Gmsh in one file for '
-                             'each rank, with its ghost cells, so that each '
-                             'rank reads its own file')
-    parser.add_argument('--ghosts', action='store_true',
-                        help='partition the mesh with Gmsh in a single file '
-                             'with ghost cells, from which each rank reads '
-                             'its partition')
+                             'each rank, with its ghost cells and the entities '
+                             'of the model it needs, so that each rank reads '
+                             'its own file')
     parser.add_argument('--workdir', default=None,
                         help='directory of the runs, kept (default: a '
                              'temporary directory, removed at the end)')
@@ -160,9 +157,8 @@ def main():
         cmd = [args.gmsh, 'scaling.geo', '-3', '-bin', '-setnumber', 'N',
                str(n), '-v', '2']
         if args.split and np > 1:
-            cmd += ['-part', str(np), '-part_split', '-part_ghosts']
-        elif args.ghosts and np > 1:
-            cmd += ['-part', str(np), '-part_ghosts']
+            cmd += ['-part', str(np), '-part_split', '-part_ghosts',
+                    '-setnumber', 'Mesh.PartitionSplitLocalBrep', '1']
         elif args.partition and np > 1:
             cmd += ['-part', str(np)]
         if run(cmd, d, 'gmsh.log'):

@@ -585,28 +585,24 @@ it sends to the others, and during the whole run if the problem has something
 that it does alone on the whole mesh (a @code{Print} that is not computed by
 all the processes, @code{SaveMesh}).
 
-No process reads the whole mesh if Gmsh has partitioned it in a single file
-with ghost cells (the elements of the other partitions that share a node with
-a partition):
+No process reads the whole mesh if Gmsh has written one file for each
+partition, with its ghost cells (the elements of the other partitions that
+share a node with the partition) and only the entities of the model that the
+partition needs:
 
 @example
-> gmsh @var{filename}.geo -3 -part 8 -part_ghosts
+> gmsh @var{filename}.geo -3 -part 8 -part_split -part_ghosts -setnumber Mesh.PartitionSplitLocalBrep 1
 > mpiexec -n 8 getdp @var{filename} -solve @var{resolution-id}
 @end example
 
-@noindent Each process then reads its partition and its ghost cells from the
-file. Gmsh can also write one file for each partition, with its ghost cells
-(@code{gmsh @var{filename}.geo -3 -part 8 -part_split -part_ghosts}): each
-process then reads the file of its partition
-(@file{@var{filename}_1.msh}, @dots{}). Files with an overlap instead of ghost
-cells (@code{-overlap 1}) are not used: they lack the elements of the other
-partitions that are not of the dimension of the mesh, on a boundary or an
-electrode that touches the partition. The partitions are used if there is
-exactly one for each process, and the problem has no @code{Link} constraint
-and nothing that the first process does on the whole mesh. The trees that are
-not built by all the processes are an exception for a single file: the first
-process reads the whole mesh in the pre-processing to build them, while the
-others read their partition, and it then only keeps its own.
+@noindent Each process then reads the file of its partition
+(@file{@var{filename}_1.msh}, @dots{}). The files are used if there is exactly
+one for each process, and the problem has no @code{Link} constraint and
+nothing that the first process does on the whole mesh, including the trees
+that are not built by all the processes. Files with an overlap instead of
+ghost cells (@code{-overlap 1}) are not used: they lack the elements of the
+other partitions that are not of the dimension of the mesh, on a boundary or an
+electrode that touches the partition.
 
 Some features need all the degrees of freedom on all the processes: GetDP
 then defines them all, as with the @code{-all-dofs} option, and says so in an

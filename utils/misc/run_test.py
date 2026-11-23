@@ -405,7 +405,9 @@ def main(argv=None):
         '--gmsh-options', metavar='STRING', default='',
         help='Shell-style string of arguments for gmsh, split exactly as a '
              'shell would (e.g. "microstrip.geo -2"). Empty (the default) '
-             'skips the gmsh step.')
+             'skips the gmsh step. Several gmsh commands, run one after the '
+             'other, are separated by " ; " (e.g. "a.geo -3 ; a.msh -part 3 '
+             '-part_split -save").')
     parser.add_argument(
         '--getdp-options', metavar='STRING', default='',
         help='Shell-style string of arguments for getdp (e.g. '
@@ -449,15 +451,18 @@ def main(argv=None):
             'ERROR: --workdir does not exist: {}\n'.format(source_workdir))
         return 2
 
-    gmsh_args = _split_options(args.gmsh_options)
-    # the arguments of each getdp command
-    getdp_commands = [[]]
-    for word in _split_options(args.getdp_options):
-        if word == ';':
-            getdp_commands.append([])
-        else:
-            getdp_commands[-1].append(word)
-    getdp_commands = [c for c in getdp_commands if c]
+    # the arguments of each gmsh and getdp command (separated by ";")
+    def commands(options):
+        cmds = [[]]
+        for word in _split_options(options):
+            if word == ';':
+                cmds.append([])
+            else:
+                cmds[-1].append(word)
+        return [c for c in cmds if c]
+    gmsh_commands = commands(args.gmsh_options)
+    getdp_commands = commands(args.getdp_options)
+    gmsh_args = gmsh_commands[0] if gmsh_commands else []
     getdp_args = getdp_commands[0] if getdp_commands else []
     if not gmsh_args and not getdp_args:
         sys.stderr.write(
@@ -482,10 +487,11 @@ def main(argv=None):
     rc = 0
     failing_step = None
     try:
-        if gmsh_args:
-            rc = run_step('gmsh', args.gmsh, gmsh_args, run_dir)
+        for c in gmsh_commands:
+            rc = run_step('gmsh', args.gmsh, c, run_dir)
             if rc != 0:
                 failing_step = 'gmsh'
+                break
 
         # The parallel runs start from a copy of the meshed run directory,
         # next to it in the temp tree (so that ``..'' includes still resolve).
