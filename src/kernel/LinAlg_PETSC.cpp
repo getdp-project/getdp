@@ -2694,14 +2694,6 @@ static PetscErrorCode _NLFormFunction(SNES snes, Vec x, Vec f, void *mctx)
   gf.V = f;
   gf.G = NULL;
   Generate_Residual(&gx, &gf);
-
-  PetscScalar *ff;
-  _try(VecGetArray(gf.V, &ff));
-  PetscInt n;
-  _try(VecGetSize(f, &n));
-  for(PetscInt i = 0; i < n; i++)
-    _try(VecSetValues(f, 1, &i, &ff[i], INSERT_VALUES));
-  _try(VecGetArray(f, &ff));
   return 0;
 }
 
@@ -2728,7 +2720,58 @@ static PetscErrorCode _NLFormJacobian(SNES snes, Vec x, Mat *J, Mat *PC,
   return 0;
 }
 #else
-static PetscErrorCode _NLFormJacobian(SNES snes, Vec x, Mat J, Mat PC,
+// Copies the Jacobian X assembled by GetDP into the matrix Y of SNES
+// (collective). The Jacobian is assembled in a new matrix at each iteration
+// (Generate_Residual regenerates the system, see ZeroMatrix in
+// SolvingOperations.cpp), while SNES keeps the matrix it was given when it was
+// created: the Jacobian of the system at that time, which is not assembled. If
+// Y has the nonzero pattern of X only the values are copied, and the solver
+// keeps its symbolic factorization; otherwise Y is preallocated for the pattern
+// of X and filled row by row, and the preconditioner is reset: PETSc does not
+// always see a new pattern in a matrix that is preallocated again (in parallel
+// its nonzero state is that of its new local parts).
+static void _copyJacobian(SNES snes, Mat X, Mat Y)
+{
+  if(X == Y) return;
+  PetscBool assembled;
+  _try(MatAssembled(Y, &assembled));
+  if(assembled && _getStructure(X, Y) == SAME_NONZERO_PATTERN) {
+    _try(MatCopy(X, Y, SAME_NONZERO_PATTERN));
+    return;
+  }
+  PetscInt first, last, cfirst, clast, nc;
+  const PetscInt *cols;
+  const PetscScalar *vals;
+  _try(MatGetOwnershipRange(X, &first, &last));
+  _try(MatGetOwnershipRangeColumn(X, &cfirst, &clast));
+  std::vector<PetscInt> dnnz(last - first, 0), onnz(last - first, 0);
+  for(PetscInt i = first; i < last; i++) {
+    _try(MatGetRow(X, i, &nc, &cols, PETSC_NULL));
+    for(PetscInt k = 0; k < nc; k++) {
+      if(cols[k] >= cfirst && cols[k] < clast)
+        dnnz[i - first]++;
+      else
+        onnz[i - first]++;
+    }
+    _try(MatRestoreRow(X, i, &nc, &cols, PETSC_NULL));
+  }
+  _try(MatXAIJSetPreallocation(Y, 1, dnnz.data(), onnz.data(), PETSC_NULL,
+                               PETSC_NULL));
+  for(PetscInt i = first; i < last; i++) {
+    _try(MatGetRow(X, i, &nc, &cols, &vals));
+    _try(MatSetValues(Y, 1, &i, nc, cols, vals, INSERT_VALUES));
+    _try(MatRestoreRow(X, i, &nc, &cols, &vals));
+  }
+  _try(MatAssemblyBegin(Y, MAT_FINAL_ASSEMBLY));
+  _try(MatAssemblyEnd(Y, MAT_FINAL_ASSEMBLY));
+  KSP ksp;
+  PC pc;
+  _try(SNESGetKSP(snes, &ksp));
+  _try(KSPGetPC(ksp, &pc));
+  _try(PCReset(pc));
+}
+
+static PetscErrorCode _NLFormJacobian(SNES snes, Vec x, Mat J, Mat P,
                                       void *mctx)
 {
   gVector gx;
@@ -2736,9 +2779,8 @@ static PetscErrorCode _NLFormJacobian(SNES snes, Vec x, Mat J, Mat PC,
   gx.G = NULL;
   gMatrix gJ;
   Generate_FullJacobian(&gx, &gJ);
-  // J = gJ.M;
-  MatCopy(gJ.M, J, SAME_NONZERO_PATTERN);
-  // Message::Barrier();
+  _copyJacobian(snes, gJ.M, J);
+  if(P != J) _copyJacobian(snes, gJ.M, P);
   return 0;
 }
 #endif
@@ -2822,6 +2864,15 @@ static void _solveNL(gMatrix *A, gVector *B, gMatrix *J, gVector *R,
   PetscInt its;
   _try(SNESGetIterationNumber(Solver->snes[solverIndex], &its));
   Message::Info("Number of Newton iterations %d", its);
+
+  // SNES keeps the last iterate as the solution when it does not converge
+  // (e.g. when the line search fails); the reason is the same on all the ranks
+  // of the solver
+  SNESConvergedReason reason;
+  _try(SNESGetConvergedReason(Solver->snes[solverIndex], &reason));
+  if(reason < 0 && (MyComm == PETSC_COMM_SELF || !Message::GetCommRank()))
+    Message::Warning("SolveNL did not converge (%s after %d iterations)",
+                     SNESConvergedReasons[reason], (int)its);
 }
 
 void LinAlg_SolveNL(gMatrix *A, gVector *B, gMatrix *J, gVector *R,

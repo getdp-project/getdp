@@ -979,7 +979,7 @@ void Pos_PrintOnElementsOf(struct PostQuantity *NCPQ_P,
               if(CPQ_P)
                 Combine_PostQuantity(PSO_P->CombinationType, Order,
                                      &PE->Value[iNode],
-                                     &CumulativeValues[iNode]);
+                                     &CumulativeValues[iTime]);
             }
             minMaxAndFormat(PE, iTime);
           }

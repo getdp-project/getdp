@@ -591,6 +591,11 @@ void ReGenerate_System(struct DefineSystem *DefineSystem_P,
   }
 }
 
+// The residual and the Jacobian of SolveNL (PETSc SNES), at a point x of SNES:
+// the current solution is set to x and the system is generated with it. SNES
+// iterates on its own vector (dx, see OPERATION_SOLVENL), which the current
+// solution must not be: SNES evaluates the residual at trial points (e.g. in a
+// line search) without moving its iterate there.
 void Generate_Residual(gVector *x, gVector *f)
 {
   struct DefineSystem *DefineSystem_P;
@@ -598,7 +603,7 @@ void Generate_Residual(gVector *x, gVector *f)
   struct DofData *DofData_P0;
 
   if(Message::GetVerbosity() == 10)
-    Message::Info("Generating Residual = b(xn)-A(xn)*xn");
+    Message::Info("Generating Residual = A(x)*x-b(x)");
 
   DofData_P = Current.DofData;
   DofData_P0 = Current.DofData_P0;
@@ -609,28 +614,20 @@ void Generate_Residual(gVector *x, gVector *f)
     return;
   }
 
-  // new trial solution
-  LinAlg_CopyVector(x, &DofData_P->dx);
-  LinAlg_AddVectorProdVectorDouble(&DofData_P->CurrentSolution->x,
-                                   &DofData_P->dx, -1.,
-                                   &DofData_P->CurrentSolution->x);
-  // calculate residual with new solution
+  LinAlg_CopyVector(x, &DofData_P->CurrentSolution->x);
   ReGenerate_System(DefineSystem_P, DofData_P, DofData_P0, 1);
 
-  // calculate residual with new solution
-  LinAlg_ProdMatrixVector(&DofData_P->A, &DofData_P->CurrentSolution->x,
-                          &DofData_P->res);
-  // res = b(xn)-A(xn)*xn
-  LinAlg_SubVectorVector(&DofData_P->b, &DofData_P->res, &DofData_P->res);
+  // f = A(x)*x-b(x), whose derivative is the Jacobian A(x)+JacNL(x)
+  LinAlg_ProdMatrixVector(&DofData_P->A, &DofData_P->CurrentSolution->x, f);
+  LinAlg_SubVectorVector(f, &DofData_P->b, f);
 
   if(Message::GetVerbosity() == 10) {
-    Message::Info("dx");
-    LinAlg_PrintVector(stdout, &DofData_P->dx);
+    Message::Info("x");
+    LinAlg_PrintVector(stdout, &DofData_P->CurrentSolution->x);
     Message::Info("A");
     LinAlg_PrintMatrix(stdout, &DofData_P->A);
   }
 
-  *f = DofData_P->res;
   LinAlg_AssembleVector(f);
 }
 
@@ -647,10 +644,8 @@ void Generate_FullJacobian(gVector *x, gMatrix *Jac)
     return;
   }
 
-  // LinAlg_CopyVector(x, &DofData_P->dx);
-  LinAlg_AddVectorVector(
-    &DofData_P->CurrentSolution->x, &DofData_P->dx,
-    &DofData_P->CurrentSolution->x); // updating solution solution
+  // SNES computes the Jacobian at the point of its last evaluation of the
+  // residual, where the system was generated
   LinAlg_AddMatrixMatrix(&DofData_P->A, &DofData_P->Jac, &DofData_P->Jac);
 
   *Jac = DofData_P->Jac;
@@ -1488,9 +1483,16 @@ void Treatment_Operation(struct Resolution *Resolution_P, List_T *Operation_L,
                              Operation_P, DofData_P0, GeoData_P0,
                              &DefineSystem_P, &DofData_P, Resolution2_P);
       Init_SystemData(DofData_P, 1);
+      if(!DofData_P->CurrentSolution) {
+        Message::Error("No current solution available");
+        break;
+      }
+      // SNES iterates on dx, from the current solution (see Generate_Residual)
+      LinAlg_CopyVector(&DofData_P->CurrentSolution->x, &DofData_P->dx);
       LinAlg_SolveNL(&DofData_P->A, &DofData_P->b, &DofData_P->Jac,
                      &DofData_P->res, &DofData_P->Solver, &DofData_P->dx,
                      (Operation_P->Flag < 0) ? 0 : Operation_P->Flag);
+      LinAlg_CopyVector(&DofData_P->dx, &DofData_P->CurrentSolution->x);
       break;
 
       /*  -->  S o l v e J a c                        */

@@ -598,7 +598,7 @@ void Message::Cpu(int level, bool printDate, bool printWallTime, bool printCpu,
   std::string pcpu = "";
   if(printCpu) {
     char tmp[128];
-    if(_commSize > 1 && _isCommWorld)
+    if(_commSize > 1 && _isCommWorld && !_localCpu)
       sprintf(tmp, "CPU = %gs [%gs,%gs]", sum[0], min[0], max[0]);
     else
       sprintf(tmp, "CPU = %gs", max[0]);
@@ -609,7 +609,7 @@ void Message::Cpu(int level, bool printDate, bool printWallTime, bool printCpu,
   std::string pmem = "";
   if(mem && printMem) {
     char tmp[128];
-    if(_commSize > 1 && _isCommWorld)
+    if(_commSize > 1 && _isCommWorld && !_localCpu)
       sprintf(tmp, "Mem = %gMB [%gMB,%gMB]", sum[1], min[1], max[1]);
     else
       sprintf(tmp, "Mem = %gMB", max[1]);

@@ -954,7 +954,7 @@ static bool Dof_ReadSectionPRE(struct DofData *DofData_P, bool first,
       Message::Error("Could not read number of function spaces");
       return false;
     }
-    if(!first) List_Delete(DofData_P->FunctionSpaceIndex);
+    List_Delete(DofData_P->FunctionSpaceIndex);
     DofData_P->FunctionSpaceIndex = List_Create(Nbr_Index, 1, sizeof(int));
     for(i = 0; i < Nbr_Index; i++) {
       if(fscanf(File_PRE, "%d", &Int) != 1) {
@@ -968,7 +968,7 @@ static bool Dof_ReadSectionPRE(struct DofData *DofData_P, bool first,
       Message::Error("Could not read number of time functions");
       return false;
     }
-    if(!first) List_Delete(DofData_P->TimeFunctionIndex);
+    List_Delete(DofData_P->TimeFunctionIndex);
     DofData_P->TimeFunctionIndex = List_Create(Nbr_Index, 1, sizeof(int));
     for(i = 0; i < Nbr_Index; i++) {
       if(fscanf(File_PRE, "%d", &Int) != 1) {
