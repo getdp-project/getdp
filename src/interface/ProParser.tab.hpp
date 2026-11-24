@@ -416,7 +416,7 @@
      tAppendTimeStepToFileName = 632,
      tTimeValue = 633,
      tTimeImagValue = 634,
-     tDistributed = 635,
+     tSingleProcess = 635,
      tTimeInterval = 636,
      tAtGaussPoints = 637,
      tAppendExpressionToFileName = 638,
@@ -823,7 +823,7 @@
 #define tAppendTimeStepToFileName 632
 #define tTimeValue 633
 #define tTimeImagValue 634
-#define tDistributed 635
+#define tSingleProcess 635
 #define tTimeInterval 636
 #define tAtGaussPoints 637
 #define tAppendExpressionToFileName 638

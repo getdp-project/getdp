@@ -181,31 +181,20 @@ struct Geo_TreeNodesInTree {
   }
 };
 
-// ... or, without a sliding surface, in an array indexed by node number (or
-// in a hash table if the node numbers are too sparse for an array)
+// ... or, without a sliding surface, in an array indexed by the position of
+// the node in the mesh (see Geo_GetGeoNodeOfNum)
 struct Geo_TreeNodesInArray {
-  bool dense;
-  std::vector<int> index;
-  std::unordered_map<int, int> hash;
-  Geo_TreeNodesInArray()
+  std::vector<int> index = std::vector<int>(Geo_GetNbrGeoNodes(), -1);
+  int &at(int num)
   {
-    int n = Geo_GetNbrGeoNodes(), max = 0;
-    for(int i = 0; i < n; i++) max = std::max(max, Geo_GetGeoNode(i)->Num);
-    dense = (max / 4 <= n + 1000);
-    if(dense) index.resize(max + 1, -1);
+    return index[Geo_GetGeoNodeOfNum(num) - Geo_GetGeoNode(0)];
   }
   int *find(int num)
   {
-    if(dense) return index[num] < 0 ? NULL : &index[num];
-    auto it = hash.find(num);
-    return (it == hash.end()) ? NULL : &it->second;
+    int &i = at(num);
+    return (i < 0) ? NULL : &i;
   }
-  int *add(int num, int i)
-  {
-    if(!dense) return &(hash[num] = i);
-    index[num] = i;
-    return &index[num];
-  }
+  int *add(int num, int i) { return &(at(num) = i); }
 };
 
 template <class Nodes>
@@ -398,20 +387,30 @@ struct Geo_NodesOfForest {
     return index[n] = sets.add();
   }
 };
+
+// An edge of the forest of a rank: its weight (see Geo_ForestOfRank), its
+// nodes (their index in Geo_NodesOfForest) and its number
+struct Geo_ForestEdge {
+  long long weight;
+  int a, b, num;
+};
+
+// The paths of the forest of a rank between shared nodes or forks: the
+// numbers of the nodes at both ends of each path (links), and the heaviest
+// edge of each path (its position in the forest) with its weight
+struct Geo_ForestPaths {
+  std::vector<int> links, heaviest;
+  std::vector<long long> weights;
+};
 } // namespace
 
-void Geo_GenerateEdgesOfTreeOverRanks(List_T *InitialList,
-                                      List_T *InitialSuppList,
-                                      List_T **ExtendedList)
+// The lowest rank of the elements of the part of the mesh that contain each
+// edge (its owner if it is this rank, which then has all these elements), and
+// the rank of the elements around each node (-1 if several)
+static void Geo_RanksOfEdgesAndNodes(std::unordered_map<int, int> &lowest,
+                                     std::unordered_map<int, int> &rankOfNode)
 {
-  const int np = Message::GetCommSize(), me = Message::GetCommRank();
-  const int nElements = Geo_GetNbrGeoElements();
-
-  // the lowest rank of the elements of the part of the mesh that contain each
-  // edge (its owner if it is this rank, which then has all these elements),
-  // and the rank of the elements around each node (-1 if several)
-  std::unordered_map<int, int> lowest, rankOfNode;
-  for(int i = 0; i < nElements; i++) {
+  for(int i = 0; i < Geo_GetNbrGeoElements(); i++) {
     struct Geo_Element *ge = Geo_GetGeoElement(i);
     int rank = Geo_RankOfPartition(ge->Partition);
     for(int k = 0; k < ge->NbrEdges; k++) {
@@ -423,18 +422,19 @@ void Geo_GenerateEdgesOfTreeOverRanks(List_T *InitialList,
       if(it->second != rank) it->second = -1;
     }
   }
+}
 
-  // 1. the minimum spanning forest of the edges of this rank, with as weight
-  // of an edge its first position (pass, element number, edge in the element),
-  // the edges being taken in this order
-  struct Edge {
-    long long weight;
-    int a, b, num; // its nodes (in nodes) and its number
-  };
-  std::vector<Edge> forest;
-  Geo_NodesOfForest nodes;
+// 1. The minimum spanning forest of the edges of this rank, with as weight of
+// an edge its first position (pass, element number, edge in the element), the
+// edges being taken in this order
+static void Geo_ForestOfRank(List_T *InitialList, List_T *InitialSuppList,
+                             std::unordered_map<int, int> &lowest,
+                             std::vector<Geo_ForestEdge> &forest,
+                             Geo_NodesOfForest &nodes)
+{
+  const int me = Message::GetCommRank();
   auto pass = [&](int p, int dim, List_T *List) {
-    for(int i = 0; i < nElements; i++) {
+    for(int i = 0; i < Geo_GetNbrGeoElements(); i++) {
       struct Geo_Element *ge = Geo_GetGeoElement(i);
       if(!ge->NbrEdges || !List_Search(List, &ge->Region, fcmp_int)) continue;
       int d, n;
@@ -458,10 +458,16 @@ void Geo_GenerateEdgesOfTreeOverRanks(List_T *InitialList,
     pass(1, 2, InitialSuppList);
   }
   if(InitialList) pass(2, -1, InitialList);
+}
 
-  // 2. the paths of the forest between shared nodes or forks, after removing
-  // the branches without shared nodes: degree counts the edges of a node that
-  // are still on such paths
+// 2. The paths of the forest between shared nodes or forks, after removing the
+// branches without shared nodes: degree counts the edges of a node that are
+// still on such paths
+static Geo_ForestPaths
+Geo_PathsOfForest(const std::vector<Geo_ForestEdge> &forest,
+                  const Geo_NodesOfForest &nodes,
+                  std::unordered_map<int, int> &rankOfNode)
+{
   const int nNodes = (int)nodes.num.size();
   auto shared = [&](int i) { return rankOfNode[nodes.num[i]] < 0; };
   std::vector<std::vector<int> > edgesOfNode(nNodes);
@@ -490,8 +496,7 @@ void Geo_GenerateEdgesOfTreeOverRanks(List_T *InitialList,
     }
   }
   auto end = [&](int i) { return shared(i) || degree[i] != 2; };
-  std::vector<int> links, heaviest; // the ends of each path, its heaviest edge
-  std::vector<long long> weights;
+  Geo_ForestPaths paths;
   std::vector<char> walked(forest.size(), 0);
   for(int i = 0; i < nNodes; i++) {
     if(!degree[i] || !end(i)) continue;
@@ -509,16 +514,21 @@ void Geo_GenerateEdgesOfTreeOverRanks(List_T *InitialList,
             break;
           }
       }
-      links.push_back(nodes.num[i]);
-      links.push_back(nodes.num[j]);
-      heaviest.push_back(max);
-      weights.push_back(forest[max].weight);
+      paths.links.push_back(nodes.num[i]);
+      paths.links.push_back(nodes.num[j]);
+      paths.heaviest.push_back(max);
+      paths.weights.push_back(forest[max].weight);
     }
   }
+  return paths;
+}
 
-  // the first rank applies Kruskal's algorithm to the links of all the ranks,
-  // and tells each rank which ones it keeps
-  int count = (int)weights.size(), total = 0;
+// The first rank applies Kruskal's algorithm to the links of the paths of all
+// the ranks, and tells each rank which of its paths it keeps
+static std::vector<int> Geo_KeptPaths(const Geo_ForestPaths &paths)
+{
+  const int np = Message::GetCommSize(), me = Message::GetCommRank();
+  int count = (int)paths.weights.size(), total = 0;
   std::vector<int> counts(np), displs(np), allLinks;
   std::vector<long long> allWeights;
   MPI_Gather(&count, 1, MPI_INT, &counts[0], 1, MPI_INT, 0, MPI_COMM_WORLD);
@@ -527,14 +537,14 @@ void Geo_GenerateEdgesOfTreeOverRanks(List_T *InitialList,
     total = displs[np - 1] + counts[np - 1];
   }
   allWeights.resize(total + 1);
-  MPI_Gatherv(weights.data(), count, MPI_LONG_LONG, &allWeights[0], &counts[0],
-              &displs[0], MPI_LONG_LONG, 0, MPI_COMM_WORLD);
+  MPI_Gatherv(paths.weights.data(), count, MPI_LONG_LONG, &allWeights[0],
+              &counts[0], &displs[0], MPI_LONG_LONG, 0, MPI_COMM_WORLD);
   for(int r = 0; r < np; r++) {
     counts[r] *= 2;
     displs[r] *= 2;
   }
   allLinks.resize(2 * total + 1);
-  MPI_Gatherv(links.data(), 2 * count, MPI_INT, &allLinks[0], &counts[0],
+  MPI_Gatherv(paths.links.data(), 2 * count, MPI_INT, &allLinks[0], &counts[0],
               &displs[0], MPI_INT, 0, MPI_COMM_WORLD);
   std::vector<int> keep(total + 1), kept(count + 1), order(total);
   for(int j = 0; j < total; j++) order[j] = j;
@@ -550,12 +560,67 @@ void Geo_GenerateEdgesOfTreeOverRanks(List_T *InitialList,
   }
   MPI_Scatterv(&keep[0], &counts[0], &displs[0], MPI_INT, &kept[0], count,
                MPI_INT, 0, MPI_COMM_WORLD);
+  return kept;
+}
+
+// Adds to the edges of the tree that this rank owns those of the other edges
+// of its part of the mesh: each edge is asked to the rank chosen from its
+// number, to which its owner sent it if it is in the tree
+static void Geo_AddTreeEdgesOfOtherRanks(std::vector<int> &tree,
+                                         std::unordered_map<int, int> &lowest)
+{
+  const int np = Message::GetCommSize(), me = Message::GetCommRank();
+  const long long nEdges = CurrentGeoData->NumCurrentEdge;
+  if(!nEdges) return;
+  // (in 64 bits: the number of edges times the number of ranks overflows an
+  // int, e.g. 6M edges on 384 ranks)
+  auto rankOfEdge = [&](int num) {
+    return (int)((long long)(num - 1) * np / nEdges);
+  };
+  std::vector<std::vector<int> > send(np), recv;
+  for(int num : tree) send[rankOfEdge(num)].push_back(num);
+  Message::Exchange(send, recv);
+  std::vector<int> known;
+  for(int r = 0; r < np; r++)
+    known.insert(known.end(), recv[r].begin(), recv[r].end());
+  std::sort(known.begin(), known.end());
+  for(int r = 0; r < np; r++) send[r].clear();
+  for(auto &it : lowest)
+    if(it.second != me) send[rankOfEdge(it.first)].push_back(it.first);
+  Message::Exchange(send, recv);
+  for(int r = 0; r < np; r++) {
+    send[r].clear();
+    for(int num : recv[r])
+      if(std::binary_search(known.begin(), known.end(), num))
+        send[r].push_back(num);
+  }
+  Message::Exchange(send, recv);
+  for(int r = 0; r < np; r++)
+    tree.insert(tree.end(), recv[r].begin(), recv[r].end());
+}
+
+void Geo_GenerateEdgesOfTreeOverRanks(List_T *InitialList,
+                                      List_T *InitialSuppList,
+                                      List_T **ExtendedList)
+{
+  std::unordered_map<int, int> lowest, rankOfNode;
+  Geo_RanksOfEdgesAndNodes(lowest, rankOfNode);
+
+  std::vector<Geo_ForestEdge> forest;
+  Geo_NodesOfForest nodes;
+  Geo_ForestOfRank(InitialList, InitialSuppList, lowest, forest, nodes);
+
+  // the tree edges of this rank: its forest, without the heaviest edge of each
+  // path whose link the first rank does not keep
+  Geo_ForestPaths paths = Geo_PathsOfForest(forest, nodes, rankOfNode);
+  std::vector<int> kept = Geo_KeptPaths(paths);
+  const int count = (int)paths.weights.size();
   std::vector<int> tree;
   std::vector<char> removed(forest.size(), 0);
   long long stats[3] = {0, count, 0}; // edges, paths, paths cut
   for(int j = 0; j < count; j++) {
     if(kept[j]) continue;
-    removed[heaviest[j]] = 1;
+    removed[paths.heaviest[j]] = 1;
     stats[2]++;
   }
   for(std::size_t e = 0; e < forest.size(); e++)
@@ -565,37 +630,7 @@ void Geo_GenerateEdgesOfTreeOverRanks(List_T *InitialList,
   Message::Info("  %lld edges in the tree, %lld paths between the ranks "
                 "checked (%lld cut)", stats[0], stats[1], stats[2]);
 
-  // the edges of the part of the mesh owned by other ranks: each one is asked
-  // to the rank chosen from its number, to which its owner sent it if it is
-  // in the tree
-  const long long nEdges = CurrentGeoData->NumCurrentEdge;
-  // (in 64 bits: the number of edges times the number of ranks overflows an
-  // int, e.g. 6M edges on 384 ranks)
-  auto rankOfEdge = [&](int num) {
-    return (int)((long long)(num - 1) * np / nEdges);
-  };
-  std::vector<std::vector<int> > send(np), recv;
-  if(nEdges) {
-    for(int num : tree) send[rankOfEdge(num)].push_back(num);
-    Message::Exchange(send, recv);
-    std::vector<int> known;
-    for(int r = 0; r < np; r++)
-      known.insert(known.end(), recv[r].begin(), recv[r].end());
-    std::sort(known.begin(), known.end());
-    for(int r = 0; r < np; r++) send[r].clear();
-    for(auto &it : lowest)
-      if(it.second != me) send[rankOfEdge(it.first)].push_back(it.first);
-    Message::Exchange(send, recv);
-    for(int r = 0; r < np; r++) {
-      send[r].clear();
-      for(int num : recv[r])
-        if(std::binary_search(known.begin(), known.end(), num))
-          send[r].push_back(num);
-    }
-    Message::Exchange(send, recv);
-    for(int r = 0; r < np; r++)
-      tree.insert(tree.end(), recv[r].begin(), recv[r].end());
-  }
+  Geo_AddTreeEdgesOfOtherRanks(tree, lowest);
   std::sort(tree.begin(), tree.end());
   *ExtendedList = List_Create((int)tree.size() + 1, 1000, sizeof(int));
   for(int num : tree) List_Add(*ExtendedList, &num);

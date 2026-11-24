@@ -10,6 +10,7 @@
 #include <time.h>
 #include <algorithm>
 #include <string>
+#include <cstring>
 #include <vector>
 #include <sys/stat.h>
 #include "GetDPConfig.h"
@@ -1419,9 +1420,9 @@ int Message::GetThreadNum() { return 0; }
 // Writes the sections of all the ranks in the file, after what the first rank
 // has already written in it (stream is only used on the first rank), and
 // empties them. If positions is given, it gets the position in the file of the
-// section of each rank, followed by the position of the end of the last one. The ranks write their
-// sections themselves, at the same time, each one at its own position in the
-// file (MPI-IO): nothing goes through the first rank.
+// section of each rank, followed by the position of the end of the last one.
+// The ranks write their sections themselves, at the same time, each one at its
+// own position in the file (MPI-IO): nothing goes through the first rank.
 //
 // If the file cannot be opened by all the ranks (e.g. it is not on a file
 // system they share), the sections are sent to the first rank instead, which
@@ -1431,17 +1432,8 @@ void Message::WriteParallelSections(FILE *stream, const char *fileName,
                                     std::vector<long long> *positions)
 {
   if(positions) positions->clear();
-#if defined(HAVE_MPI)
-  const int me = GetCommRank(), np = GetCommSize();
-  const long long chunk = 1 << 30; // an MPI count is an int
   long long n = section.size();
-  std::vector<long long> sizes(np);
-  MPI_Allgather(&n, 1, MPI_LONG_LONG, &sizes[0], 1, MPI_LONG_LONG,
-                MPI_COMM_WORLD);
-
-  // where the first rank stopped, and thus where each section starts
-  long long start = -1;
-  if(np == 1) {
+  if(GetCommSize() == 1) {
     if(stream && positions) {
       positions->push_back(ftell(stream));
       positions->push_back(positions->back() + n);
@@ -1450,6 +1442,15 @@ void Message::WriteParallelSections(FILE *stream, const char *fileName,
     std::string().swap(section);
     return;
   }
+#if defined(HAVE_MPI)
+  const int me = GetCommRank(), np = GetCommSize();
+  const long long chunk = 1 << 30; // an MPI count is an int
+  std::vector<long long> sizes(np);
+  MPI_Allgather(&n, 1, MPI_LONG_LONG, &sizes[0], 1, MPI_LONG_LONG,
+                MPI_COMM_WORLD);
+
+  // where the first rank stopped, and thus where each section starts
+  long long start = -1;
   if(!me && stream && stream != stdout) {
     fflush(stream);
     fseek(stream, 0, SEEK_END);
@@ -1506,42 +1507,77 @@ void Message::WriteParallelSections(FILE *stream, const char *fileName,
       }
     }
   }
-#else
-  if(stream && !section.empty()) fwrite(&section[0], 1, section.size(), stream);
 #endif
   std::string().swap(section);
 }
 
-// Sends a list of integers to each rank, and returns the list that each rank
-// sent to this one.
-void Message::Exchange(const std::vector<std::vector<int> > &send,
-                       std::vector<std::vector<int> > &recv)
+// Sends to each rank r the scounts[r] items of size bytes that follow those of
+// the previous ranks in mine, gets in rcounts[r] the number of items that rank
+// r sends to this one, and these items, one rank after the other, in the space
+// for their total number that space(total) returns (the items are sent as
+// bytes); see Exchange.
+void Message::_exchange(const void *mine, const std::vector<int> &scounts,
+                        int size, std::vector<int> &rcounts,
+                        const std::function<void *(int)> &space)
 {
 #if defined(HAVE_MPI)
-  int np = GetCommSize();
-  std::vector<int> scounts(np), sdispls(np), rcounts(np), rdispls(np);
-  int stotal = 0, rtotal = 0;
+  int np = GetCommSize(), stotal = 0, rtotal = 0;
+  std::vector<int> sdispls(np), rdispls(np);
+  rcounts.resize(np);
+  MPI_Alltoall(scounts.data(), 1, MPI_INT, rcounts.data(), 1, MPI_INT,
+               MPI_COMM_WORLD);
   for(int r = 0; r < np; r++) {
-    scounts[r] = (int)send[r].size();
     sdispls[r] = stotal;
     stotal += scounts[r];
-  }
-  std::vector<int> sbuf(stotal + 1);
-  for(int r = 0; r < np; r++)
-    std::copy(send[r].begin(), send[r].end(), sbuf.begin() + sdispls[r]);
-  MPI_Alltoall(&scounts[0], 1, MPI_INT, &rcounts[0], 1, MPI_INT, MPI_COMM_WORLD);
-  for(int r = 0; r < np; r++) {
     rdispls[r] = rtotal;
     rtotal += rcounts[r];
   }
-  std::vector<int> rbuf(rtotal + 1);
-  MPI_Alltoallv(&sbuf[0], &scounts[0], &sdispls[0], MPI_INT, &rbuf[0],
-                &rcounts[0], &rdispls[0], MPI_INT, MPI_COMM_WORLD);
-  recv.assign(np, std::vector<int>());
-  for(int r = 0; r < np; r++)
-    recv[r].assign(rbuf.begin() + rdispls[r],
-                   rbuf.begin() + rdispls[r] + rcounts[r]);
+  void *all = space(rtotal);
+  MPI_Datatype type;
+  MPI_Type_contiguous(size, MPI_BYTE, &type);
+  MPI_Type_commit(&type);
+  MPI_Alltoallv(mine, scounts.data(), sdispls.data(), type, all,
+                rcounts.data(), rdispls.data(), type, MPI_COMM_WORLD);
+  MPI_Type_free(&type);
 #else
-  recv = send;
+  rcounts = scounts;
+  void *all = space(scounts[0]);
+  if(scounts[0]) memcpy(all, mine, (std::size_t)scounts[0] * size);
+#endif
+}
+
+// Gathers the n items of size bytes of each rank (mine) on all the ranks, or
+// on the first one, in the space for the total number of items that
+// space(total) returns (the items are sent as bytes); see Gather.
+int Message::_gather(const void *mine, int n, int size, bool allRanks,
+                     const std::function<void *(int)> &space)
+{
+#if defined(HAVE_MPI)
+  int np = GetCommSize(), total = 0;
+  std::vector<int> counts(np), displs(np);
+  if(allRanks)
+    MPI_Allgather(&n, 1, MPI_INT, counts.data(), 1, MPI_INT, MPI_COMM_WORLD);
+  else
+    MPI_Gather(&n, 1, MPI_INT, counts.data(), 1, MPI_INT, 0, MPI_COMM_WORLD);
+  for(int r = 0; r < np; r++) {
+    displs[r] = total;
+    total += counts[r];
+  }
+  void *all = space(total);
+  MPI_Datatype type;
+  MPI_Type_contiguous(size, MPI_BYTE, &type);
+  MPI_Type_commit(&type);
+  if(allRanks)
+    MPI_Allgatherv(mine, n, type, all, counts.data(), displs.data(), type,
+                   MPI_COMM_WORLD);
+  else
+    MPI_Gatherv(mine, n, type, all, counts.data(), displs.data(), type, 0,
+                MPI_COMM_WORLD);
+  MPI_Type_free(&type);
+  return displs[GetCommRank()];
+#else
+  void *all = space(n);
+  if(n) memcpy(all, mine, (std::size_t)n * size);
+  return 0;
 #endif
 }

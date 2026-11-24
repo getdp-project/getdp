@@ -417,7 +417,7 @@ void Pos_GlobalQuantity(struct PostQuantity *PostQuantity_P,
 void Cal_PostQuantity(struct PostQuantity *PostQuantity_P,
                       struct DefineQuantity *DefineQuantity_P0,
                       struct QuantityStorage *QuantityStorage_P0,
-                      bool distributedPostOperation,
+                      bool singleProcess,
                       List_T *Support_L, struct Element *Element, double u,
                       double v, double w, struct Value *Value)
 {
@@ -444,7 +444,7 @@ void Cal_PostQuantity(struct PostQuantity *PostQuantity_P,
   partitioned = false;
 #endif
   if(Dof_UseLocalDofs()) partitioned = !Dof_GetPostOnRootOnly();
-  if(distributedPostOperation) {
+  if(singleProcess) {
     // the sub-operation is done by a single rank (SingleProcess), which
     // integrates over the whole region
     partitioned = false;

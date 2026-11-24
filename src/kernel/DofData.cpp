@@ -12,7 +12,6 @@
 #include <stdarg.h>
 #include <vector>
 #include <algorithm>
-#include <unordered_map>
 #include <unordered_set>
 #include <stdint.h>
 #include <stdlib.h>
@@ -475,9 +474,11 @@ void Dof_SkipOtherSectionsPRE()
 
 void Dof_OpenFile(int Type, char *Name, const char *Mode)
 {
-  if(Type == DOF_PRE) PositionsPRE.clear();
-  // all the ranks need the name of the file they write together
-  if(Type == DOF_PRE) Name_PRE = std::string(Name) + ".pre";
+  if(Type == DOF_PRE) {
+    PositionsPRE.clear();
+    // all the ranks need the name of the file they write together
+    Name_PRE = std::string(Name) + ".pre";
+  }
 
   if((Message::GetIsCommWorld() && Message::GetCommRank()) &&
      (Mode[0] == 'w' || Mode[0] == 'a')) {
@@ -535,18 +536,6 @@ void Dof_CloseFile(int Type)
     if(File_RES) fclose(File_RES);
     File_RES = File_TMP;
     break;
-  }
-}
-
-/* ------------------------------------------------------------------------ */
-/*  D o f _ F l u s h F i l e                                               */
-/* ------------------------------------------------------------------------ */
-
-void Dof_FlushFile(int Type)
-{
-  switch(Type) {
-  case DOF_PRE: fflush(File_PRE); break;
-  case DOF_RES: fflush(File_RES); break;
   }
 }
 
@@ -680,13 +669,19 @@ static bool Dof_ReadDofBinaryPRE(struct Dof *Dof_P)
 {
   int i[6];
   double d[4];
-  if(fread(i, sizeof(int), 6, File_PRE) != 6) return false;
+  if(fread(i, sizeof(int), 6, File_PRE) != 6) {
+    Message::Error("Could not read dof");
+    return false;
+  }
   Dof_P->NumType = i[0];
   Dof_P->Entity = i[1];
   Dof_P->Harmonic = i[2];
   Dof_P->Type = i[3];
   int n = Dof_NbrDoublesPRE(Dof_P->Type);
-  if(n && (int)fread(d, sizeof(double), n, File_PRE) != n) return false;
+  if(n && (int)fread(d, sizeof(double), n, File_PRE) != n) {
+    Message::Error("Could not read dof");
+    return false;
+  }
   switch(Dof_P->Type) {
   case DOF_UNKNOWN:
     Dof_P->Case.Unknown.NumDof = i[4];
@@ -722,6 +717,8 @@ static bool Dof_ReadDofBinaryPRE(struct Dof *Dof_P)
 /* ------------------------------------------------------------------------ */
 /*  D o f _ W r i t e F i l e P R E                                         */
 /* ------------------------------------------------------------------------ */
+
+static void Dof_WriteDofPRE(void *a, void *b);
 
 void Dof_WriteFilePRE(struct DofData *DofData_P)
 {
@@ -797,7 +794,7 @@ static void Dof_PrintScalarPRE(gScalar *S)
     Dof_PrintfPRE("%.16g", d[0]);
 }
 
-void Dof_WriteDofPRE(void *a, void *b)
+static void Dof_WriteDofPRE(void *a, void *b)
 {
   struct Dof *Dof_P;
 
@@ -850,23 +847,91 @@ void Dof_WriteDofPRE(void *a, void *b)
 /*  D o f _ R e a d F i l e P R E                                           */
 /* ------------------------------------------------------------------------ */
 
-// Reads the Dofs of a section and adds them to the list; last is the last
-// unknown of each mesh partition.
+// Reads a Dof written in text by Dof_WriteDofPRE
+static bool Dof_ReadDofTextPRE(struct Dof *Dof_P)
+{
+  if(fscanf(File_PRE, "%d %d %d %d", &Dof_P->NumType, &Dof_P->Entity,
+            &Dof_P->Harmonic, &Dof_P->Type) != 4) {
+    Message::Error("Could not read dof");
+    return false;
+  }
+
+  switch(Dof_P->Type) {
+  case DOF_UNKNOWN:
+    if(fscanf(File_PRE, "%d %d", &Dof_P->Case.Unknown.NumDof,
+              &Dof_P->Case.Unknown.PartitionOrNonLocal) != 2) {
+      Message::Error("Could not read DOF_UNKNOWN");
+      return false;
+    }
+    break;
+  case DOF_FIXEDWITHASSOCIATE:
+    if(fscanf(File_PRE, "%d", &Dof_P->Case.FixedAssociate.NumDof) != 1) {
+      Message::Error("Could not read DOF_FIXEDWITHASSOCIATE");
+      return false;
+    }
+    LinAlg_ScanScalar(File_PRE, &Dof_P->Val);
+    if(fscanf(File_PRE, "%d", &Dof_P->Case.FixedAssociate.TimeFunctionIndex) !=
+       1) {
+      Message::Error("Could not read DOF_FIXEDWITHASSOCIATE");
+      return false;
+    }
+    break;
+  case DOF_FIXED:
+    LinAlg_ScanScalar(File_PRE, &Dof_P->Val);
+    if(fscanf(File_PRE, "%d", &Dof_P->Case.FixedAssociate.TimeFunctionIndex) !=
+       1) {
+      Message::Error("Could not read DOF_FIXED");
+      return false;
+    }
+    break;
+  case DOF_FIXED_SOLVE:
+    if(fscanf(File_PRE, "%d", &Dof_P->Case.FixedAssociate.TimeFunctionIndex) !=
+       1) {
+      Message::Error("Could not read DOF_FIXED_SOLVED");
+      return false;
+    }
+    break;
+  case DOF_UNKNOWN_INIT:
+    if(fscanf(File_PRE, "%d", &Dof_P->Case.Unknown.NumDof) != 1) {
+      Message::Error("Could not read DOF_UNKNOWN_INIT");
+      return false;
+    }
+    LinAlg_ScanScalar(File_PRE, &Dof_P->Val);
+    LinAlg_ScanScalar(File_PRE, &Dof_P->Val2);
+    if(fscanf(File_PRE, "%d", &Dof_P->Case.Unknown.PartitionOrNonLocal) != 1) {
+      Message::Error("Could not read DOF_UNKNOWN_INIT");
+      return false;
+    }
+    break;
+  case DOF_LINK:
+    if(fscanf(File_PRE, "%lf %d", &Dof_P->Case.Link.Coef,
+              &Dof_P->Case.Link.EntityRef) != 2) {
+      Message::Error("Could not read DOF_LINK");
+      return false;
+    }
+    Dof_P->Case.Link.Dof = NULL;
+    break;
+  case DOF_LINKCPLX:
+    if(fscanf(File_PRE, "%lf %lf %d", &Dof_P->Case.Link.Coef,
+              &Dof_P->Case.Link.Coef2, &Dof_P->Case.Link.EntityRef) != 3) {
+      Message::Error("Could not read DOF_LINKCPLX");
+      return false;
+    }
+    Dof_P->Case.Link.Dof = NULL;
+    break;
+  }
+  return true;
+}
+
+// Reads the Dofs of a section and adds them to the list, and the non-local
+// equations to NonLocalEquations; last is the last unknown of each mesh
+// partition.
 static bool Dof_ReadSectionPRE(struct DofData *DofData_P, bool first,
                                std::map<int, int> &last)
 {
   int i, Nbr_Index, Int, Dummy, Nbr_Dof;
   struct Dof Dof;
   char String[256];
-
-  auto unknown = [&](struct Dof &Dof) {
-    if(Dof.Case.Unknown.PartitionOrNonLocal < 0)
-      DofData_P->NonLocalEquations.push_back(Dof.Case.Unknown.NumDof);
-    else {
-      int &l = last[Dof.Case.Unknown.PartitionOrNonLocal];
-      l = std::max(l, Dof.Case.Unknown.NumDof);
-    }
-  };
 
   do {
     if(!fgets(String, sizeof(String), File_PRE)) break;
@@ -946,90 +1011,16 @@ static bool Dof_ReadSectionPRE(struct DofData *DofData_P, bool first,
     }
 
     for(i = 0; i < Nbr_Dof; i++) {
-      if(binary) {
-        if(!Dof_ReadDofBinaryPRE(&Dof)) {
-          Message::Error("Could not read dof");
-          return false;
-        }
-        if(Dof.Type == DOF_UNKNOWN || Dof.Type == DOF_UNKNOWN_INIT) unknown(Dof);
-        List_Add(DofData_P->DofList, &Dof);
-        continue;
-      }
-
-      if(fscanf(File_PRE, "%d %d %d %d", &Dof.NumType, &Dof.Entity,
-                &Dof.Harmonic, &Dof.Type) != 4) {
-        Message::Error("Could not dof");
+      if(binary ? !Dof_ReadDofBinaryPRE(&Dof) : !Dof_ReadDofTextPRE(&Dof))
         return false;
-      }
-
-      switch(Dof.Type) {
-      case DOF_UNKNOWN:
-        if(fscanf(File_PRE, "%d %d", &Dof.Case.Unknown.NumDof,
-                  &Dof.Case.Unknown.PartitionOrNonLocal) != 2) {
-          Message::Error("Could not read DOF_UNKNOWN");
-          return false;
-        }
-        unknown(Dof);
-        break;
-      case DOF_FIXEDWITHASSOCIATE:
-        if(fscanf(File_PRE, "%d", &Dof.Case.FixedAssociate.NumDof) != 1) {
-          Message::Error("Could not read DOF_FIXEDWITHASSOCIATE");
-          return false;
-        }
-        LinAlg_ScanScalar(File_PRE, &Dof.Val);
-        if(fscanf(File_PRE, "%d", &Dof.Case.FixedAssociate.TimeFunctionIndex) !=
-           1) {
-          Message::Error("Could not read DOF_FIXEDWITHASSOCIATE");
-          return false;
-        }
-        break;
-      case DOF_FIXED:
-        LinAlg_ScanScalar(File_PRE, &Dof.Val);
-        if(fscanf(File_PRE, "%d", &Dof.Case.FixedAssociate.TimeFunctionIndex) !=
-           1) {
-          Message::Error("Could not read DOF_FIXED");
-          return false;
-        }
-        break;
-      case DOF_FIXED_SOLVE:
-        if(fscanf(File_PRE, "%d", &Dof.Case.FixedAssociate.TimeFunctionIndex) !=
-           1) {
-          Message::Error("Could not read DOF_FIXED_SOLVED");
-          return false;
-        }
-        break;
-      case DOF_UNKNOWN_INIT:
-        if(fscanf(File_PRE, "%d", &Dof.Case.Unknown.NumDof) != 1) {
-          Message::Error("Could not read DOF_UNKNOWN_INIT");
-          return false;
-        }
-        LinAlg_ScanScalar(File_PRE, &Dof.Val);
-        LinAlg_ScanScalar(File_PRE, &Dof.Val2);
-        if(fscanf(File_PRE, "%d", &Dof.Case.Unknown.PartitionOrNonLocal) != 1) {
-          Message::Error("Could not read DOF_UNKNOWN_INIT");
-          return false;
-        }
-        unknown(Dof);
-        break;
-      case DOF_LINK:
-        if(fscanf(File_PRE, "%lf %d", &Dof.Case.Link.Coef,
-                  &Dof.Case.Link.EntityRef) != 2) {
-          Message::Error("Could not read DOF_LINK");
-          return false;
-        }
-        Dof.Case.Link.Dof = NULL;
-        break;
-      case DOF_LINKCPLX:
-        if(fscanf(File_PRE, "%lf %lf %d", &Dof.Case.Link.Coef,
-                  &Dof.Case.Link.Coef2, &Dof.Case.Link.EntityRef) != 3) {
-          Message::Error("Could not read DOF_LINKCPLX");
-          return false;
-        }
-        Dof.Case.Link.Dof = NULL;
-        break;
-      }
-
       List_Add(DofData_P->DofList, &Dof);
+      if(Dof.Type != DOF_UNKNOWN && Dof.Type != DOF_UNKNOWN_INIT) continue;
+      if(Dof.Case.Unknown.PartitionOrNonLocal < 0)
+        DofData_P->NonLocalEquations.push_back(Dof.Case.Unknown.NumDof);
+      else {
+        int &l = last[Dof.Case.Unknown.PartitionOrNonLocal];
+        l = std::max(l, Dof.Case.Unknown.NumDof);
+      }
     }
   }
 
@@ -1042,13 +1033,31 @@ static bool Dof_ReadSectionPRE(struct DofData *DofData_P, bool first,
   return true;
 }
 
+// A list of the n Dofs d (which it sorts), sorted, with each Dof once
+static List_T *Dof_SortedList(struct Dof *d, long long n)
+{
+  if(n) qsort(d, n, sizeof(struct Dof), fcmp_Dof);
+  List_T *list = List_Create(std::max(n, 1LL), 1, sizeof(struct Dof));
+  for(long long i = 0; i < n; i++)
+    if(!i || fcmp_Dof(&d[i - 1], &d[i])) List_Add(list, &d[i]);
+  return list;
+}
+
+// Prints the first equation of each partition (and the number of equations)
+static void Dof_InfoPartitionSplit(struct DofData *DofData_P)
+{
+  if(DofData_P->PartitionSplit.size() <= 2) return;
+  std::ostringstream sstream;
+  for(auto p : DofData_P->PartitionSplit) sstream << p << " ";
+  Message::Info("Dofs partitioning: %s", sstream.str().c_str());
+}
+
 void Dof_ReadFilePRE(struct DofData *DofData_P)
 {
   Message::Barrier();
 
   std::map<int, int> last;
-  const bool own = Dof_ReadsOwnSectionsPRE() &&
-                   (Message::GetCommRank() || !Dof_GetAllDofsOnFirstRank());
+  const bool own = Dof_ReadsOwnSectionsPRE() && Dof_HasOnlyOwnDofs();
   if(own) {
     Dof_SkipOtherSectionsPRE();
     if(!Dof_ReadSectionPRE(DofData_P, true, last)) return;
@@ -1060,13 +1069,9 @@ void Dof_ReadFilePRE(struct DofData *DofData_P)
 
   if(!own && NbrSectionsPRE > 1) {
     // a Dof is in the section of each rank that has it
-    List_Sort(DofData_P->DofList, fcmp_Dof);
-    int n = List_Nbr(DofData_P->DofList), k = 0;
-    struct Dof *d = n ? (struct Dof *)List_Pointer(DofData_P->DofList, 0) : NULL;
-    for(int i = 0; i < n; i++)
-      if(!i || fcmp_Dof(&d[k - 1], &d[i])) d[k++] = d[i];
-    List_T *all = List_Create(k + 1, 1, sizeof(struct Dof));
-    for(int i = 0; i < k; i++) List_Add(all, &d[i]);
+    int n = List_Nbr(DofData_P->DofList);
+    List_T *all = Dof_SortedList(
+      n ? (struct Dof *)List_Pointer(DofData_P->DofList, 0) : NULL, n);
     List_Delete(DofData_P->DofList);
     DofData_P->DofList = all;
     std::vector<int> &nl = DofData_P->NonLocalEquations;
@@ -1085,11 +1090,7 @@ void Dof_ReadFilePRE(struct DofData *DofData_P)
     DofData_P->PartitionSplit.push_back(DofData_P->NbrDof);
   }
 
-  if(DofData_P->PartitionSplit.size() > 2) {
-    std::ostringstream sstream;
-    for(auto p : DofData_P->PartitionSplit) sstream << p << " ";
-    Message::Info("Dofs partitioning: %s", sstream.str().c_str());
-  }
+  Dof_InfoPartitionSplit(DofData_P);
 
   Dof_InitDofType(DofData_P);
 }
@@ -1510,9 +1511,16 @@ static bool AllDofsOnFirstRank = true;
 bool Dof_GetAllDofsOnFirstRank() { return AllDofsOnFirstRank; }
 void Dof_SetAllDofsOnFirstRank(bool all) { AllDofsOnFirstRank = all; }
 
+// True if this rank only has the Dofs of its partition: with rank-local Dofs,
+// on all the ranks except the first one if it keeps them all
+bool Dof_HasOnlyOwnDofs()
+{
+  return Dof_UseLocalDofs() && (Message::GetCommRank() || !AllDofsOnFirstRank);
+}
+
 // Returns the Dofs of all the ranks on the first rank, sorted (NULL on the
 // others). Each Dof is sent by each rank that has it.
-List_T *Dof_GatherDofsOnFirstRank(struct DofData *DofData_P)
+static List_T *Dof_GatherDofsOnFirstRank(struct DofData *DofData_P)
 {
   List_T *all = NULL;
 #if defined(HAVE_MPI)
@@ -1542,15 +1550,7 @@ List_T *Dof_GatherDofsOnFirstRank(struct DofData *DofData_P)
       p += std::min(left, chunk);
     }
   }
-  if(total) qsort(&buf[0], total, sizeof(struct Dof), fcmp_Dof);
-  all = List_Create(std::max(total, 1LL), 1, sizeof(struct Dof));
-  struct Dof *last = NULL;
-  for(long long i = 0; i < total; i++) {
-    struct Dof *d = (struct Dof *)&buf[i * sizeof(struct Dof)];
-    if(last && !fcmp_Dof(last, d)) continue;
-    List_Add(all, d);
-    last = d;
-  }
+  all = Dof_SortedList((struct Dof *)buf.data(), total);
 #endif
   return all;
 }
@@ -1686,7 +1686,7 @@ void Dof_DefineAssignFixedDof(int D1, int D2, int NbrHar, double *Val,
 
   for(k = 0; k < NbrHar; k += gSCALAR_SIZE) {
     Dof.Harmonic = k;
-    if(!(Dof_P = (struct Dof *)Dof_Find(CurrentDofData, &Dof, true))) {
+    if(!(Dof_P = Dof_Find(CurrentDofData, &Dof, true))) {
       Dof.Type = DOF_FIXED;
       LinAlg_SetScalar(&Dof.Val, &Val[k]);
       Dof.Case.FixedAssociate.TimeFunctionIndex = Index_TimeFunction + 1;
@@ -1747,8 +1747,6 @@ void Dof_DefineInitFixedDof(int D1, int D2, int NbrHar, double *Val,
       Dof.Type = DOF_UNKNOWN_INIT;
       LinAlg_SetScalar(&Dof.Val, &Val[k]);
       LinAlg_SetScalar(&Dof.Val2, &Val2[k]);
-      // old version: number as we go
-      // Dof.Case.Unknown.NumDof = ++(CurrentDofData->NbrDof) ;
       Dof.Case.Unknown.NumDof = -1;
       Dof.Case.Unknown.PartitionOrNonLocal = PartitionOrNonLocal;
       Dof_Add(CurrentDofData, &Dof);
@@ -1777,8 +1775,6 @@ void Dof_DefineInitSolveDof(int D1, int D2, int NbrHar,
       // until then, so that the .pre file does not contain uninitialized data
       LinAlg_ZeroScalar(&Dof.Val);
       LinAlg_ZeroScalar(&Dof.Val2);
-      // old version: number as we go
-      // Dof.Case.Unknown.NumDof = ++(CurrentDofData->NbrDof) ;
       Dof.Case.Unknown.NumDof = -1;
       Dof.Case.Unknown.PartitionOrNonLocal = PartitionOrNonLocal;
       Dof_Add(CurrentDofData, &Dof);
@@ -1848,25 +1844,10 @@ void Dof_DefineUnknownDof(int D1, int D2, int NbrHar, int PartitionOrNonLocal)
     Dof.Harmonic = k;
     if(!Dof_Find(CurrentDofData, &Dof, true)) {
       Dof.Type = DOF_UNKNOWN;
-      // old version: number as we go
-      // Dof.Case.Unknown.NumDof = ++(CurrentDofData->NbrDof) ;
       Dof.Case.Unknown.NumDof = -1;
       Dof.Case.Unknown.PartitionOrNonLocal = PartitionOrNonLocal;
       Dof_Add(CurrentDofData, &Dof);
     }
-  }
-}
-
-// the unknown Dofs that have no number yet, by mesh partition (0 for the
-// elements without partition, -1 for the non-local, e.g. global, Dofs)
-static std::map<int, std::vector<struct Dof *>> UnnumberedUnknownDofs;
-
-static void GetUnnumberedUnknownDofs(void *a, void *b)
-{
-  struct Dof *Dof_P = (struct Dof *)a;
-  if((Dof_P->Type == DOF_UNKNOWN || Dof_P->Type == DOF_UNKNOWN_INIT) &&
-     Dof_P->Case.Unknown.NumDof == -1) {
-    UnnumberedUnknownDofs[Dof_P->Case.Unknown.PartitionOrNonLocal].push_back(Dof_P);
   }
 }
 
@@ -1878,13 +1859,11 @@ bool Dof_UseLocalDofs()
 
 // In parallel each element is assembled by a single rank, the one of its mesh
 // partition, which adds all its contributions, whoever owns the rows (they are
-// sent to their owner when the matrix or the vector is assembled). Elements
-// without partition go to the last rank, like the global equations.
+// sent to their owner when the matrix or the vector is assembled; see
+// Geo_RankOfPartition).
 bool Dof_IsPartitionOfThisRank(int partition)
 {
-  int np = Message::GetCommSize();
-  return ((partition > 0) ? (partition - 1) % np : np - 1) ==
-         Message::GetCommRank();
+  return Geo_RankOfPartition(partition) == Message::GetCommRank();
 }
 
 // Copies the values of the unknowns of a system (in x1) to the same unknowns
@@ -1946,33 +1925,15 @@ void Dof_SetPostOnRootOnly(bool rootOnly) { PostOnRootOnly = rootOnly; }
 // may not have: make all the ranks run the same ones, in the same order
 void Dof_SyncPreResolutions(List_T *PreResolutionInfo_L)
 {
-#if defined(HAVE_PETSC)
-  int n = List_Nbr(PreResolutionInfo_L), np = Message::GetCommSize();
-  std::vector<int> mine(2 * n), counts(np), displs(np);
-  for(int i = 0; i < n; i++) {
-    struct PreResolutionInfo *p =
-      (struct PreResolutionInfo *)List_Pointer(PreResolutionInfo_L, i);
-    mine[2 * i] = p->Index;
-    mine[2 * i + 1] = p->Type;
-  }
-  int count = 2 * n, total = 0;
-  MPI_Allgather(&count, 1, MPI_INT, counts.data(), 1, MPI_INT, MPI_COMM_WORLD);
-  for(int r = 0; r < np; r++) {
-    displs[r] = total;
-    total += counts[r];
-  }
-  std::vector<int> all(total);
-  MPI_Allgatherv(mine.data(), count, MPI_INT, all.data(), counts.data(),
-                 displs.data(), MPI_INT, MPI_COMM_WORLD);
+  std::vector<struct PreResolutionInfo> all;
+  for(int i = 0; i < List_Nbr(PreResolutionInfo_L); i++)
+    all.push_back(
+      *(struct PreResolutionInfo *)List_Pointer(PreResolutionInfo_L, i));
+  Message::Gather(all, true);
   List_Reset(PreResolutionInfo_L);
-  for(int i = 0; i < total; i += 2) {
-    if(List_ISearchSeq(PreResolutionInfo_L, &all[i], fcmp_int) >= 0) continue;
-    struct PreResolutionInfo info;
-    info.Index = all[i];
-    info.Type = all[i + 1];
-    List_Add(PreResolutionInfo_L, &info);
-  }
-#endif
+  for(struct PreResolutionInfo &info : all)
+    if(List_ISearchSeq(PreResolutionInfo_L, &info.Index, fcmp_int) < 0)
+      List_Add(PreResolutionInfo_L, &info);
 }
 
 // The Dofs with a constraint assigned from a resolution (AssignFromResolution)
@@ -1988,9 +1949,11 @@ void Dof_SetSolveDofsAreUnknowns(bool unknowns)
 }
 
 #if defined(HAVE_MPI)
-static std::vector<struct Dof *> LocalUnknownDofs;
+// the unknown Dofs of this rank that have no number yet, with rank-local Dofs
+// (see Dof_NumberUnknownDofLocal)
+static std::vector<struct Dof *> UnnumberedLocalDofs;
 
-static void GetLocalUnknownDofs(void *a, void *b)
+static void GetUnnumberedLocalDofs(void *a, void *b)
 {
   struct Dof *Dof_P = (struct Dof *)a;
   switch(Dof_P->Type) {
@@ -2001,129 +1964,120 @@ static void GetLocalUnknownDofs(void *a, void *b)
     Dof_P->Type = DOF_UNKNOWN;
     Dof_P->Case.Unknown.NumDof = -1;
     Dof_P->Case.Unknown.PartitionOrNonLocal = Message::GetCommRank() + 1;
-    LocalUnknownDofs.push_back(Dof_P);
+    UnnumberedLocalDofs.push_back(Dof_P);
     break;
   case DOF_UNKNOWN:
   case DOF_UNKNOWN_INIT:
-    if(Dof_P->Case.Unknown.NumDof == -1) LocalUnknownDofs.push_back(Dof_P);
+    if(Dof_P->Case.Unknown.NumDof == -1) UnnumberedLocalDofs.push_back(Dof_P);
     break;
   default: break;
   }
 }
 
-// Numbers the unknown Dofs with rank-local Dofs, when each rank has only
-// defined the Dofs of its mesh partition. The Dofs are sent to a "home" rank chosen from
-// their entity, which keeps the entities of neighboring numbers together.
-//
-// The home rank knows all the ranks that have a Dof: this gives it one owner.
-// As for the numbering by partition with all the Dofs on all the ranks, the
-// equations of each partition are consecutive, and the global Dofs come last. The numbers only
-// depend on the blocks counted on each home rank, so that they can be computed
-// there and sent back without a second exchange.
-//
-// Global Dofs: a rank whose partition has no element in the region of a global
-// Dof has not defined it, but it needs it, e.g. for the global equations; all
-// the ranks thus get them all, with the same numbers. The non-local equations
-// belong to the last rank.
-static void Dof_NumberUnknownDofLocal(void)
+// What a rank sends to the home rank of one of its Dofs (its key, and the
+// partition for which the rank has defined it), and what it gets back (its
+// number and its partition)
+struct DofKey {
+  int type, entity, harmonic, partition;
+};
+struct DofNumber {
+  int num, partition;
+};
+
+// The home rank of the Dofs of an entity
+static int Dof_HomeRank(int entity, int maxEntity)
 {
   const int np = Message::GetCommSize();
-  const int blocks = np + 1;
+  if(entity < 0) entity = -entity;
+  return (int)std::min((long long)np - 1,
+                       (long long)entity * np / ((long long)maxEntity + 1));
+}
 
-  LocalUnknownDofs.clear();
-  Tree_Action(CurrentDofData->DofTree, GetLocalUnknownDofs);
-
-  // The associated Dofs of global quantities have already been numbered, first
-  // (see Dof_DefineAssociateDof), and they belong to the first rank as with
-  // all the Dofs on all the ranks. All the ranks treat the global terms, in the same order, so
-  // that they must all have given the same numbers.
-  int base[2] = {CurrentDofData->NbrDof, -CurrentDofData->NbrDof};
-  MPI_Allreduce(MPI_IN_PLACE, base, 2, MPI_INT, MPI_MIN, MPI_COMM_WORLD);
-  if(base[0] != -base[1]) {
-    Message::Error("Rank-local Dofs (use -all-dofs): the ranks have numbered different associated "
-                   "Dofs (between %d and %d)", base[0], -base[1]);
-    return;
+// Sends the keys of the unnumbered Dofs of this rank to their home rank, each
+// Dof being the pos[i]-th of the keys sent there; returns the keys received
+// from each rank
+static std::vector<std::vector<DofKey> > Dof_SendKeysHome(int maxEntity,
+                                                          std::vector<int> &pos)
+{
+  std::vector<std::vector<DofKey> > send(Message::GetCommSize()), recv;
+  pos.resize(UnnumberedLocalDofs.size());
+  for(std::size_t i = 0; i < UnnumberedLocalDofs.size(); i++) {
+    struct Dof *d = UnnumberedLocalDofs[i];
+    std::vector<DofKey> &keys = send[Dof_HomeRank(d->Entity, maxEntity)];
+    pos[i] = (int)keys.size();
+    keys.push_back({d->NumType, d->Entity, d->Harmonic,
+                    d->Case.Unknown.PartitionOrNonLocal});
   }
+  Message::Exchange(send, recv);
+  return recv;
+}
 
-  int maxEntity = 0;
-  for(auto d : LocalUnknownDofs)
-    if(d->Case.Unknown.PartitionOrNonLocal > 0)
-      maxEntity = std::max(maxEntity, d->Entity);
-  MPI_Allreduce(MPI_IN_PLACE, &maxEntity, 1, MPI_INT, MPI_MAX, MPI_COMM_WORLD);
-
-  // send the keys of the Dofs to their home rank
-  auto home = [&](int entity) {
-    if(entity < 0) entity = -entity;
-    return (int)std::min((long long)np - 1,
-                         (long long)entity * np / ((long long)maxEntity + 1));
-  };
-  std::vector<int> scounts(np, 0), rcounts(np), sdispls(np, 0), rdispls(np, 0);
-  for(auto d : LocalUnknownDofs) scounts[home(d->Entity)]++;
-  MPI_Alltoall(&scounts[0], 1, MPI_INT, &rcounts[0], 1, MPI_INT, MPI_COMM_WORLD);
-  int nrecv = rcounts[0];
-  for(int i = 1; i < np; i++) {
-    sdispls[i] = sdispls[i - 1] + scounts[i - 1];
-    rdispls[i] = rdispls[i - 1] + rcounts[i - 1];
-    nrecv += rcounts[i];
-  }
-  struct Key {
-    int type, entity, harmonic, partition;
-  };
-  std::vector<Key> skeys(LocalUnknownDofs.size() + 1), rkeys(nrecv + 1);
-  std::vector<int> pos(LocalUnknownDofs.size()), fill(sdispls);
-  for(std::size_t i = 0; i < LocalUnknownDofs.size(); i++) {
-    struct Dof *d = LocalUnknownDofs[i];
-    pos[i] = fill[home(d->Entity)]++;
-    Key k = {d->NumType, d->Entity, d->Harmonic,
-             d->Case.Unknown.PartitionOrNonLocal};
-    skeys[pos[i]] = k;
-  }
-  MPI_Datatype keyType, answerType;
-  MPI_Type_contiguous(4, MPI_INT, &keyType);
-  MPI_Type_commit(&keyType);
-  MPI_Type_contiguous(2, MPI_INT, &answerType);
-  MPI_Type_commit(&answerType);
-  MPI_Alltoallv(&skeys[0], &scounts[0], &sdispls[0], keyType, &rkeys[0],
-                &rcounts[0], &rdispls[0], keyType, MPI_COMM_WORLD);
-
-  // group the keys of each Dof and find its partition: non-local if it is for
-  // one rank, else the lowest partition that has it, 0 without any partition
-  std::vector<int> order(nrecv);
-  for(int i = 0; i < nrecv; i++) order[i] = i;
+// Groups the keys received by a home rank by Dof, the Dofs being sorted by
+// key: dofOf[i] is the Dof of the i-th key. Returns the partition of each Dof:
+// non-local if it is for one rank, else the lowest partition that has it, 0
+// without any partition.
+static std::vector<int> Dof_GroupKeys(const std::vector<DofKey> &keys,
+                                      std::vector<int> &dofOf)
+{
+  const int n = (int)keys.size();
+  std::vector<int> order(n);
+  for(int i = 0; i < n; i++) order[i] = i;
   std::sort(order.begin(), order.end(), [&](int a, int b) {
-    const Key &x = rkeys[a], &y = rkeys[b];
+    const DofKey &x = keys[a], &y = keys[b];
     if(x.type != y.type) return x.type < y.type;
     if(x.entity != y.entity) return x.entity < y.entity;
     if(x.harmonic != y.harmonic) return x.harmonic < y.harmonic;
     return a < b;
   });
   auto same = [&](int a, int b) {
-    const Key &x = rkeys[a], &y = rkeys[b];
+    const DofKey &x = keys[a], &y = keys[b];
     return x.type == y.type && x.entity == y.entity && x.harmonic == y.harmonic;
   };
-  std::vector<int> partitionOf; // of each group
-  std::vector<int> count(blocks, 0), allCounts(blocks * np);
-  auto blockOf = [&](int p) { return p > 0 ? std::min(p, np) - 1 : np; };
-  for(int i = 0; i < nrecv;) {
+  std::vector<int> partitionOf;
+  dofOf.resize(n);
+  for(int i = 0; i < n;) {
     int j = i, part = 0;
     bool nonLocal = false;
-    for(; j < nrecv && same(order[i], order[j]); j++) {
-      int p = rkeys[order[j]].partition;
+    for(; j < n && same(order[i], order[j]); j++) {
+      int p = keys[order[j]].partition;
       if(p < 0) nonLocal = true;
       else if(p > 0 && (!part || p < part)) part = p;
+      dofOf[order[j]] = (int)partitionOf.size();
     }
     if(nonLocal) part = -1;
     partitionOf.push_back(part);
-    count[blockOf(part)]++;
     i = j;
   }
+  return partitionOf;
+}
+
+// Numbers the Dofs of the keys received by a home rank from each rank, and
+// returns the number and the partition of the Dof of each key. The equations
+// are numbered by block (one for each rank, for its partition, then one for
+// the global Dofs), and each block by home rank. split gets the first equation
+// of each partition, followed by the number of equations.
+static std::vector<std::vector<DofNumber> >
+Dof_NumberKeys(const std::vector<std::vector<DofKey> > &keys,
+               std::vector<int> &split)
+{
+  const int np = Message::GetCommSize(), me = Message::GetCommRank();
+  const int blocks = np + 1;
+  auto blockOf = [&](int p) { return p > 0 ? std::min(p, np) - 1 : np; };
+
+  // group the keys of each Dof and find its partition
+  std::vector<DofKey> all; // the keys received, from each rank in turn
+  for(int r = 0; r < np; r++)
+    all.insert(all.end(), keys[r].begin(), keys[r].end());
+  std::vector<int> dofOf;
+  std::vector<int> partitionOf = Dof_GroupKeys(all, dofOf);
+  std::vector<int> count(blocks, 0), allCounts(blocks * np);
+  for(int part : partitionOf) count[blockOf(part)]++;
   MPI_Allgather(&count[0], blocks, MPI_INT, &allCounts[0], blocks, MPI_INT,
                 MPI_COMM_WORLD);
 
   // the first number of each block on this home rank, and the partition split
-  const int me = Message::GetCommRank();
   std::vector<int> next(blocks);
-  std::vector<int> split(1, 0);
+  split.assign(1, 0);
   int total = CurrentDofData->NbrDof;
   for(int b = 0; b < blocks; b++) {
     next[b] = total;
@@ -2133,65 +2087,117 @@ static void Dof_NumberUnknownDofLocal(void)
     }
     if(b < np) split.push_back(total);
   }
+  split.push_back(total);
 
   // number the Dofs and answer in the order of the received keys
-  std::vector<int> ranswers(2 * nrecv + 2), sanswers(2 * skeys.size());
-  int group = 0;
-  for(int i = 0; i < nrecv; group++) {
-    int part = partitionOf[group];
-    int num = ++next[blockOf(part)];
-    int j = i;
-    for(; j < nrecv && same(order[i], order[j]); j++) {
-      ranswers[2 * order[j]] = num;
-      ranswers[2 * order[j] + 1] = part;
-    }
-    i = j;
-  }
-  MPI_Alltoallv(&ranswers[0], &rcounts[0], &rdispls[0], answerType, &sanswers[0],
-                &scounts[0], &sdispls[0], answerType, MPI_COMM_WORLD);
-  MPI_Type_free(&keyType);
-  MPI_Type_free(&answerType);
+  std::vector<int> num(partitionOf.size());
+  for(std::size_t g = 0; g < partitionOf.size(); g++)
+    num[g] = ++next[blockOf(partitionOf[g])];
+  std::vector<std::vector<DofNumber> > numbers(np);
+  for(int r = 0, i = 0; r < np; r++)
+    for(std::size_t k = 0; k < keys[r].size(); k++, i++)
+      numbers[r].push_back({num[dofOf[i]], partitionOf[dofOf[i]]});
+  return numbers;
+}
 
+// Sends back to each rank the numbers of the keys it sent, and gives them to
+// the unnumbered Dofs of this rank (see Dof_SendKeysHome)
+static void
+Dof_SendNumbersBack(const std::vector<std::vector<DofNumber> > &numbers,
+                    int maxEntity, const std::vector<int> &pos)
+{
+  std::vector<std::vector<DofNumber> > recv;
+  Message::Exchange(numbers, recv);
+  for(std::size_t i = 0; i < UnnumberedLocalDofs.size(); i++) {
+    struct Dof *d = UnnumberedLocalDofs[i];
+    const DofNumber &answer = recv[Dof_HomeRank(d->Entity, maxEntity)][pos[i]];
+    d->Case.Unknown.NumDof = answer.num;
+    d->Case.Unknown.PartitionOrNonLocal = answer.partition;
+  }
+}
+
+// All the ranks get the global Dofs, numbered by the ranks that have them
+static void Dof_ShareGlobalDofs()
+{
   std::vector<struct Dof> globals;
-  for(std::size_t i = 0; i < LocalUnknownDofs.size(); i++) {
-    struct Dof *d = LocalUnknownDofs[i];
-    d->Case.Unknown.NumDof = sanswers[2 * pos[i]];
-    d->Case.Unknown.PartitionOrNonLocal = sanswers[2 * pos[i] + 1];
+  for(struct Dof *d : UnnumberedLocalDofs)
     if(d->Case.Unknown.PartitionOrNonLocal <= 0) globals.push_back(*d);
-  }
-  LocalUnknownDofs.clear();
-
-  // all the ranks get the global Dofs
-  int nb = (int)(globals.size() * sizeof(struct Dof));
-  std::vector<int> nbs(np), displs(np, 0);
-  MPI_Allgather(&nb, 1, MPI_INT, &nbs[0], 1, MPI_INT, MPI_COMM_WORLD);
-  int nbTotal = nbs[0];
-  for(int i = 1; i < np; i++) {
-    displs[i] = displs[i - 1] + nbs[i - 1];
-    nbTotal += nbs[i];
-  }
-  std::vector<char> allGlobals(nbTotal + 1);
-  MPI_Allgatherv(globals.empty() ? NULL : (void *)&globals[0], nb, MPI_BYTE,
-                 &allGlobals[0], &nbs[0], &displs[0], MPI_BYTE, MPI_COMM_WORLD);
+  Message::Gather(globals, true);
   std::set<int> nonLocalEquations;
-  for(int i = 0; i < nbTotal / (int)sizeof(struct Dof); i++) {
-    struct Dof d;
-    memcpy((void *)&d, &allGlobals[i * sizeof(struct Dof)], sizeof(struct Dof));
+  for(struct Dof &d : globals) {
     if(!Dof_Find(CurrentDofData, &d, true)) Dof_Add(CurrentDofData, &d);
     if(d.Case.Unknown.PartitionOrNonLocal < 0)
       nonLocalEquations.insert(d.Case.Unknown.NumDof);
   }
   for(int n : nonLocalEquations) CurrentDofData->NonLocalEquations.push_back(n);
+}
 
-  CurrentDofData->NbrDof = total;
+// Numbers the unknown Dofs with rank-local Dofs, when each rank has only
+// defined the Dofs of its mesh partition. The Dofs are sent to a "home" rank
+// chosen from their entity, which keeps the entities of neighboring numbers
+// together.
+//
+// The home rank knows all the ranks that have a Dof: this gives it one owner.
+// As for the numbering by partition with all the Dofs on all the ranks, the
+// equations of each partition are consecutive, and the global Dofs come last.
+// The numbers only depend on the blocks counted on each home rank, so that they
+// can be computed there and sent back without a second exchange.
+//
+// Global Dofs: a rank whose partition has no element in the region of a global
+// Dof has not defined it, but it needs it, e.g. for the global equations; all
+// the ranks thus get them all, with the same numbers. The non-local equations
+// belong to the last rank.
+static void Dof_NumberUnknownDofLocal(void)
+{
+  UnnumberedLocalDofs.clear();
+  Tree_Action(CurrentDofData->DofTree, GetUnnumberedLocalDofs);
+
+  // The associated Dofs of global quantities have already been numbered, first
+  // (see Dof_DefineAssociateDof), and they belong to the first rank as with
+  // all the Dofs on all the ranks. All the ranks treat the global terms, in the
+  // same order, so that they must all have given the same numbers.
+  int base[2] = {CurrentDofData->NbrDof, -CurrentDofData->NbrDof};
+  MPI_Allreduce(MPI_IN_PLACE, base, 2, MPI_INT, MPI_MIN, MPI_COMM_WORLD);
+  if(base[0] != -base[1]) {
+    Message::Error("Rank-local Dofs (use -all-dofs): the ranks have numbered "
+                   "different associated Dofs (between %d and %d)",
+                   base[0], -base[1]);
+    return;
+  }
+
+  int maxEntity = 0;
+  for(auto d : UnnumberedLocalDofs)
+    if(d->Case.Unknown.PartitionOrNonLocal > 0)
+      maxEntity = std::max(maxEntity, d->Entity);
+  MPI_Allreduce(MPI_IN_PLACE, &maxEntity, 1, MPI_INT, MPI_MAX, MPI_COMM_WORLD);
+
+  // send the keys of the Dofs to their home rank, which numbers them and sends
+  // their numbers back
+  std::vector<int> pos, split;
+  std::vector<std::vector<DofKey> > keys = Dof_SendKeysHome(maxEntity, pos);
+  Dof_SendNumbersBack(Dof_NumberKeys(keys, split), maxEntity, pos);
+
+  Dof_ShareGlobalDofs();
+  UnnumberedLocalDofs.clear();
+
+  CurrentDofData->NbrDof = split.back();
   CurrentDofData->PartitionSplit = split;
-  CurrentDofData->PartitionSplit.push_back(total);
-
-  std::ostringstream sstream;
-  for(auto p : CurrentDofData->PartitionSplit) sstream << p << " ";
-  Message::Info("Dofs partitioning: %s", sstream.str().c_str());
+  Dof_InfoPartitionSplit(CurrentDofData);
 }
 #endif
+
+// the unknown Dofs that have no number yet, by mesh partition (0 for the
+// elements without partition, -1 for the non-local, e.g. global, Dofs)
+static std::map<int, std::vector<struct Dof *>> UnnumberedDofs;
+
+static void GetUnnumberedDofs(void *a, void *b)
+{
+  struct Dof *Dof_P = (struct Dof *)a;
+  if((Dof_P->Type == DOF_UNKNOWN || Dof_P->Type == DOF_UNKNOWN_INIT) &&
+     Dof_P->Case.Unknown.NumDof == -1) {
+    UnnumberedDofs[Dof_P->Case.Unknown.PartitionOrNonLocal].push_back(Dof_P);
+  }
+}
 
 void Dof_NumberUnknownDof(void)
 {
@@ -2201,16 +2207,16 @@ void Dof_NumberUnknownDof(void)
     return;
   }
 #endif
-  UnnumberedUnknownDofs.clear();
+  UnnumberedDofs.clear();
   if(CurrentDofData->DofTree)
-    Tree_Action(CurrentDofData->DofTree, GetUnnumberedUnknownDofs);
+    Tree_Action(CurrentDofData->DofTree, GetUnnumberedDofs);
   else
-    List_Action(CurrentDofData->DofList, GetUnnumberedUnknownDofs);
+    List_Action(CurrentDofData->DofList, GetUnnumberedDofs);
 
   CurrentDofData->PartitionSplit.clear();
   CurrentDofData->PartitionSplit.push_back(0);
   // number dofs by partition and keep track of last dof in each partition
-  for(auto &p : UnnumberedUnknownDofs) {
+  for(auto &p : UnnumberedDofs) {
     if(p.first > 0) {
       Message::Debug("Numbering %lu dofs in partition %d", p.second.size(),
                      p.first);
@@ -2222,7 +2228,7 @@ void Dof_NumberUnknownDof(void)
   }
 
   // number remaining (global and non-partitioned) dofs
-  for(auto &p : UnnumberedUnknownDofs) {
+  for(auto &p : UnnumberedDofs) {
     if(p.first <= 0) {
       Message::Debug("Numbering %lu global or non-partitioned dofs",
                      p.second.size());
@@ -2235,13 +2241,8 @@ void Dof_NumberUnknownDof(void)
   }
 
   CurrentDofData->PartitionSplit.push_back(CurrentDofData->NbrDof);
-  UnnumberedUnknownDofs.clear();
-
-  if(CurrentDofData->PartitionSplit.size() > 2) {
-    std::ostringstream sstream;
-    for(auto p : CurrentDofData->PartitionSplit) sstream << p << " ";
-    Message::Info("Dofs partitioning: %s", sstream.str().c_str());
-  }
+  UnnumberedDofs.clear();
+  Dof_InfoPartitionSplit(CurrentDofData);
 }
 
 
@@ -2260,7 +2261,7 @@ void Dof_DefineAssociateDof(int E1, int E2, int D1, int D2, int NbrHar,
 
   for(k = 0; k < NbrHar; k += gSCALAR_SIZE) {
     Equ.Harmonic = k;
-    if((Equ_P = (struct Dof *)Dof_Find(CurrentDofData, &Equ, true))) {
+    if((Equ_P = Dof_Find(CurrentDofData, &Equ, true))) {
       switch(Equ_P->Type) {
       case DOF_FIXED:
         Equ_P->Type = DOF_FIXEDWITHASSOCIATE;
@@ -2349,11 +2350,7 @@ void Dof_UpdateAssignFixedDof(int D1, int D2, int NbrHar, double *Val,
 
   for(k = 0; k < NbrHar; k += gSCALAR_SIZE) {
     Dof.Harmonic = k;
-    if(CurrentDofData->DofTree)
-      Dof_P = (struct Dof *)Dof_Find(CurrentDofData, &Dof, true);
-    else
-      Dof_P =
-        (struct Dof *)Dof_Find(CurrentDofData, &Dof, false);
+    Dof_P = Dof_Find(CurrentDofData, &Dof, CurrentDofData->DofTree != NULL);
     LinAlg_SetScalar(&Dof_P->Val, &Val[Dof_P->Harmonic]);
     LinAlg_SetScalar(&Dof_P->Val2, &Val2[Dof_P->Harmonic]);
   }
@@ -2373,11 +2370,7 @@ void Dof_UpdateLinkDof(int D1, int D2, int NbrHar, double Value[], int D2_Link)
 
   for(k = 0; k < NbrHar; k += gSCALAR_SIZE) {
     Dof.Harmonic = k;
-    if(CurrentDofData->DofTree)
-      Dof_P = (struct Dof *)Dof_Find(CurrentDofData, &Dof, true);
-    else
-      Dof_P =
-        (struct Dof *)Dof_Find(CurrentDofData, &Dof, false);
+    Dof_P = Dof_Find(CurrentDofData, &Dof, CurrentDofData->DofTree != NULL);
 
     if(Dof_P->Type == DOF_LINK || Dof_P->Type == DOF_LINKCPLX) {
       /*
@@ -2916,11 +2909,13 @@ static bool Dof_WaitsForValues(struct Dof *Dof_P)
          Dof_P->Type == DOF_UNKNOWN_INIT;
 }
 
+#if defined(HAVE_MPI)
 static std::vector<struct Dof *> *WaitingDofs = NULL;
 static void Dof_GetWaitingDof(void *a, void *b)
 {
   if(Dof_WaitsForValues((struct Dof *)a)) WaitingDofs->push_back((struct Dof *)a);
 }
+#endif
 
 // The value of a Dof of the first system, and its value in the previous
 // solution (zero if there is none)
@@ -2942,7 +2937,7 @@ static void Dof_GetValuesToTransfer(struct DofData *DofData_P1, struct Dof *Dof_
 void Dof_TransferDof(struct DofData *DofData_P1, struct DofData **DofData_P2)
 {
   int i, Nbr_AnyDof;
-  struct Dof Dof, *Dof_P;
+  struct Dof *Dof_P;
   gScalar Val, Val2;
 
   Nbr_AnyDof = List_Nbr(DofData_P1->DofList);
@@ -2950,11 +2945,10 @@ void Dof_TransferDof(struct DofData *DofData_P1, struct DofData **DofData_P2)
     (struct Solution *)List_Pointer(DofData_P1->Solutions, 0);
 
   for(i = 0; i < Nbr_AnyDof; i++) {
-    Dof = *(struct Dof *)List_Pointer(DofData_P1->DofList, i);
-    if((Dof_P = (struct Dof *)Dof_Find(*DofData_P2, &Dof,
-                                       (*DofData_P2)->DofTree != NULL)) &&
-       Dof_WaitsForValues(Dof_P)) {
-      Dof_GetValuesToTransfer(DofData_P1, &Dof, &Val, &Val2);
+    struct Dof *Dof1_P = (struct Dof *)List_Pointer(DofData_P1->DofList, i);
+    Dof_P = Dof_Find(*DofData_P2, Dof1_P, (*DofData_P2)->DofTree != NULL);
+    if(Dof_P && Dof_WaitsForValues(Dof_P)) {
+      Dof_GetValuesToTransfer(DofData_P1, Dof1_P, &Val, &Val2);
       Dof_TransferValues(Dof_P, Val, Val2);
     }
   }
@@ -2967,9 +2961,8 @@ void Dof_TransferDof(struct DofData *DofData_P1, struct DofData **DofData_P2)
   // for the elements of its partition (e.g. an edge of one of its volumes on
   // a surface whose elements belong to the other ranks). The ranks tell each
   // other which Dofs still wait, and those that have them send their values.
-  const int np = Message::GetCommSize(), me = Message::GetCommRank();
   std::vector<struct Dof *> waiting;
-  std::vector<int> keys, counts(np), displs(np);
+  std::vector<int> keys;
   const bool tree1 = (DofData_P1->DofTree != NULL);
   WaitingDofs = &waiting;
   if((*DofData_P2)->DofTree)
@@ -2986,48 +2979,30 @@ void Dof_TransferDof(struct DofData *DofData_P1, struct DofData **DofData_P2)
     keys.push_back(d->Entity);
     keys.push_back(d->Harmonic);
   }
-  auto gather = [&](void *mine, int count, MPI_Datatype type,
-                    std::vector<char> &all, int size) {
-    int total = 0;
-    MPI_Allgather(&count, 1, MPI_INT, &counts[0], 1, MPI_INT, MPI_COMM_WORLD);
-    for(int r = 0; r < np; r++) {
-      displs[r] = total;
-      total += counts[r];
-    }
-    all.resize((std::size_t)(total + 1) * size);
-    MPI_Allgatherv(mine, count, type, &all[0], &counts[0], &displs[0], type,
-                   MPI_COMM_WORLD);
-    return total;
-  };
-  std::vector<char> buffer;
-  keys.push_back(0);
-  int total = gather(&keys[0], (int)keys.size() - 1, MPI_INT, buffer, sizeof(int));
-  const int first = displs[me] / 3, last = first + (int)waiting.size();
-  const int *allKeys = (const int *)&buffer[0];
+  // (the waiting Dofs of this rank are those from first to last)
+  const int first = Message::Gather(keys, true) / 3;
+  const int last = first + (int)waiting.size();
 
   // for each waiting Dof that this rank has in the first system: its position
   // among the waiting ones and its values
   std::vector<double> answers;
-  for(i = 0; i < total / 3; i++) {
-    Dof.NumType = allKeys[3 * i];
-    Dof.Entity = allKeys[3 * i + 1];
-    Dof.Harmonic = allKeys[3 * i + 2];
-    if(!(Dof_P = (struct Dof *)Dof_Find(DofData_P1, &Dof, tree1))) continue;
-    Dof = *Dof_P;
+  for(i = 0; i < (int)keys.size() / 3; i++) {
+    struct Dof Dof;
+    Dof.NumType = keys[3 * i];
+    Dof.Entity = keys[3 * i + 1];
+    Dof.Harmonic = keys[3 * i + 2];
+    if(!(Dof_P = Dof_Find(DofData_P1, &Dof, tree1))) continue;
     double d[5] = {(double)i, 0., 0., 0., 0.};
-    Dof_GetValuesToTransfer(DofData_P1, &Dof, &Val, &Val2);
+    Dof_GetValuesToTransfer(DofData_P1, Dof_P, &Val, &Val2);
     Dof_GetScalarPRE(&Val, d + 1);
     Dof_GetScalarPRE(&Val2, d + 3);
     answers.insert(answers.end(), d, d + 5);
   }
-  answers.push_back(0.);
-  std::vector<char> buffer2;
-  total = gather(&answers[0], (int)answers.size() - 1, MPI_DOUBLE, buffer2,
-                 sizeof(double));
-  const double *all = (const double *)&buffer2[0];
+  Message::Gather(answers, true);
+  const double *all = answers.data();
   Message::Debug("TransferSolution: %d Dofs wait for a value of another rank",
                  (int)waiting.size());
-  for(i = 0; i < total; i += 5) {
+  for(i = 0; i < (int)answers.size(); i += 5) {
     int k = (int)all[i];
     if(k < first || k >= last || !waiting[k - first] ||
        !Dof_WaitsForValues(waiting[k - first]))

@@ -591,9 +591,8 @@ void Treatment_FemFormulation(struct Formulation *Formulation_P)
   Message::ResetProgressMeter();
 
   const bool localDofs = Dof_UseLocalDofs();
-  const bool rootTreatsAll = localDofs && TreatmentStatus == STATUS_CST &&
-                             !Message::GetCommRank() &&
-                             Dof_GetAllDofsOnFirstRank();
+  const bool rootTreatsAll =
+    localDofs && TreatmentStatus == STATUS_CST && !Dof_HasOnlyOwnDofs();
   // in parallel each element is assembled by one rank, which adds all its
   // contributions (see Dof_IsPartitionOfThisRank)
   const bool oneRankPerElement =
@@ -615,24 +614,12 @@ void Treatment_FemFormulation(struct Formulation *Formulation_P)
          List_Search(Generate_Group->InitialList, &region, fcmp_int))
         regions.insert(region);
     }
-#if defined(HAVE_MPI)
-    if(Current.GeoData->HasParts || Current.GeoData->IsPart) {
+    if(Geo_IsDistributed(Current.GeoData)) {
       // each rank only has a part of the mesh: take the regions of all of them
-      std::vector<int> mine(regions.begin(), regions.end());
-      int np = Message::GetCommSize(), count = (int)mine.size(), total = 0;
-      std::vector<int> counts(np), displs(np);
-      MPI_Allgather(&count, 1, MPI_INT, &counts[0], 1, MPI_INT, MPI_COMM_WORLD);
-      for(int r = 0; r < np; r++) {
-        displs[r] = total;
-        total += counts[r];
-      }
-      std::vector<int> all(total + 1);
-      mine.push_back(0);
-      MPI_Allgatherv(&mine[0], count, MPI_INT, &all[0], &counts[0], &displs[0],
-                     MPI_INT, MPI_COMM_WORLD);
-      regions.insert(all.begin(), all.begin() + total);
+      std::vector<int> all(regions.begin(), regions.end());
+      Message::Gather(all, true);
+      regions.insert(all.begin(), all.end());
     }
-#endif
     for(int i_EquTerm = 0; i_EquTerm < Nbr_EquationTerm; i_EquTerm++) {
       EquationTerm_P = EquationTerm_P0 + i_EquTerm;
       if(EquationTerm_P->Type != GALERKIN) continue;

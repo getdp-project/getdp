@@ -28,11 +28,7 @@ private:
     std::size_t operator()(int i) const
     {
       const struct Entity2XEntity1 &x = (*e)[i];
-      std::size_t h = x.NbrEntities;
-      for(int k = 0; k < x.NbrEntities; k++)
-        h = (h ^ (std::size_t)(unsigned int)x.NumEntities[k]) *
-            0x9E3779B97F4A7C15ULL;
-      return h ^ (h >> 29);
+      return hash(x.NumEntities, x.NbrEntities, x.NbrEntities);
     }
   };
   struct Equal {
@@ -48,6 +44,13 @@ private:
   GeoEntityTable(const GeoEntityTable &);
 
 public:
+  // a hash of the n numbers of a list, starting from h
+  static std::size_t hash(const int *list, int n, std::size_t h = 0)
+  {
+    for(int k = 0; k < n; k++)
+      h = (h ^ (std::size_t)(unsigned int)list[k]) * 0x9E3779B97F4A7C15ULL;
+    return h ^ (h >> 29);
+  }
   GeoEntityTable() : _index(1024, Hash{&_entities}, Equal{&_entities}) {}
   ~GeoEntityTable()
   {

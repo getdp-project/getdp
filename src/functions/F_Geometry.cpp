@@ -15,10 +15,6 @@
 #include "MallocUtils.h"
 #include "Message.h"
 
-#if defined(HAVE_MPI)
-#include <mpi.h>
-#endif
-
 #if defined(HAVE_KERNEL)
 #include "GeoData.h"
 #include "DofData.h"
@@ -284,7 +280,7 @@ static double Get_VolumeOfElement(struct Element &Element)
 
 // SurfaceArea[], GetVolume[] and GetNumElements[] sum over all the elements of
 // some regions. When the ranks only have a part of the mesh
-// (Geo_SendParts) they cannot do it alone: before the pre-processing each
+// (Geo_IsDistributed) they cannot do it alone: before the pre-processing each
 // rank computes the area, the volume and the number of elements of each region
 // in its own mesh partition, and these are summed over the ranks.
 struct RegionMeasure {
@@ -307,26 +303,15 @@ void F_ComputeRegionMeasures()
     m.volume += std::max(0., Get_VolumeOfElement(Element));
     m.count += 1.;
   }
-  int np = Message::GetCommSize(), count = 4 * (int)mine.size(), total = 0;
-  std::vector<double> send(count + 1);
-  int k = 0;
+  std::vector<double> all;
   for(auto &m : mine) {
-    send[k++] = m.first;
-    send[k++] = m.second.area;
-    send[k++] = m.second.volume;
-    send[k++] = m.second.count;
+    double v[4] = {(double)m.first, m.second.area, m.second.volume,
+                   m.second.count};
+    all.insert(all.end(), v, v + 4);
   }
-  std::vector<int> counts(np), displs(np);
-  MPI_Allgather(&count, 1, MPI_INT, &counts[0], 1, MPI_INT, MPI_COMM_WORLD);
-  for(int r = 0; r < np; r++) {
-    displs[r] = total;
-    total += counts[r];
-  }
-  std::vector<double> all(total + 1);
-  MPI_Allgatherv(&send[0], count, MPI_DOUBLE, &all[0], &counts[0], &displs[0],
-                 MPI_DOUBLE, MPI_COMM_WORLD);
+  Message::Gather(all, true);
   RegionMeasures.clear();
-  for(int i = 0; i < total; i += 4) {
+  for(std::size_t i = 0; i < all.size(); i += 4) {
     RegionMeasure &m = RegionMeasures[(int)all[i]];
     m.area += all[i + 1];
     m.volume += all[i + 2];

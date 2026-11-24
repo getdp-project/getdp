@@ -172,12 +172,8 @@ bool Format_CanGmshParallel(struct PostSubOperation *PSO_P)
          PSO_P->Format == FORMAT_GMSH && Format_GmshMeshBased(PSO_P) &&
          PSO_P->FileOut && PSO_P->StoreInMeshBasedField < 0 &&
          PSO_P->StoreInRegister < 0 && !PSO_P->StoreInVariable &&
-         !PSO_P->Distributed && !PSO_P->Smoothing && !PSO_P->Adapt &&
-         !PSO_P->Sort &&
-         PSO_P->StoreMinInRegister < 0 && PSO_P->StoreMaxInRegister < 0 &&
-         PSO_P->StoreMinXinRegister < 0 && PSO_P->StoreMaxXinRegister < 0 &&
-         PSO_P->StoreMinYinRegister < 0 && PSO_P->StoreMaxYinRegister < 0 &&
-         PSO_P->StoreMinZinRegister < 0 && PSO_P->StoreMaxZinRegister < 0;
+         !PSO_P->SingleProcess && !PSO_P->Smoothing && !PSO_P->Adapt &&
+         !PSO_P->Sort && !Pos_StoresMinMax(PSO_P);
 #else
   return false;
 #endif
@@ -1210,7 +1206,6 @@ static void Gmsh_GetMesh(struct PostSubOperation *PSO_P, std::string &nodeText,
     Region_L = ((struct Group *)List_Pointer(Problem_S.Group,
                                              PSO_P->Case.OnRegion.RegionIndex))
                  ->InitialList;
-  const int np = Message::GetCommSize();
   const int me = GmshParallel ? Message::GetCommRank() : 0;
 
   // the elements of this rank by entity (dimension, tag) and type, and the
@@ -1220,8 +1215,7 @@ static void Gmsh_GetMesh(struct PostSubOperation *PSO_P, std::string &nodeText,
   for(int i = 0; i < Geo_GetNbrGeoElements(); i++) {
     Geo_Element *e = Geo_GetGeoElement(i);
     if(Region_L && !List_Search(Region_L, &e->Region, fcmp_int)) continue;
-    int rank = !GmshParallel ? 0 : (e->Partition > 0) ? (e->Partition - 1) % np :
-                                                        np - 1;
+    int rank = !GmshParallel ? 0 : Geo_RankOfPartition(e->Partition);
     if(rank == me)
       elements[{Geo_GetDimOfElement(e->Type), e->ElementaryRegion,
                 GetDP2Gmsh(e->Type)}]
@@ -1320,7 +1314,7 @@ static void Gmsh_GetMesh(struct PostSubOperation *PSO_P, std::string &nodeText,
 static void Gmsh_WriteEntities(std::vector<double> &records)
 {
 #if defined(HAVE_MPI)
-  if(GmshParallel) GatherOnFirstRank(records, MPI_DOUBLE);
+  if(GmshParallel) Message::Gather(records, false);
 #endif
   if(!PostStream) return;
   // (dimension, tag) -> physical groups and coordinates

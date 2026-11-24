@@ -9,6 +9,7 @@
 #include <map>
 #include <string>
 #include <vector>
+#include <functional>
 #include <stdarg.h>
 
 class GmshClient;
@@ -55,6 +56,12 @@ private:
   static GmshClient *_client;
   // communication with onelab server
   static onelab::client *_onelabClient;
+  // see Gather and Exchange
+  static int _gather(const void *mine, int n, int size, bool allRanks,
+                     const std::function<void *(int)> &space);
+  static void _exchange(const void *mine, const std::vector<int> &scounts,
+                        int size, std::vector<int> &rcounts,
+                        const std::function<void *(int)> &space);
 
 public:
   Message() {}
@@ -69,10 +76,42 @@ public:
   static void SetCommRank(int val) { _commRank = val; }
   static void SetCommSize(int val) { _commSize = val; }
   static void Barrier();
-  // sends the list send[r] of integers to each rank r, and returns in recv[r]
-  // the list that each rank r sent to this one (all the ranks call it)
-  static void Exchange(const std::vector<std::vector<int> > &send,
-                       std::vector<std::vector<int> > &recv);
+  // sends the list send[r] to each rank r, and returns in recv[r] the list
+  // that each rank r sent to this one (all the ranks call it)
+  template <class T>
+  static void Exchange(const std::vector<std::vector<T> > &send,
+                       std::vector<std::vector<T> > &recv)
+  {
+    const int np = GetCommSize();
+    std::vector<int> scounts(np), rcounts;
+    std::vector<T> mine, all;
+    for(int r = 0; r < np; r++) {
+      scounts[r] = (int)send[r].size();
+      mine.insert(mine.end(), send[r].begin(), send[r].end());
+    }
+    _exchange(mine.data(), scounts, (int)sizeof(T), rcounts, [&](int total) {
+      all.resize(total);
+      return (void *)all.data();
+    });
+    recv.assign(np, std::vector<T>());
+    for(int r = 0, k = 0; r < np; k += rcounts[r++])
+      recv[r].assign(all.begin() + k, all.begin() + k + rcounts[r]);
+  }
+  // replaces the list v of each rank by the lists of all the ranks, one after
+  // the other, on all the ranks (allRanks) or on the first rank only (and by
+  // nothing on the others), and returns where the list of this rank starts in
+  // it if allRanks (all the ranks call it)
+  template <class T> static int Gather(std::vector<T> &v, bool allRanks)
+  {
+    std::vector<T> all;
+    int first = _gather(v.data(), (int)v.size(), (int)sizeof(T), allRanks,
+                        [&](int total) {
+                          all.resize(total);
+                          return (void *)all.data();
+                        });
+    v.swap(all);
+    return first;
+  }
   static void WriteParallelSections(FILE *stream, const char *fileName,
                                     std::string &section,
                                     std::vector<long long> *positions = NULL);

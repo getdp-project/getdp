@@ -390,11 +390,8 @@ void Pos_ResampleTime(struct PostOperation *PostOperation_P)
 bool Pos_IsParallelView(struct Formulation *Formulation_P,
                         struct PostSubOperation *PostSubOperation_P)
 {
-  return PostSubOperation_P->Type == POP_PRINT &&
+  return Pos_IsLocalPrint(PostSubOperation_P) &&
          Format_CanGmshParallel(PostSubOperation_P) &&
-         PostSubOperation_P->PostQuantityIndex[0] >= 0 &&
-         PostSubOperation_P->PostQuantitySupport[0] < 0 &&
-         PostSubOperation_P->PostQuantityIndex[1] < 0 &&
          Formulation_P->Type == FEMEQUATION;
 }
 
@@ -507,7 +504,7 @@ void Pos_Formulation(struct Formulation *Formulation_P,
 
     if(!strlen(PostFileName) ||
        (Message::GetIsCommWorld() && Message::GetCommRank() &&
-        (!PostSubOperation_P->Distributed || Dof_UseLocalDofs())) ||
+        (!PostSubOperation_P->SingleProcess || Dof_UseLocalDofs())) ||
        Pos_GetGatherPhase() == POS_EVALUATE) {
       // in parallel (SetCommWorld) only the first rank writes to the file,
       // unless the sub-operation is done by a single rank (SingleProcess); a
@@ -609,26 +606,26 @@ void Pos_Formulation(struct Formulation *Formulation_P,
                    "OnRegion or OnPoint yet");
   Dof_SetPostOnRootOnly(rootOnly);
 
-  // the messages of the evaluation are only reached by rank 0
-  const bool previousLocalCpu = Message::GetLocalCpu();
-  if(rootOnly) Message::SetLocalCpu(true);
+  {
+    // the messages of the evaluation are only reached by rank 0
+    MessageLocalCpu localCpu(rootOnly);
 
-  if(rootOnly && Message::GetCommRank()) {
-    // nothing to evaluate
+    if(rootOnly && Message::GetCommRank()) {
+      // nothing to evaluate
+    }
+    else switch(Formulation_P->Type) {
+    case FEMEQUATION:
+      Pos_FemFormulation(Formulation_P, NCPQ_P, CPQ_P, Order,
+                         PostSubOperation_P);
+      break;
+
+    case GLOBALEQUATION: break;
+
+    default:
+      Message::Error("Unknown Type for Formulation (%s)", Formulation_P->Name);
+      break;
+    }
   }
-  else switch(Formulation_P->Type) {
-  case FEMEQUATION:
-    Pos_FemFormulation(Formulation_P, NCPQ_P, CPQ_P, Order, PostSubOperation_P);
-    break;
-
-  case GLOBALEQUATION: break;
-
-  default:
-    Message::Error("Unknown Type for Formulation (%s)", Formulation_P->Name);
-    break;
-  }
-
-  Message::SetLocalCpu(previousLocalCpu);
 
   if(PostStream && PostSubOperation_P->FileOut) {
     fclose(PostStream);

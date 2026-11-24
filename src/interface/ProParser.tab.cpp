@@ -451,7 +451,7 @@
      tAppendTimeStepToFileName = 632,
      tTimeValue = 633,
      tTimeImagValue = 634,
-     tDistributed = 635,
+     tSingleProcess = 635,
      tTimeInterval = 636,
      tAtGaussPoints = 637,
      tAppendExpressionToFileName = 638,
@@ -858,7 +858,7 @@
 #define tAppendTimeStepToFileName 632
 #define tTimeValue 633
 #define tTimeImagValue 634
-#define tDistributed 635
+#define tSingleProcess 635
 #define tTimeInterval 636
 #define tAtGaussPoints 637
 #define tAppendExpressionToFileName 638
@@ -2329,7 +2329,7 @@ static const char *const yytname[] =
   "tStoreMaxZinRegister", "tStoreMinInRegister", "tStoreMinXinRegister",
   "tStoreMinYinRegister", "tStoreMinZinRegister", "tLastTimeStepOnly",
   "tAppendTimeStepToFileName", "tTimeValue", "tTimeImagValue",
-  "tDistributed", "tTimeInterval", "tAtGaussPoints",
+  "tSingleProcess", "tTimeInterval", "tAtGaussPoints",
   "tAppendExpressionToFileName", "tAppendExpressionFormat",
   "tOverrideTimeStepValue", "tNoMesh", "tSendToServer", "tDate",
   "tOnelabAction", "tCodeName", "tFixRelativePath",
@@ -16794,7 +16794,7 @@ yyreduce:
       PostOperation_S.Comma = NULL;
       PostOperation_S.CatFile = 0;
       PostOperation_S.PostSubOperation = NULL;
-      PostOperation_S.Distributed = false;
+      PostOperation_S.SingleProcess = false;
       level_Append = 0;
     ;}
     break;
@@ -16935,14 +16935,14 @@ yyreduce:
   case 721:
 #line 7352 "ProParser.y"
     {
-      PostOperation_S.Distributed = true;
+      PostOperation_S.SingleProcess = true;
     ;}
     break;
 
   case 722:
 #line 7357 "ProParser.y"
     {
-      PostOperation_S.Distributed = (yyvsp[(2) - (3)].d) ? true : false;
+      PostOperation_S.SingleProcess = (yyvsp[(2) - (3)].d) ? true : false;
     ;}
     break;
 
@@ -16969,7 +16969,7 @@ yyreduce:
       PostOperation_S.Comma = NULL;
       PostOperation_S.CatFile = 0;
       PostOperation_S.PostSubOperation = NULL;
-      PostOperation_S.Distributed = false;
+      PostOperation_S.SingleProcess = false;
       level_Append = (yyvsp[(2) - (5)].i); index_Append = -1;
       int i;
       if((i = List_ISearchSeq(Problem_S.PostProcessing, (yyvsp[(5) - (5)].c),
@@ -17088,7 +17088,7 @@ yyreduce:
       PostSubOperation_S.TimeInterval_Flag = 0;
       PostSubOperation_S.TimeInterval[0] = 0.;
       PostSubOperation_S.TimeInterval[1] = 0.;
-      PostSubOperation_S.Distributed = -1;
+      PostSubOperation_S.SingleProcess = -1;
      ;}
     break;
 
@@ -17114,8 +17114,8 @@ yyreduce:
           PostSubOperation_S.OverrideTimeStepValue = PostOperation_S.OverrideTimeStepValue;
 	if(!PostSubOperation_S.CatFile)
           PostSubOperation_S.CatFile = PostOperation_S.CatFile;
-	if(PostSubOperation_S.Distributed < 0)
-          PostSubOperation_S.Distributed = PostOperation_S.Distributed;
+	if(PostSubOperation_S.SingleProcess < 0)
+          PostSubOperation_S.SingleProcess = PostOperation_S.SingleProcess;
 
 	List_Add((yyval.l) = (yyvsp[(1) - (3)].l), &PostSubOperation_S);
       }
@@ -18089,14 +18089,14 @@ yyreduce:
   case 833:
 #line 8249 "ProParser.y"
     {
-      PostSubOperation_S.Distributed = 1;
+      PostSubOperation_S.SingleProcess = 1;
     ;}
     break;
 
   case 834:
 #line 8253 "ProParser.y"
     {
-      PostSubOperation_S.Distributed = (yyvsp[(3) - (3)].d) ? 1 : 0;
+      PostSubOperation_S.SingleProcess = (yyvsp[(3) - (3)].d) ? 1 : 0;
     ;}
     break;
 

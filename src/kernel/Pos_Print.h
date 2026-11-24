@@ -23,6 +23,15 @@ void Pos_PrintWithArgument(ARG);
 
 #undef ARG
 
+// whether a Print stores the minimum or the maximum of its values, or their
+// coordinates, in registers (StoreMinInRegister, StoreMaxXinRegister, ...)
+bool Pos_StoresMinMax(struct PostSubOperation *PostSubOperation_P);
+
+// whether a Print can be evaluated by each rank on its mesh partition (see
+// Pos_Print.cpp), the condition shared by Pos_IsGathered,
+// Pos_IsStoredByPartition and Pos_IsParallelView
+bool Pos_IsLocalPrint(struct PostSubOperation *PostSubOperation_P);
+
 bool Pos_IsGathered(struct PostSubOperation *PostSubOperation_P);
 
 // A field stored by a Print on the elements, evaluated by each rank on its

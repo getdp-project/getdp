@@ -32,7 +32,7 @@
 
 extern double Flag_ORDER, Flag_MSH_SCALING;
 extern int Flag_CALLED_WITH_ONELAB_SERVER;
-extern int Flag_PRE, Flag_LOCAL_DOFS;
+extern int Flag_PRE;
 extern struct Problem Problem_S;
 
 FILE *File_GEO;
@@ -40,12 +40,7 @@ char *name;
 
 struct GeoData *CurrentGeoData;
 
-// Whether the ranks read their part of the mesh together (the numbers of the
-// elements that Geo_ReadFileWithGmsh creates then depend on the whole mesh)
-#if defined(HAVE_MPI)
-static bool ReadsPart = false;
-#endif
-static void Geo_ReadFileWithGmsh(struct GeoData *GeoData_P, bool loaded = false);
+static void Geo_ReadFileWithGmsh(struct GeoData *GeoData_P, bool part = false);
 
 static void swapBytes(char *array, int size, int n)
 {
@@ -194,31 +189,30 @@ void Geo_GetLinkRegions(std::unordered_set<int> &regions)
 //   on a surface with a boundary condition), a rank must have all the elements
 //   that contain them;
 //
-// with their nodes. The first rank then only keeps its own part, unless the
-// problem has something that it still does alone on the whole mesh: the
-// post-processing that is not parallel, SaveMesh (WholeMeshOnFirstRank = 2),
-// or the trees that are not built over the ranks, which it builds in the
-// pre-processing and sends to the others (1: it only keeps its part after
-// that); see Geo_SetWholeMeshOnFirstRank.
-static int WholeMeshOnFirstRank = 2;
-void Geo_SetWholeMeshOnFirstRank(int whole) { WholeMeshOnFirstRank = whole; }
-int Geo_GetWholeMeshOnFirstRank() { return WholeMeshOnFirstRank; }
+// with their nodes. The first rank then only keeps its own part
+// (WHOLE_MESH_NEVER), unless the problem has something that it still does
+// alone on the whole mesh: the post-processing that is not parallel, SaveMesh
+// (WHOLE_MESH_ALWAYS), or the trees that are not built over the ranks, which
+// it builds in the pre-processing and sends to the others
+// (WHOLE_MESH_UNTIL_TREES: it only keeps its part after that); see
+// Geo_SetWholeMeshOnFirstRank.
+static WholeMeshOnFirstRank WholeMesh = WHOLE_MESH_ALWAYS;
+void Geo_SetWholeMeshOnFirstRank(WholeMeshOnFirstRank whole)
+{
+  WholeMesh = whole;
+}
 
 static bool Geo_CanDistributeMesh(char *Name_AdaptFile)
 {
-#if defined(HAVE_MPI)
   // in the run that does the pre-processing, or in a later one that reads the
   // Dofs that each rank had
-  return (Flag_PRE || Dof_ReadsOwnSectionsPRE()) && Flag_LOCAL_DOFS &&
-         !Name_AdaptFile && Message::GetCommSize() > 1 &&
-         Message::GetIsCommWorld();
-#else
-  return false;
-#endif
+  return (Flag_PRE || Dof_ReadsOwnSectionsPRE()) && Dof_UseLocalDofs() &&
+         !Name_AdaptFile;
 }
 
 // Leaves on the first rank the elements of its part of the mesh (those that
-// Geo_SendParts found for it), with their nodes, edges and facets.
+// Geo_SendParts found for it), with their nodes, edges and facets, if it still
+// has the whole mesh until the trees are built (see Geo_SetFirstRankPart).
 void Geo_KeepPartOnFirstRank(struct GeoData *GeoData_P)
 {
   if(!GeoData_P->HasParts || !GeoData_P->FirstRankPart) return;
@@ -273,17 +267,20 @@ void Geo_KeepPartOnFirstRank(struct GeoData *GeoData_P)
   GeoData_P->IsPart = true;
 }
 
+// The rank of a mesh partition, which assembles its elements and numbers its
+// Dofs (see Dof_IsPartitionOfThisRank): the elements without partition go to
+// the last rank, like the global equations
 int Geo_RankOfPartition(int partition)
 {
-  int np = Message::GetCommSize(); // as Dof_IsPartitionOfThisRank
+  int np = Message::GetCommSize();
   return (partition > 0) ? (partition - 1) % np : np - 1;
 }
 
 #if defined(HAVE_MPI)
-// The positions of the elements of the part of the mesh of each rank (of the
-// ranks below last), in the whole mesh
+// The positions of the elements of the part of the mesh of each rank, in the
+// whole mesh
 static std::vector<std::vector<int> >
-Geo_ElementsOfRanks(struct GeoData *GeoData_P, int last)
+Geo_ElementsOfRanks(struct GeoData *GeoData_P)
 {
   const int np = Message::GetCommSize();
   const int nElements = List_Nbr(GeoData_P->Elements);
@@ -331,7 +328,7 @@ Geo_ElementsOfRanks(struct GeoData *GeoData_P, int last)
 
   // the elements of each rank: those that share a node with an element whose
   // Dofs it defines
-  std::vector<std::vector<int> > elementsOfRank(last);
+  std::vector<std::vector<int> > elementsOfRank(np);
   std::vector<char> has(np);
   for(int e = 0; e < nElements; e++) {
     struct Geo_Element *ge = element(e);
@@ -342,7 +339,7 @@ Geo_ElementsOfRanks(struct GeoData *GeoData_P, int last)
       if(allRanksOfNode[i]) all = true;
       for(int rank : ranksOfNode[i]) has[rank] = 1;
     }
-    for(int rank = 0; rank < last; rank++)
+    for(int rank = 0; rank < np; rank++)
       if(all || has[rank]) elementsOfRank[rank].push_back(e);
   }
   return elementsOfRank;
@@ -354,9 +351,10 @@ static void Geo_SetFirstRankPart(struct GeoData *GeoData_P,
                                  const std::vector<int> &part)
 {
   GeoData_P->HasParts = true;
-  if(WholeMeshOnFirstRank == 2) return;
+  if(WholeMesh == WHOLE_MESH_ALWAYS) return;
   GeoData_P->FirstRankPart = new std::vector<int>(part);
-  if(WholeMeshOnFirstRank == 0 || !Flag_PRE) Geo_KeepPartOnFirstRank(GeoData_P);
+  if(WholeMesh == WHOLE_MESH_NEVER || !Flag_PRE)
+    Geo_KeepPartOnFirstRank(GeoData_P);
 }
 
 static void Geo_SendParts(struct GeoData *GeoData_P)
@@ -372,7 +370,7 @@ static void Geo_SendParts(struct GeoData *GeoData_P)
     return (int)(Geo_FindNode(GeoData_P, abs(num)) - node0);
   };
   std::vector<std::vector<int> > elementsOfRank =
-    Geo_ElementsOfRanks(GeoData_P, np);
+    Geo_ElementsOfRanks(GeoData_P);
 
   std::vector<int> stamp(nNodes, 0);
   for(int rank = 1; rank < np; rank++) {
@@ -515,11 +513,13 @@ static bool Geo_CanReadPart()
 {
   std::unordered_set<int> linkRegions;
   Geo_GetLinkRegions(linkRegions);
-  const char *need =
-    (WholeMeshOnFirstRank == 2)              ? "the whole mesh on the first rank" :
-    (WholeMeshOnFirstRank == 1 && Flag_PRE) ? "a tree, built on the whole mesh" :
-    !linkRegions.empty()                     ? "a Link constraint" :
-                                               NULL;
+  const char *need = NULL;
+  if(WholeMesh == WHOLE_MESH_ALWAYS)
+    need = "the whole mesh on the first rank";
+  else if(WholeMesh == WHOLE_MESH_UNTIL_TREES && Flag_PRE)
+    need = "a tree, built on the whole mesh";
+  else if(!linkRegions.empty())
+    need = "a Link constraint";
   if(need)
     Message::Info("The mesh files of the partitions are not used (the problem "
                   "has %s)", need);
@@ -608,11 +608,7 @@ static bool Geo_ReadPartFile(struct GeoData *GeoData_P, const char *Name)
                        "do not all have ghost cells: %s)", how.c_str());
     return false;
   }
-  name = (char *)partName.c_str();
-  ReadsPart = true;
   Geo_ReadFileWithGmsh(GeoData_P, true);
-  ReadsPart = false;
-  name = (char *)Name;
   gmsh::clear();
   Geo_EndReadPart(GeoData_P, partName.c_str(), how.c_str());
   return true;
@@ -628,14 +624,14 @@ int Geo_AddGeoData(List_T *GeoData_L, char *Name_MshFile,
   int i;
 
   if(!Name_MshFile) Name_MshFile = Name_DefaultMshFile;
+  if(!Name_AdaptFile) Name_AdaptFile = Name_DefaultAdaptFile;
 
   if((i = List_ISearchSeq(GeoData_L, Name_MshFile, fcmp_GeoData_Name)) < 0) {
     Message::Info("Loading Geometric data '%s'", Name_MshFile);
     i = List_Nbr(GeoData_L);
     Geo_InitGeoData(&GeoData_S, i, Name_MshFile);
     if(Message::GetInfoCpu()) Message::MarkOperationCpu("ReadMeshFile");
-    bool distribute = Geo_CanDistributeMesh(
-      Name_AdaptFile ? Name_AdaptFile : Name_DefaultAdaptFile);
+    bool distribute = Geo_CanDistributeMesh(Name_AdaptFile);
     // the messages of the first rank (with -cpu they ask all the ranks for
     // their time and memory) are then not reached by the others
     MessageLocalCpu localCpu(distribute);
@@ -662,7 +658,6 @@ int Geo_AddGeoData(List_T *GeoData_L, char *Name_MshFile,
 #endif
     if(Message::GetInfoCpu()) Message::MarkOperationCpu("");
 
-    if(!Name_AdaptFile) Name_AdaptFile = Name_DefaultAdaptFile;
     if(Name_AdaptFile) {
       Message::Info("Loading Adaptation data '%s'", Name_AdaptFile);
       Geo_OpenFile(Name_AdaptFile, "r");
@@ -1011,7 +1006,10 @@ static void Geo_SnapNodes(struct GeoData *GeoData_P)
                   (snaps > 1) ? "s" : "");
 }
 
-static void Geo_ReadFileWithGmsh(struct GeoData *GeoData_P, bool loaded)
+// Reads the mesh file 'name' with Gmsh or, if part is set, the file of the
+// partition of the rank that Geo_ReadPartFile has already loaded (the ranks
+// then read their part of the mesh together)
+static void Geo_ReadFileWithGmsh(struct GeoData *GeoData_P, bool part)
 {
 #if defined(HAVE_GMSH)
   // within the program that runs the ONELAB server (the mobile and web apps),
@@ -1026,7 +1024,7 @@ static void Geo_ReadFileWithGmsh(struct GeoData *GeoData_P, bool loaded)
       GModel::setCurrent(shown);
     }
   } restore;
-  if(loaded) {} // the file of the partition of the rank (Geo_ReadPartFile)
+  if(part) {} // already loaded
   else if(Flag_CALLED_WITH_ONELAB_SERVER) {
     restore.shown = GModel::current();
     GModel::setCurrent(new GModel());
@@ -1123,7 +1121,7 @@ static void Geo_ReadFileWithGmsh(struct GeoData *GeoData_P, bool loaded)
   }
 
 #if defined(HAVE_MPI)
-  if(ReadsPart) {
+  if(part) { // (the tags of the copies below depend on the whole mesh)
     long long max = maxTag;
     MPI_Allreduce(MPI_IN_PLACE, &max, 1, MPI_LONG_LONG, MPI_MAX, MPI_COMM_WORLD);
     maxTag = max;

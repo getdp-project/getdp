@@ -3300,7 +3300,7 @@ return tDirName;
 case 119:
 YY_RULE_SETUP
 #line 190 "ProParser.l"
-return tDistributed;
+return tSingleProcess;
 	YY_BREAK
 case 120:
 YY_RULE_SETUP
@@ -4470,7 +4470,7 @@ return tSinh;
 case 353:
 YY_RULE_SETUP
 #line 438 "ProParser.l"
-return tDistributed;
+return tSingleProcess;
 	YY_BREAK
 case 354:
 YY_RULE_SETUP

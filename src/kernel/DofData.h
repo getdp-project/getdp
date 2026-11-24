@@ -7,8 +7,6 @@
 #define DOFDATA_H
 
 #include <vector>
-#include <set>
-#include <unordered_map>
 #include "ListUtils.h"
 #include "TreeUtils.h"
 #include "LinAlg.h"
@@ -160,7 +158,6 @@ void Dof_SetCurrentDofData(struct DofData *DofData_P);
 
 void Dof_OpenFile(int Type, char *Name, const char *Mode);
 void Dof_CloseFile(int Type);
-void Dof_FlushFile(int Type);
 
 void Dof_WriteFilePRE0(int Num_Resolution, char *Name_Resolution,
                        int Nbr_DofData);
@@ -171,7 +168,6 @@ void Dof_WriteSectionPRE(bool byRank);
 void Dof_WriteIndexPRE();
 bool Dof_ReadsOwnSectionsPRE();
 void Dof_SkipOtherSectionsPRE();
-void Dof_WriteDofPRE(void *a, void *b);
 void Dof_ReadFilePRE(struct DofData *DofData_P);
 
 void Dof_WriteFileRES0(char *Name_File, int Format);
@@ -217,7 +213,7 @@ bool Dof_IsPartitionOfThisRank(int partition);
 bool Dof_HasRankPartitions();
 bool Dof_GetAllDofsOnFirstRank();
 void Dof_SetAllDofsOnFirstRank(bool all);
-List_T *Dof_GatherDofsOnFirstRank(struct DofData *DofData_P);
+bool Dof_HasOnlyOwnDofs();
 void Dof_TransferSolution(struct DofData *DofData1_P, gVector *x1,
                           struct DofData *DofData2_P, gVector *x2);
 bool Dof_GetPostOnRootOnly();

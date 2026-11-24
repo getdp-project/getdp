@@ -818,7 +818,7 @@ private:
   bool is_Kept(struct Geo_Element *geoElement);
 
 private:
-  // On a part of the mesh (in parallel, see Geo_SendParts), the nodes of the
+  // On a part of the mesh (in parallel, see GeoData::IsPart), the nodes of the
   // elements of the partition of the rank
   bool _isPart;
   std::unordered_set<int> _partitionNodes;

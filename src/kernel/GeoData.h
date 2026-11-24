@@ -89,12 +89,14 @@ struct GeoData {
   // Geo_GetGeoElementOfNum)
   struct Geo_NumberIndex *NodeIndex, *ElementIndex;
 
-  // In parallel, with rank-local Dofs, only the first rank reads the mesh: it
-  // sends to each other rank the part of the mesh this rank needs
-  // (Geo_SendParts, Geo_ReceivePart). IsPart is set on the ranks that only
+  // In parallel, with rank-local Dofs, each rank only has the part of the mesh
+  // it needs: the first rank reads the mesh and sends their part to the other
+  // ranks (Geo_SendParts, Geo_ReceivePart), or each rank reads the mesh file of
+  // its partition (Geo_ReadPartFile). IsPart is set on the ranks that only
   // have their part, and HasParts on the first rank if it keeps the whole
-  // mesh; EntitiesLevel tells which entities of the elements of the parts have
-  // been numbered over the ranks (1: edges, 2: edges and facets).
+  // mesh (see Geo_IsDistributed); EntitiesLevel tells which entities of the
+  // elements of the parts have been numbered over the ranks (1: edges, 2:
+  // edges and facets).
   bool HasParts, IsPart;
   int EntitiesLevel;
   // the positions of the elements of the part of the first rank, as long as it
@@ -102,9 +104,23 @@ struct GeoData {
   std::vector<int> *FirstRankPart;
 };
 
+// whether the mesh is split over the ranks (see HasParts and IsPart)
+inline bool Geo_IsDistributed(const struct GeoData *GeoData_P)
+{
+  return GeoData_P->HasParts || GeoData_P->IsPart;
+}
+
+// what the first rank keeps of the mesh when it sends their part to the other
+// ranks: only its part, the whole mesh until the trees are built (in the
+// pre-processing), or the whole mesh
+enum WholeMeshOnFirstRank {
+  WHOLE_MESH_NEVER,
+  WHOLE_MESH_UNTIL_TREES,
+  WHOLE_MESH_ALWAYS
+};
+void Geo_SetWholeMeshOnFirstRank(WholeMeshOnFirstRank whole);
+
 void Geo_GetLinkRegions(std::unordered_set<int> &regions);
-void Geo_SetWholeMeshOnFirstRank(int whole);
-int Geo_GetWholeMeshOnFirstRank();
 void Geo_KeepPartOnFirstRank(struct GeoData *GeoData_P);
 int Geo_RankOfPartition(int partition);
 int Geo_AddGeoData(List_T *GeoData_L, char *Name_MshFile,

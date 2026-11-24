@@ -1524,7 +1524,7 @@ struct PostOperation {
   List_T *TimeValue_L, *TimeImagValue_L;
   int LastTimeStepOnly, OverrideTimeStepValue, NoMesh, CatFile;
   int AppendTimeStepToFileName;
-  bool Distributed;
+  bool SingleProcess;
 };
 
 struct PostSubOperation {
@@ -1539,9 +1539,9 @@ struct PostSubOperation {
   char *NewCoordinatesFile;
   int ValueIndex;
   int ChangeOfCoordinates[3], LastTimeStepOnly, AppendTimeStepToFileName;
-  // done by a single process (SingleProcess); -1 while parsing if not given,
-  // for the value of the post-operation
-  int Distributed;
+  // done by a single process; -1 while parsing if not given, for the value of
+  // the post-operation
+  int SingleProcess;
   int AppendExpressionToFileName;
   char *AppendStringToFileName, *AppendExpressionFormat;
   int OverrideTimeStepValue, NoMesh;

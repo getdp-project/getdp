@@ -23,6 +23,10 @@
 #include "Pos_Search.h"
 #include "Get_FunctionValue.h"
 #include "Pos_Format.h"
+
+#if defined(HAVE_MPI)
+#include <mpi.h>
+#endif
 #endif
 
 extern struct Problem Problem_S;

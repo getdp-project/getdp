@@ -157,12 +157,12 @@ void Treatment_Preprocessing(int Nbr_DefineSystem, struct DofData *DofData_P0,
         }
       }
       if(edges) Geo_CreateEdgesAndFacets(facets);
-      if(Current.GeoData->HasParts || Current.GeoData->IsPart) {
+      if(Geo_IsDistributed(Current.GeoData)) {
         Generate_TreesOverRanks();
         F_ComputeRegionMeasures();
-        // the trees were the last thing that needed the whole mesh
-        if(Geo_GetWholeMeshOnFirstRank() == 1)
-          Geo_KeepPartOnFirstRank(Current.GeoData);
+        // the trees were the last thing that needed the whole mesh (with
+        // WHOLE_MESH_UNTIL_TREES)
+        Geo_KeepPartOnFirstRank(Current.GeoData);
       }
     }
 
@@ -321,7 +321,7 @@ void Treatment_PostOperation(struct Resolution *Resolution_P,
   for(i_POP = 0; i_POP < Nbr_PostSubOperation; i_POP++) {
     PostSubOperation_P = (struct PostSubOperation *)List_Pointer(
       PostOperation_P->PostSubOperation, i_POP);
-    if(singleProcess && PostSubOperation_P->Distributed) {
+    if(singleProcess && PostSubOperation_P->SingleProcess) {
       // the SingleProcess sub-operations are shared among the ranks in turn
       anySingleProcess = true;
       Message::Info("PostSubOperation '%s' %d/%d (rank %d)",
@@ -500,10 +500,7 @@ double *Get_TimeFunctionValues(struct DofData *DofData_P)
 /* ------------------------------------------------------------------------ */
 /*! Global analyse of a problem */
 
-// In parallel each rank only defines the Dofs of its mesh partition (see
-// Dof_UseLocalDofs), unless the problem uses something that needs all the Dofs
-// on all the ranks: this returns what, or NULL. The whole problem is examined,
-// since a resolution can pre-resolve any other one.
+// Whether an operation of a list, or of the lists inside it, passes the test
 static bool AnyOperation(List_T *Operations, bool (*test)(struct Operation *))
 {
   for(int i = 0; i < List_Nbr(Operations); i++) {
@@ -584,6 +581,10 @@ static void Get_PostOperationNames()
   }
 }
 
+// In parallel each rank only defines the Dofs of its mesh partition (see
+// Dof_UseLocalDofs), unless the problem uses something that needs all the Dofs
+// on all the ranks: this returns what, or NULL. The whole problem is examined,
+// since a resolution can pre-resolve any other one.
 static const char *WhatNeedsAllDofs()
 {
   // the point can be anywhere in the mesh, in an element of another rank
@@ -657,7 +658,7 @@ static const char *WhatNeedsAllDofs()
     if(!PostOperationNames.count(po->Name)) continue;
     for(int j = 0; j < List_Nbr(po->PostSubOperation); j++)
       if(((struct PostSubOperation *)List_Pointer(po->PostSubOperation, j))
-           ->Distributed)
+           ->SingleProcess)
         return "a SingleProcess operation";
   }
 
@@ -689,11 +690,7 @@ static const char *WhatNeedsAllDofs()
          ((p->StoreInField >= 0 && !byPartition) ||
           p->StoreInMeshBasedField >= 0 ||
           (!point && (p->StoreInRegister >= 0 || p->StoreInVariable)) ||
-          (!gathered &&
-           (p->StoreMinInRegister >= 0 || p->StoreMaxInRegister >= 0 ||
-            p->StoreMinXinRegister >= 0 || p->StoreMaxXinRegister >= 0 ||
-            p->StoreMinYinRegister >= 0 || p->StoreMaxYinRegister >= 0 ||
-            p->StoreMinZinRegister >= 0 || p->StoreMaxZinRegister >= 0))))
+          (!gathered && Pos_StoresMinMax(p))))
         return "a Print that stores its result";
     }
   }
@@ -801,7 +798,9 @@ void SolvingAnalyse()
     if(what && !untilTrees)
       Message::Info("The first rank keeps the whole mesh (the problem has %s)",
                     what);
-    Geo_SetWholeMeshOnFirstRank(!what ? 0 : untilTrees ? 1 : 2);
+    Geo_SetWholeMeshOnFirstRank(!what       ? WHOLE_MESH_NEVER :
+                                untilTrees ? WHOLE_MESH_UNTIL_TREES :
+                                             WHOLE_MESH_ALWAYS);
   }
 
   /* -------------------- */
@@ -984,8 +983,7 @@ void SolvingAnalyse()
     if(Dof_UseLocalDofs() && Nbr_DefineSystem) {
       Geo_SetCurrentGeoData(Current.GeoData =
                               GeoData_P0 + DofData_P0->GeoDataIndex);
-      if(Current.GeoData->HasParts || Current.GeoData->IsPart)
-        F_ComputeRegionMeasures();
+      if(Geo_IsDistributed(Current.GeoData)) F_ComputeRegionMeasures();
     }
   }
 

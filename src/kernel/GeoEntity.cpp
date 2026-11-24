@@ -488,7 +488,7 @@ void Geo_CreateEntitiesOfElement(
       // otherwise all the elements already have theirs.
       int level =
         (Geo_Entities2XEntities1 == CurrentGeoData->EdgesXNodes) ? 1 : 2;
-      if((CurrentGeoData->IsPart || CurrentGeoData->HasParts) &&
+      if(Geo_IsDistributed(CurrentGeoData) &&
          CurrentGeoData->EntitiesLevel >= level)
         Message::Error("%s created on a part of the mesh: its number is not "
                        "the one of the other ranks (use -all-dofs)",
@@ -537,7 +537,7 @@ static void Geo_NumberEntitiesOverRanks(GeoEntityTable *table, bool facets,
   }
   for(int e = 0; e < List_Nbr(geo->Elements); e++) {
     struct Geo_Element *ge = (struct Geo_Element *)List_Pointer(geo->Elements, e);
-    int rank = (ge->Partition > 0) ? (ge->Partition - 1) % np : np - 1;
+    int rank = Geo_RankOfPartition(ge->Partition);
     int nbr = facets ? ge->NbrFacets : ge->NbrEdges;
     int *num = facets ? ge->NumFacets : ge->NumEdges;
     for(int k = 0; k < nbr; k++) {
@@ -556,10 +556,7 @@ static void Geo_NumberEntitiesOverRanks(GeoEntityTable *table, bool facets,
   for(int i = 0; i < n; i++) {
     int list[L];
     key(i, list);
-    std::size_t h = 0;
-    for(int k = 0; k < L; k++)
-      h = (h ^ (std::size_t)(unsigned int)list[k]) * 0x9E3779B97F4A7C15ULL;
-    int rank = (int)((h ^ (h >> 29)) % (std::size_t)np);
+    int rank = (int)(GeoEntityTable::hash(list, L) % (std::size_t)np);
     send[rank].insert(send[rank].end(), list, list + L);
     send[rank].push_back(lowest[i]);
     asked[rank].push_back(i);
@@ -653,9 +650,9 @@ static void Geo_NumberEntitiesOverRanks(GeoEntityTable *table, bool facets,
 //
 // The edges and facets are numbered in the order of their creation, and these
 // numbers identify their Dofs: in parallel all the ranks must have the same
-// ones. When the ranks only have a part of the mesh (Geo_SendParts), each one
-// creates those of its elements, which are then numbered over the ranks; the
-// facets, which are defined by their edges, after the edges.
+// ones. When the ranks only have a part of the mesh (Geo_IsDistributed), each
+// one creates those of its elements, which are then numbered over the ranks;
+// the facets, which are defined by their edges, after the edges.
 void Geo_CreateEdgesAndFacets(bool facets)
 {
   struct GeoData *geo = CurrentGeoData;
@@ -664,13 +661,12 @@ void Geo_CreateEdgesAndFacets(bool facets)
   int n = List_Nbr(geo->Elements);
   struct Geo_Element *e0 =
     n ? (struct Geo_Element *)List_Pointer(geo->Elements, 0) : NULL;
-  const bool parts = geo->HasParts || geo->IsPart;
 
   if(geo->EntitiesLevel < 1) {
     for(int e = 0; e < n; e++)
       if(e0[e].NbrEdges == 0) Geo_CreateEdgesOfElement(&e0[e]);
 #if defined(HAVE_MPI)
-    if(parts)
+    if(Geo_IsDistributed(geo))
       Geo_NumberEntitiesOverRanks(geo->EdgesXNodes, false, &geo->NumCurrentEdge);
 #endif
   }
@@ -678,7 +674,7 @@ void Geo_CreateEdgesAndFacets(bool facets)
     for(int e = 0; e < n; e++)
       if(e0[e].NbrFacets == 0) Geo_CreateFacetsOfElement(&e0[e]);
 #if defined(HAVE_MPI)
-    if(parts)
+    if(Geo_IsDistributed(geo))
       Geo_NumberEntitiesOverRanks(geo->FacetsXEdges, true, &geo->NumCurrentFacet);
 #endif
   }
@@ -771,7 +767,7 @@ static void Geo_PrintElementEntitiesPRE(struct GeoData *GeoData_P, int what,
 
 void Geo_WriteFilePRE(struct GeoData *GeoData_P, List_T *Group_L)
 {
-  const bool byRank = GeoData_P->HasParts || GeoData_P->IsPart;
+  const bool byRank = Geo_IsDistributed(GeoData_P);
   const bool write = !(Message::GetIsCommWorld() && Message::GetCommRank());
 
   if(byRank || write) {

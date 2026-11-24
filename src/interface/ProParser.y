@@ -382,7 +382,7 @@ struct doubleXstring{
 %token        tStoreMaxInRegister tStoreMaxXinRegister tStoreMaxYinRegister
 %token        tStoreMaxZinRegister tStoreMinInRegister tStoreMinXinRegister
 %token        tStoreMinYinRegister tStoreMinZinRegister
-%token        tLastTimeStepOnly tAppendTimeStepToFileName tTimeValue tTimeImagValue tDistributed
+%token        tLastTimeStepOnly tAppendTimeStepToFileName tTimeValue tTimeImagValue tSingleProcess
 %token        tTimeInterval tAtGaussPoints
 %token        tAppendExpressionToFileName tAppendExpressionFormat
 %token        tOverrideTimeStepValue tNoMesh
@@ -7240,7 +7240,7 @@ PostOperation :
       PostOperation_S.Comma = NULL;
       PostOperation_S.CatFile = 0;
       PostOperation_S.PostSubOperation = NULL;
-      PostOperation_S.Distributed = false;
+      PostOperation_S.SingleProcess = false;
       level_Append = 0;
     }
 
@@ -7348,14 +7348,14 @@ PostOperationTerm :
       PostOperation_S.ResampleTimeStep = $7;
     }
 
-  | tDistributed tEND
+  | tSingleProcess tEND
     {
-      PostOperation_S.Distributed = true;
+      PostOperation_S.SingleProcess = true;
     }
 
-  | tDistributed FExpr tEND
+  | tSingleProcess FExpr tEND
     {
-      PostOperation_S.Distributed = $2 ? true : false;
+      PostOperation_S.SingleProcess = $2 ? true : false;
     }
 
   | tOperation  '{' PostSubOperations '}'
@@ -7383,7 +7383,7 @@ SeparatePostOperation :
       PostOperation_S.Comma = NULL;
       PostOperation_S.CatFile = 0;
       PostOperation_S.PostSubOperation = NULL;
-      PostOperation_S.Distributed = false;
+      PostOperation_S.SingleProcess = false;
       level_Append = $2; index_Append = -1;
       int i;
       if((i = List_ISearchSeq(Problem_S.PostProcessing, $5,
@@ -7498,7 +7498,7 @@ PostSubOperations :
       PostSubOperation_S.TimeInterval_Flag = 0;
       PostSubOperation_S.TimeInterval[0] = 0.;
       PostSubOperation_S.TimeInterval[1] = 0.;
-      PostSubOperation_S.Distributed = -1;
+      PostSubOperation_S.SingleProcess = -1;
      }
     PostSubOperation
     {
@@ -7521,8 +7521,8 @@ PostSubOperations :
           PostSubOperation_S.OverrideTimeStepValue = PostOperation_S.OverrideTimeStepValue;
 	if(!PostSubOperation_S.CatFile)
           PostSubOperation_S.CatFile = PostOperation_S.CatFile;
-	if(PostSubOperation_S.Distributed < 0)
-          PostSubOperation_S.Distributed = PostOperation_S.Distributed;
+	if(PostSubOperation_S.SingleProcess < 0)
+          PostSubOperation_S.SingleProcess = PostOperation_S.SingleProcess;
 
 	List_Add($$ = $1, &PostSubOperation_S);
       }
@@ -8245,13 +8245,13 @@ PrintOption :
         PostSubOperation_S.NewCoordinatesFile = $3;
       }
     }
-  | ',' tDistributed
+  | ',' tSingleProcess
     {
-      PostSubOperation_S.Distributed = 1;
+      PostSubOperation_S.SingleProcess = 1;
     }
-  | ',' tDistributed FExpr
+  | ',' tSingleProcess FExpr
     {
-      PostSubOperation_S.Distributed = $3 ? 1 : 0;
+      PostSubOperation_S.SingleProcess = $3 ? 1 : 0;
     }
  ;
 
