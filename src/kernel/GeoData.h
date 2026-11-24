@@ -12,6 +12,7 @@
 #include <unordered_map>
 #include <vector>
 #include <algorithm>
+#include <functional>
 #include <unordered_set>
 
 // The position in a list of the item (node, element) of each number: a table
@@ -130,6 +131,13 @@ struct Geo_Element *Geo_GetGeoElement(int Index_Element);
 int Geo_GetGeoElementIndex(struct Geo_Element *GeoElement);
 struct Geo_Element *Geo_GetGeoElementOfNum(int Num_Element);
 int Geo_GetDimOfElement(int Type);
+int Geo_GetNbCornerNodes(int Type, int NbrNodes);
+// Calls f(lower, top) for the elements of lower dimension than the mesh (surfaces,
+// lines, points) and the elements of the highest dimension that contain all their
+// corner nodes, in the order of the elements; f returns false to go to the next
+// element of lower dimension
+void Geo_ForEachElementContaining(struct GeoData *GeoData_P,
+                                  const std::function<bool(int, int)> &f);
 
 int Geo_GetNbrGeoNodes(void);
 struct Geo_Node *Geo_GetGeoNode(int Index_Node);
