@@ -534,11 +534,12 @@ static void Get_Options(int argc, char *argv[], int *sargc, char **sargv,
   else {
     if(!Name_Generic) {
       Name_Generic = strSave(pro);
-      if(strcmp(pro + (strlen(pro) - 4), ".pro") &&
-         strcmp(pro + (strlen(pro) - 4), ".PRO"))
+      // a name can be shorter than the extension
+      size_t n = strlen(pro);
+      if(n < 4 || (strcmp(pro + n - 4, ".pro") && strcmp(pro + n - 4, ".PRO")))
         strcat(pro, ".pro");
       else
-        Name_Generic[strlen(pro) - 4] = '\0';
+        Name_Generic[n - 4] = '\0';
     }
     else {
       std::string fix = Fix_RelativePath(Name_Generic, pro);
