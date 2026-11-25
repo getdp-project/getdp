@@ -465,6 +465,28 @@ static bool IsElementOnLinkRegion(int i_Element)
   return onLink[i_Element];
 }
 
+// Whether the element contains an element of lower dimension (a surface, a
+// line, a point) of the partition of the rank (see
+// Geo_SendParts). The rank evaluates quantities on such an element, e.g. with
+// Trace in the element on one side of a surface, and thus needs the Dofs of
+// the elements that contain it, whoever has their partition.
+static bool IsElementOfAnElementOfThisRank(int i_Element)
+{
+  static struct GeoData *geo = NULL;
+  static std::vector<char> contains;
+  int n = Geo_GetNbrGeoElements();
+  if(geo != Current.GeoData || (int)contains.size() != n) {
+    geo = Current.GeoData;
+    contains.assign(n, 0);
+    Geo_ForEachElementContaining(Current.GeoData, [&](int lower, int top) {
+      if(Dof_IsPartitionOfThisRank(Geo_GetGeoElement(lower)->Partition))
+        contains[top] = 1;
+      return true;
+    });
+  }
+  return contains[i_Element];
+}
+
 void Treatment_FemFormulation(struct Formulation *Formulation_P)
 {
   // with rank-local Dofs the messages of the element loop (e.g. the addition of a
@@ -731,11 +753,13 @@ void Treatment_FemFormulation(struct Formulation *Formulation_P)
       // The elements that touch the regions of the Link constraints are the
       // exception: all the ranks define their Dofs and update their
       // constraints (not their matrices), since a Dof of one rank can be
-      // linked to a Dof anywhere on these regions.
+      // linked to a Dof anywhere on these regions. So do the elements that
+      // contain an element of lower dimension of the partition of the rank.
       if(!rootTreatsAll &&
          !Dof_IsPartitionOfThisRank(Element.GeoElement->Partition) &&
          !(localDofs && TreatmentStatus != STATUS_CAL &&
-           IsElementOnLinkRegion(i_Element)))
+           (IsElementOnLinkRegion(i_Element) ||
+            IsElementOfAnElementOfThisRank(i_Element))))
         continue;
       Current.AddAllRows = true;
     }
