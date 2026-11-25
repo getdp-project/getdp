@@ -42,9 +42,9 @@
 //   quadrangle         (p-1)^2               2p(p+1)              (p+1)^2
 //   tetrahedron        (p-3)(p-2)(p-1)/6     (p-2)(p-1)(p+1)/2    (p-1)(p+1)(p+2)/2
 //   hexahedron         (p-1)^3               3p^2(p+1)            3p(p+1)^2
-//   prism              (p-2)(p-1)^2/2        3(p-1)p(p+1)/2       (3p^3+5p^2-2)/2
+//   prism              (p-2)(p-1)^2/2        3(p-1)p(p+1)/2       p(p+1)(3p+4)/2
 //
-// (0 for the prism in H(div) if p = 0), one function per node in H1, and for
+// with one function per node in H1, and for
 // L2 p+1, (p+1)(p+2)/2, (p+1)^2, (p+1)(p+2)(p+3)/6, (p+1)^3 and (p+1)^2(p+2)/2
 // functions on a line, a triangle, a quadrangle, a tetrahedron, a hexahedron
 // and a prism. In H(curl), E0 is the Whitney function (BF_Edge) and on the

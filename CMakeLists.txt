@@ -1328,6 +1328,11 @@ if(${Python3_FOUND} AND GMSH)
            "parallel.pro -solve Periodic -pos Periodic")
   test_mpi(parallel_regions tests "parallel.geo -2"
            "parallel.pro -solve Laplace -pos Regions")
+  # terms on surface elements with the trace of the unknown of the volume, on a
+  # mesh that GetDP partitions itself: a rank needs the Dofs of the volume
+  # elements next to its surface elements, whatever their partition
+  test_mpi(parallel_trace tests "parallel_trace.geo -3"
+           "parallel_trace.pro -solve Surfaces -pos Surfaces")
   # a quantity evaluated at given coordinates, for which all the ranks define
   # all the Dofs
   test_mpi(parallel_coordinates tests "parallel.geo -2"

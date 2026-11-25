@@ -17,6 +17,9 @@ Group {
   EndIf
   Dom = Region[{Omega, Bnd, Left, Right, Bottom, Top}];
 }
+// (only with periodicity: a Link constraint makes all the ranks keep its regions,
+// and the mesh files of the partitions are then not used)
+If(per)
 Constraint {
   { Name Periodic; Case {
       { Region Right; Type Link; RegionRef Left; Coefficient 1;
@@ -27,6 +30,7 @@ Constraint {
       EndIf
     } }
 }
+EndIf
 Function {
   // the outer normal
   If(dim == 2)

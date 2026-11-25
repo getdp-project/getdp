@@ -21,7 +21,7 @@ Function {
 // function), tetrahedron, hexahedron and prism
 nTri = (p+1)*(p+2)/2 - 1; nQua = (p+1)^2 - 1;
 nTet = (p-1)*(p+1)*(p+2)/2; nHex = 3*p*(p+1)^2;
-nPri = (p > 0) ? (3*p^3+5*p^2-2)/2 : 0;
+nPri = p*(p+1)*(3*p+4)/2;
 // number of functions of L2
 lTet = (p > 0) ? p*(p+1)*(p+2)/6 : 1; lHex = (p+1)^3;
 lPri = (p+1)^2*(p+2)/2;
