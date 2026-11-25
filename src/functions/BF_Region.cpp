@@ -172,6 +172,8 @@ void BF_InitGlobal(struct GlobalBasisFunction *GlobalBasisFunction_P)
   QuantityStorage_P = GlobalBasisFunction_P->QuantityStorage =
     (struct QuantityStorage *)Malloc(sizeof(struct QuantityStorage));
 
+  QuantityStorage_P->BasisFunction = NULL;
+  QuantityStorage_P->NbrMaxBasisFunction = 0;
   QuantityStorage_P->NumLastElementForFunctionSpace = 0;
 
   Formulation_P = (struct Formulation *)List_Pointer(

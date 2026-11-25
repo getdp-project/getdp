@@ -680,7 +680,10 @@ void Cal_WholeQuantity(struct Element *Element,
           &WholeQuantity_P->Case.Function, &Stack[0][Index], &Stack[0][Index]);
       else /* Dof must be the only argument, only valid with linear functions */
         for(j = 0; j < Nbr_Dof; j++) {
-          Current.NumEntity = Current.NumEntities[j]; /* temp */
+          if(Current.QuantityStorageDof &&
+             j < Current.QuantityStorageDof->NbrElementaryBasisFunction)
+            Current.NumEntity =
+              Current.QuantityStorageDof->BasisFunction[j].CodeEntity;
           ((CASTF2V)WholeQuantity_P->Case.Function.Fct)(
             &WholeQuantity_P->Case.Function, &DofValue[j], &DofValue[j]);
         }

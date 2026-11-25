@@ -124,6 +124,9 @@ void Pos_FemFormulation(struct Formulation *Formulation_P,
   default: Message::Error("Unknown PostSubOperation type"); break;
   }
 
+  for(i = 0; i < List_Nbr(QuantityStorage_L); i++)
+    QuantityStorage_Free(
+      (struct QuantityStorage *)List_Pointer(QuantityStorage_L, i));
   List_Delete(QuantityStorage_L);
 }
 

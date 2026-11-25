@@ -65,6 +65,7 @@ void Cal_InitGalerkinTermOfFemEquation(
     FI->Type_DefineQuantityDof = NODOF;
     FI->DofForNoDof_P = DofForNoDof_P;
     Dof_InitDofForNoDof(DofForNoDof_P, Current.NbrHar);
+    QuantityStorage_Reserve(QuantityStorageNoDof, 1);
     QuantityStorageNoDof->BasisFunction[0].Dof = DofForNoDof_P;
   }
 
@@ -447,16 +448,18 @@ int Cal_vBFxDof(struct EquationTerm *EquationTerm_P,
                 struct FemLocalTermActive *FI,
                 struct QuantityStorage *QuantityStorage_P0,
                 struct QuantityStorage *QuantityStorageDof_P, int Nbr_Dof,
-                void (*xFunctionBFDof[NBR_MAX_BASISFUNCTIONS])(
-                  struct Element *Element, int NumEntity, double u, double v,
-                  double w, double Value[]),
+                void (*xFunctionBFDof[])(struct Element *Element,
+                                         int NumEntity, double u, double v,
+                                         double w, double Value[]),
                 double vBFxEqu[][MAX_DIM], struct Value vBFxDof[],
                 bool *Symmetric)
 {
-  double vBFuDof[NBR_MAX_BASISFUNCTIONS][MAX_DIM];
+  StackArray<double[MAX_DIM], NBR_BASISFUNCTIONS_ON_STACK> vBFuDof;
   double u, v, w;
   struct Value CoefPhys;
   struct Element *E;
+
+  vBFuDof.resize(Nbr_Dof);
 
   // initialize vBFxDof to zero; this allows to perform e.g. [0, {d u}] without
   // having to explicitly use [Vector[0,0,0], {d u}] ; if this is too slow, we
@@ -486,6 +489,9 @@ int Cal_vBFxDof(struct EquationTerm *EquationTerm_P,
   if(!FI->SymmetricalMatrix) {
     switch(FI->Type_DefineQuantityDof) {
     case LOCALQUANTITY:
+      // for the functions of the Dof that need the entity of each basis
+      // function (NumEntity)
+      Current.QuantityStorageDof = QuantityStorageDof_P;
       for(int j = 0; j < Nbr_Dof; j++) {
         xFunctionBFDof[j](
           E, QuantityStorageDof_P->BasisFunction[j].NumEntityInElement + 1, u,
@@ -495,10 +501,6 @@ int Cal_vBFxDof(struct EquationTerm *EquationTerm_P,
                                                           vBFxDof[j].Val);
         vBFxDof[j].Type = FI->Type_ValueDof;
         if(Current.NbrHar > 1) Cal_SetHarmonicValue(&vBFxDof[j]);
-
-        /* temp (rather add QuantityStorage_P to CurrentData) */
-        Current.NumEntities[j] =
-          QuantityStorageDof_P->BasisFunction[j].CodeEntity;
       }
       break;
     case INTEGRALQUANTITY:
@@ -581,7 +583,8 @@ void Cal_GalerkinTermOfFemEquation(struct Element *Element,
   struct QuantityStorage *QuantityStorageEqu_P, *QuantityStorageDof_P;
   struct IntegrationCase *IntegrationCase_P;
   struct Quadrature *Quadrature_P;
-  struct Value vBFxDof[NBR_MAX_BASISFUNCTIONS], CoefPhys;
+  StackArray<struct Value, NBR_BASISFUNCTIONS_ON_STACK> vBFxDof;
+  struct Value CoefPhys;
   struct Value CanonicExpression_Equ, V1, V2;
 
   int Nbr_Equ, Nbr_Dof = 0;
@@ -590,16 +593,16 @@ void Cal_GalerkinTermOfFemEquation(struct Element *Element,
   bool HalfMatrix, Symmetric;
 
   double weight, Factor = 1.;
-  double vBFuEqu[NBR_MAX_BASISFUNCTIONS][MAX_DIM];
-  double vBFxEqu[NBR_MAX_BASISFUNCTIONS][MAX_DIM];
-  double Ek[NBR_MAX_BASISFUNCTIONS][NBR_MAX_BASISFUNCTIONS][NBR_MAX_HARMONIC];
+  StackArray<double[MAX_DIM], NBR_BASISFUNCTIONS_ON_STACK> vBFuEqu, vBFxEqu;
+  // the elementary matrix: the row of each test function, with Nbr_Ek columns
+  StackArray<double[NBR_MAX_HARMONIC],
+             NBR_BASISFUNCTIONS_ON_STACK * NBR_BASISFUNCTIONS_ON_STACK> Ek;
+  int Nbr_Ek = 0;
+#define EK(i, j) Ek[(i) * Nbr_Ek + (j)]
 
-  void (*xFunctionBFEqu[NBR_MAX_BASISFUNCTIONS])(
-    struct Element * Element, int NumEntity, double u, double v, double w,
-    double Value[]);
-  void (*xFunctionBFDof[NBR_MAX_BASISFUNCTIONS])(
-    struct Element * Element, int NumEntity, double u, double v, double w,
-    double Value[]);
+  typedef void (*BF_Function)(struct Element *Element, int NumEntity, double u,
+                              double v, double w, double Value[]);
+  StackArray<BF_Function, NBR_BASISFUNCTIONS_ON_STACK> xFunctionBFEqu, xFunctionBFDof;
   double (*Get_Jacobian)(struct Element *, MATRIX3x3 *);
   void (*Get_IntPoint)(int, int, double *, double *, double *, double *);
 
@@ -653,13 +656,19 @@ void Cal_GalerkinTermOfFemEquation(struct Element *Element,
 
   if(!(Nbr_Equ = QuantityStorageEqu_P->NbrElementaryBasisFunction)) { return; }
 
-  if(Nbr_Equ > NBR_MAX_BASISFUNCTIONS)
-    Message::Fatal(
-      "Number of basis functions (%d) exceeds NBR_MAX_BASISFUNCTIONS: "
-      "please recompile after changing src/interface/ProData.h",
-      Nbr_Equ);
+  xFunctionBFEqu.resize(Nbr_Equ);
+  vBFuEqu.resize(Nbr_Equ);
+  vBFxEqu.resize(Nbr_Equ);
 
-  Get_FunctionValue(Nbr_Equ, (void (**)())xFunctionBFEqu,
+  // get room for Nbr_Dof shape functions
+  auto resizeDof = [&]() {
+    xFunctionBFDof.resize(Nbr_Dof);
+    vBFxDof.resize(Nbr_Dof);
+    Nbr_Ek = (Nbr_Dof > Nbr_Equ) ? Nbr_Dof : Nbr_Equ;
+    Ek.resize(Nbr_Ek * Nbr_Ek);
+  };
+
+  Get_FunctionValue(Nbr_Equ, (void (**)())xFunctionBFEqu.data(),
                     EquationTerm_P->Case.LocalTerm.Term.TypeOperatorEqu,
                     QuantityStorageEqu_P, &FI->Type_FormEqu);
 
@@ -672,7 +681,8 @@ void Cal_GalerkinTermOfFemEquation(struct Element *Element,
     switch(FI->Type_DefineQuantityDof) {
     case LOCALQUANTITY:
       Nbr_Dof = QuantityStorageDof_P->NbrElementaryBasisFunction;
-      Get_FunctionValue(Nbr_Dof, (void (**)())xFunctionBFDof,
+      resizeDof();
+      Get_FunctionValue(Nbr_Dof, (void (**)())xFunctionBFDof.data(),
                         EquationTerm_P->Case.LocalTerm.Term.TypeOperatorDof,
                         QuantityStorageDof_P, &FI->Type_FormDof);
       break;
@@ -684,6 +694,7 @@ void Cal_GalerkinTermOfFemEquation(struct Element *Element,
     case NODOF: Nbr_Dof = 1; break;
     }
   }
+  resizeDof();
 
   /*  -------------------------------------------------------------------  */
   /*  G e t   I n t e g r a t i o n   M e t h o d                          */
@@ -748,7 +759,8 @@ void Cal_GalerkinTermOfFemEquation(struct Element *Element,
 
         Get_NodesCoordinatesOfElement(Element->ElementSource);
         Nbr_Dof = QuantityStorageDof_P->NbrElementaryBasisFunction;
-        Get_FunctionValue(Nbr_Dof, (void (**)())xFunctionBFDof,
+        resizeDof();
+        Get_FunctionValue(Nbr_Dof, (void (**)())xFunctionBFDof.data(),
                           QuantityStorageDof_P->DefineQuantity->IntegralQuantity
                             .TypeOperatorDof,
                           QuantityStorageDof_P,
@@ -771,11 +783,11 @@ void Cal_GalerkinTermOfFemEquation(struct Element *Element,
     if(HalfMatrix)
       for(i = 0; i < Nbr_Equ; i++)
         for(j = 0; j <= i; j++)
-          for(k = 0; k < Current.NbrHar; k++) Ek[i][j][k] = 0.;
+          for(k = 0; k < Current.NbrHar; k++) EK(i, j)[k] = 0.;
     else
       for(i = 0; i < Nbr_Equ; i++)
         for(j = 0; j < Nbr_Dof; j++)
-          for(k = 0; k < Current.NbrHar; k++) Ek[i][j][k] = 0.;
+          for(k = 0; k < Current.NbrHar; k++) EK(i, j)[k] = 0.;
 
 
     switch(IntegrationCase_P->Type) {
@@ -892,7 +904,7 @@ void Cal_GalerkinTermOfFemEquation(struct Element *Element,
             // from now on
             for(i = 1; i < Nbr_Equ; i++)
               for(j = 0; j < i; j++)
-                for(k = 0; k < Current.NbrHar; k++) Ek[j][i][k] = Ek[i][j][k];
+                for(k = 0; k < Current.NbrHar; k++) EK(j, i)[k] = EK(i, j)[k];
             HalfMatrix = false;
           }
 
@@ -905,14 +917,14 @@ void Cal_GalerkinTermOfFemEquation(struct Element *Element,
             for(i = 0; i < Nbr_Equ; i++)
               for(j = 0; j <= i; j++)
                 for(k = 0; k < Current.NbrHar; k++)
-                  Ek[i][j][k] +=
+                  EK(i, j)[k] +=
                     Factor * ((double (*)(double *, double *))FI->Cal_Productx)(
                                vBFxEqu[i], &(vBFxDof[j].Val[MAX_DIM * k]));
           else
             for(i = 0; i < Nbr_Equ; i++)
               for(j = 0; j < Nbr_Dof; j++)
                 for(k = 0; k < Current.NbrHar; k++)
-                  Ek[i][j][k] +=
+                  EK(i, j)[k] +=
                     Factor * ((double (*)(double *, double *))FI->Cal_Productx)(
                                vBFxEqu[i], &(vBFxDof[j].Val[MAX_DIM * k]));
         }
@@ -949,7 +961,7 @@ void Cal_GalerkinTermOfFemEquation(struct Element *Element,
       if(FI->SymmetricalMatrix) {
         for(i = 0; i < Nbr_Equ; i++)
           for(j = 0; j <= i; j++)
-            Ek[i][j][0] =
+            EK(i, j)[0] =
               Factor * Cal_AnalyticIntegration(
                          Element, (void (*)())xFunctionBFEqu[i],
                          (void (*)())xFunctionBFEqu[j], i, j, FI->Cal_Productx);
@@ -959,7 +971,7 @@ void Cal_GalerkinTermOfFemEquation(struct Element *Element,
         case LOCALQUANTITY:
           for(i = 0; i < Nbr_Equ; i++)
             for(j = 0; j < Nbr_Dof; j++)
-              Ek[i][j][0] = Factor * Cal_AnalyticIntegration(
+              EK(i, j)[0] = Factor * Cal_AnalyticIntegration(
                                        Element, (void (*)())xFunctionBFEqu[i],
                                        (void (*)())xFunctionBFDof[j], i, j,
                                        FI->Cal_Productx);
@@ -987,7 +999,7 @@ void Cal_GalerkinTermOfFemEquation(struct Element *Element,
     if(HalfMatrix)
       for(i = 1; i < Nbr_Equ; i++)
         for(j = 0; j < i; j++)
-          for(k = 0; k < Current.NbrHar; k++) Ek[j][i][k] = Ek[i][j][k];
+          for(k = 0; k < Current.NbrHar; k++) EK(j, i)[k] = EK(i, j)[k];
 
     if(Message::GetVerbosity() == 10) {
       printf("Galerkin = ");
@@ -999,7 +1011,7 @@ void Cal_GalerkinTermOfFemEquation(struct Element *Element,
         printf("[ ");
         for(j = 0; j < Nbr_Dof; j++) {
           printf("(");
-          for(k = 0; k < Current.NbrHar; k++) printf("% .5e ", Ek[i][j][k]);
+          for(k = 0; k < Current.NbrHar; k++) printf("% .5e ", EK(i, j)[k]);
           printf(")");
         }
         printf("]\n");
@@ -1020,8 +1032,8 @@ void Cal_GalerkinTermOfFemEquation(struct Element *Element,
             if(QuantityStorageEqu_P->BasisFunction[i].Dof->Type == DOF_UNKNOWN){
               for(k = 0 ; k < Current.NbrHar ; k++){
                 int n = QuantityStorageEqu_P->BasisFunction[i].Dof->Case.Unknown.NumDof;
-                printf("(%d, %g) ", n, Ek[i][j][k]) ;
-                vec.push_back(std::pair<int, double>(n, Ek[i][j][k]);
+                printf("(%d, %g) ", n, EK(i, j)[k]) ;
+                vec.push_back(std::pair<int, double>(n, EK(i, j)[k]);
               }
             }
           }
@@ -1038,7 +1050,7 @@ void Cal_GalerkinTermOfFemEquation(struct Element *Element,
           ((void (*)(struct Dof *, struct Dof *,
                      double *))FI->Function_AssembleTerm)(
             QuantityStorageEqu_P->BasisFunction[i].Dof,
-            QuantityStorageDof_P->BasisFunction[j].Dof, Ek[i][j]);
+            QuantityStorageDof_P->BasisFunction[j].Dof, EK(i, j));
     else if(Current.flagAssDiag == 1) {
       for(i = 0; i < Nbr_Equ; i++) {
         /*      for (j = 0 ; j < Nbr_Dof ; j++)*/
@@ -1046,7 +1058,7 @@ void Cal_GalerkinTermOfFemEquation(struct Element *Element,
         ((void (*)(struct Dof *, struct Dof *,
                    double *))FI->Function_AssembleTerm)(
           QuantityStorageEqu_P->BasisFunction[i].Dof,
-          QuantityStorageDof_P->BasisFunction[j].Dof, Ek[i][j]);
+          QuantityStorageDof_P->BasisFunction[j].Dof, EK(i, j));
       }
     }
     else if(Current.flagAssDiag == 2) {
@@ -1060,12 +1072,12 @@ void Cal_GalerkinTermOfFemEquation(struct Element *Element,
           assDiag_done[QuantityStorageEqu_P->BasisFunction[i]
                          .Dof->Case.Unknown.NumDof -
                        1] = true;
-          Ek[i][j][0] = 1.;
-          for(k = 1; k < Current.NbrHar; k++) Ek[i][j][k] = 0.;
+          EK(i, j)[0] = 1.;
+          for(k = 1; k < Current.NbrHar; k++) EK(i, j)[k] = 0.;
           ((void (*)(struct Dof *, struct Dof *,
                      double *))FI->Function_AssembleTerm)(
             QuantityStorageEqu_P->BasisFunction[i].Dof,
-            QuantityStorageDof_P->BasisFunction[j].Dof, Ek[i][j]);
+            QuantityStorageDof_P->BasisFunction[j].Dof, EK(i, j));
         }
       }
     }

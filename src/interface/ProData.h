@@ -6,6 +6,8 @@
 #ifndef PRO_DATA_H
 #define PRO_DATA_H
 
+#include <stdio.h>
+#include <stdlib.h>
 #include <string>
 #include <map>
 #include <unordered_map>
@@ -588,8 +590,53 @@ struct DefineQuantity {
   struct IntegralQuantity IntegralQuantity;
 };
 
-// second order hex with 3 BFs per node for elasticity
-#define NBR_MAX_BASISFUNCTIONS 81
+// The number of basis functions of a quantity in an element is not limited:
+// the tables indexed by these functions are on the stack up to this number of
+// functions (the usual elements), and on the heap beyond
+#define NBR_BASISFUNCTIONS_ON_STACK 32
+
+// A table of n values of type T, on the stack as long as n is at most N and
+// on the heap beyond; the values are not initialized
+template <class T, int N> class StackArray {
+public:
+  StackArray() : _data(_stack) {}
+  StackArray(const StackArray &) = delete;
+  StackArray &operator=(const StackArray &) = delete;
+  ~StackArray()
+  {
+    if(_data != _stack) delete[] _data;
+  }
+  // get room for n values; the values are lost
+  void resize(int n)
+  {
+    if(n <= _size) return;
+    if(_data != _stack) delete[] _data;
+    _data = new T[n];
+    _size = n;
+  }
+  T *data() { return _data; }
+  operator T *() { return _data; }
+
+private:
+  T _stack[N];
+  T *_data;
+  int _size = N;
+};
+
+// the data of a basis function of a quantity in an element
+struct QuantityStorageBasisFunction {
+  struct Dof *Dof;
+  int NumEntityInElement;
+  int CodeBasisFunction, CodeEntity;
+  int CodeAssociateBasisFunction;
+  int Constraint;
+  int Constraint_Index;
+  double Value[NBR_MAX_HARMONIC];
+  double Value2[NBR_MAX_HARMONIC]; // for two-step INIT
+  int TimeFunctionIndex;
+  int CodeEntity_Link;
+  struct BasisFunction *BasisFunction;
+};
 
 struct QuantityStorage {
   struct DefineQuantity *DefineQuantity;
@@ -602,20 +649,49 @@ struct QuantityStorage {
 
   int NbrElementaryBasisFunction;
   int TypeQuantity;
-  struct {
-    struct Dof *Dof;
-    int NumEntityInElement;
-    int CodeBasisFunction, CodeEntity;
-    int CodeAssociateBasisFunction;
-    int Constraint;
-    int Constraint_Index;
-    double Value[NBR_MAX_HARMONIC];
-    double Value2[NBR_MAX_HARMONIC]; // for two-step INIT
-    int TimeFunctionIndex;
-    int CodeEntity_Link;
-    struct BasisFunction *BasisFunction;
-  } BasisFunction[NBR_MAX_BASISFUNCTIONS];
+
+  // The basis functions of the quantity in the element: a table that grows
+  // with QuantityStorage_Reserve(), and that the structure owns. The structure
+  // cannot be copied; the lists of QuantityStorage (copied byte by byte from a
+  // structure without table, and not destroyed) free the tables of their items
+  // with QuantityStorage_Free(), and a structure got with Malloc() sets
+  // BasisFunction and NbrMaxBasisFunction to zero.
+  struct QuantityStorageBasisFunction *BasisFunction = nullptr;
+  int NbrMaxBasisFunction = 0;
+
+  QuantityStorage() = default;
+  QuantityStorage(const QuantityStorage &) = delete;
+  QuantityStorage &operator=(const QuantityStorage &) = delete;
+  ~QuantityStorage()
+  {
+    if(BasisFunction) free(BasisFunction);
+  }
 };
+
+// get room for n basis functions, keeping those already there
+inline void QuantityStorage_Reserve(struct QuantityStorage *QuantityStorage_P,
+                                    int n)
+{
+  if(n <= QuantityStorage_P->NbrMaxBasisFunction) return;
+  int max = 2 * QuantityStorage_P->NbrMaxBasisFunction;
+  if(max < 8) max = 8;
+  if(max < n) max = n;
+  QuantityStorage_P->BasisFunction = (struct QuantityStorageBasisFunction *)
+    realloc(QuantityStorage_P->BasisFunction,
+            max * sizeof(struct QuantityStorageBasisFunction));
+  if(!QuantityStorage_P->BasisFunction) {
+    fprintf(stderr, "Out of memory for %d basis functions\n", max);
+    exit(1);
+  }
+  QuantityStorage_P->NbrMaxBasisFunction = max;
+}
+
+inline void QuantityStorage_Free(struct QuantityStorage *QuantityStorage_P)
+{
+  if(QuantityStorage_P->BasisFunction) free(QuantityStorage_P->BasisFunction);
+  QuantityStorage_P->BasisFunction = nullptr;
+  QuantityStorage_P->NbrMaxBasisFunction = 0;
+}
 
 /* DefineQuantity.Type */
 /* LOCALQUANTITY
@@ -1703,7 +1779,9 @@ struct CurrentData {
   int NbrHar;
   int Region, SubRegion;
   int NumEntity, NumEntityInElement;
-  int NumEntities[NBR_MAX_BASISFUNCTIONS];
+  // the quantity whose basis functions are the arguments of a function of
+  // the Dof (for NumEntity)
+  struct QuantityStorage *QuantityStorageDof;
 
   struct Element *Element;
   int IntegrationSupportIndex;

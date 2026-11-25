@@ -103,6 +103,7 @@ void Cal_GlobalTermOfFemEquation(int Num_Region,
   if(!QuantityStorageDof_P) {
     QuantityStorageDof_P = QuantityStorageNoDof;
     Dof_InitDofForNoDof(DofForNoDof_P, Current.NbrHar);
+    QuantityStorage_Reserve(QuantityStorageDof_P, 1);
     QuantityStorageDof_P->BasisFunction[0].Dof = DofForNoDof_P;
   }
 

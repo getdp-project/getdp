@@ -161,7 +161,7 @@ void Init_ProblemStructure()
   Current.SubRegion = 0;
   Current.NumEntity = 0;
   Current.NumEntityInElement = 0;
-  Current.NumEntities[0] = 0;
+  Current.QuantityStorageDof = NULL;
   Current.Element = NULL;
   Current.IntegrationSupportIndex = 0;
   Current.ElementSource = 0;

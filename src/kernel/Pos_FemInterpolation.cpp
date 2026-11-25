@@ -31,22 +31,30 @@ void Pos_FemInterpolation(struct Element *Element,
                           double w, double x, double y, double z, double Val[],
                           int *Type_Value, int Flag_ChangeOfCoordinates)
 {
-  void (*xFunctionBF[NBR_MAX_BASISFUNCTIONS])(struct Element *, int, double,
-                                              double, double, double[]);
+  typedef void (*BF_Function)(struct Element *, int, double, double, double,
+                              double[]);
+  StackArray<BF_Function, NBR_BASISFUNCTIONS_ON_STACK> xFunctionBF;
   void (*xChangeOfCoordinates)() = 0;
 
   struct IntegralQuantityActive IQA;
-  struct Value vBFxDof[NBR_MAX_BASISFUNCTIONS];
+  StackArray<struct Value, NBR_BASISFUNCTIONS_ON_STACK> vBFxDof;
   struct GeoData *GeoData_P;
   struct Element TheElement, *TheElement_P;
   struct QuantityStorage *QS_P;
 
-  double vBFu[NBR_MAX_BASISFUNCTIONS][MAX_DIM];
+  StackArray<double[MAX_DIM], NBR_BASISFUNCTIONS_ON_STACK> vBFu;
   double Val_Dof, Val_Dof_r, Val_Dof_i;
 
   int Type_DefineQuantity, SubType_DefineQuantity, Type_Form;
   int i, j, k, Nbr_Dof = 0;
   int GeoDataNum = 0, UseNewGeo = 0;
+
+  // get room for n basis functions
+  auto resizeBF = [&](int n) {
+    xFunctionBF.resize(n);
+    vBFxDof.resize(n);
+    vBFu.resize(n);
+  };
 
   /* -------------
      Quantity Type
@@ -131,7 +139,8 @@ void Pos_FemInterpolation(struct Element *Element,
   if(Type_DefineQuantity == LOCALQUANTITY) {
     if(TheElement_P->Num != NO_ELEMENT) {
       Nbr_Dof = QuantityStorage_P->NbrElementaryBasisFunction;
-      Get_FunctionValue(Nbr_Dof, (void (**)())xFunctionBF, Type_Operator,
+      resizeBF(Nbr_Dof);
+      Get_FunctionValue(Nbr_Dof, (void (**)())xFunctionBF.data(), Type_Operator,
                         QuantityStorage_P, &Type_Form);
       xChangeOfCoordinates = (void (*)())Get_ChangeOfCoordinates(
         (Flag_ChangeOfCoordinates && TheElement_P->Num != NO_ELEMENT),
@@ -242,8 +251,9 @@ void Pos_FemInterpolation(struct Element *Element,
             QuantityStorage_P,
             QuantityStorage_P->DefineQuantity->IndexInFunctionSpace);
           Nbr_Dof = QuantityStorage_P->NbrElementaryBasisFunction;
+          resizeBF(Nbr_Dof);
           Get_FunctionValue(
-            Nbr_Dof, (void (**)())xFunctionBF,
+            Nbr_Dof, (void (**)())xFunctionBF.data(),
             QuantityStorage_P->DefineQuantity->IntegralQuantity.TypeOperatorDof,
             QuantityStorage_P, &IQA.Type_FormDof);
           Type_Form = IQA.Type_FormDof; /* good form */
@@ -408,12 +418,12 @@ void Pos_FemInterpolation(struct Element *Element,
       if(IQA.IntegrationCase_P->Type == ANALYTIC)
         Cal_AnalyticIntegralQuantity(Current.Element = TheElement_P,
                                      QuantityStorage_P, Nbr_Dof,
-                                     (void (**)())xFunctionBF, vBFxDof);
+                                     (void (**)())xFunctionBF.data(), vBFxDof);
       else
         Cal_NumericalIntegralQuantity(Current.Element = TheElement_P, &IQA,
                                       QuantityStorage_P0, QuantityStorage_P,
                                       SubType_DefineQuantity, Nbr_Dof,
-                                      (void (**)())xFunctionBF, vBFxDof);
+                                      (void (**)())xFunctionBF.data(), vBFxDof);
 
       Type_Form = vBFxDof[0].Type;
 

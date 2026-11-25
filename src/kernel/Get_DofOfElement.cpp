@@ -218,12 +218,6 @@ void Get_DofOfElement(struct Element *Element,
   } /* for i ... */
 
   QuantityStorage_P->NbrElementaryBasisFunction = Nbr_ElementaryBF;
-
-  if(Nbr_ElementaryBF > NBR_MAX_BASISFUNCTIONS) {
-    Message::Fatal("Maximum number of basis functions exceeded: %d > %d "
-                   "(recompile with higher value for NBR_MAX_BASISFUNCTIONS)",
-                   Nbr_ElementaryBF, NBR_MAX_BASISFUNCTIONS);
-  }
 }
 
 /* ------------------------------------------------------------------------ */
@@ -623,6 +617,7 @@ void Get_CodesOfElement(struct FunctionSpace *FunctionSpace_P,
     /*  2.  O n e   a s s o c i a t e s   a   b a s i s   f u n c t i o n :  */
 
     if(CodeExist) {
+      QuantityStorage_Reserve(QuantityStorage_P, Nbr_ElementaryBF + 1);
       QuantityStorage_P->BasisFunction[Nbr_ElementaryBF].Dof = Dof_P;
       QuantityStorage_P->BasisFunction[Nbr_ElementaryBF].NumEntityInElement =
         i_Entity;
@@ -700,6 +695,7 @@ void Get_DofOfRegion(int Num_Region, struct GlobalQuantity *GlobalQuantity_P,
     }
 
     if(CodeExist) {
+      QuantityStorage_Reserve(QuantityStorage_P, 1);
       QuantityStorage_P->BasisFunction[0].Dof = Dof_P;
 
       QuantityStorage_P->BasisFunction[0].CodeBasisFunction = Num_BasisFunction;

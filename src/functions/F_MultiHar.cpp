@@ -497,10 +497,9 @@ void Cal_GalerkinTermOfFemEquation_MHBilinear(
   struct Quadrature *Quadrature_P;
 
   int Nbr_Dof, NbrHar;
-  double vBFuDof[NBR_MAX_BASISFUNCTIONS][MAX_DIM];
-  double vBFxDof[NBR_MAX_BASISFUNCTIONS][MAX_DIM];
-  double Val_Dof[NBR_MAX_BASISFUNCTIONS][NBR_MAX_HARMONIC];
-  double Val[3 * NBR_MAX_BASISFUNCTIONS];
+  StackArray<double[MAX_DIM], NBR_BASISFUNCTIONS_ON_STACK> vBFuDof, vBFxDof;
+  StackArray<double[NBR_MAX_HARMONIC], NBR_BASISFUNCTIONS_ON_STACK> Val_Dof;
+  double Val[3 * NBR_MAX_HARMONIC]; // 3 components for each harmonic
 
   int i, j, k, Type_Dimension, Nbr_IntPoints, i_IntPoint;
   int iTime, iDof, jDof, iHar, jHar, nVal1, nVal2 = 0, iVal1, iVal2, Type1;
@@ -513,9 +512,9 @@ void Cal_GalerkinTermOfFemEquation_MHBilinear(
   int iPul, ZeroHarmonic, DcHarmonic;
   double E_D[NBR_MAX_HARMONIC][NBR_MAX_HARMONIC][MAX_DIM];
 
-  void (*xFunctionBFDof[NBR_MAX_BASISFUNCTIONS])(
-    struct Element * Element, int NumEntity, double u, double v, double w,
-    double Value[]);
+  typedef void (*BF_Function)(struct Element *Element, int NumEntity, double u,
+                              double v, double w, double Value[]);
+  StackArray<BF_Function, NBR_BASISFUNCTIONS_ON_STACK> xFunctionBFDof;
   double (*Get_Jacobian)(struct Element *, MATRIX3x3 *);
   void (*Get_IntPoint)(int, int, double *, double *, double *, double *);
   double (*Get_Product)(double *, double *, double *) = 0;
@@ -529,6 +528,11 @@ void Cal_GalerkinTermOfFemEquation_MHBilinear(
 
   if(!(Nbr_Dof = QuantityStorage_P->NbrElementaryBasisFunction)) { return; }
 
+  vBFuDof.resize(Nbr_Dof);
+  vBFxDof.resize(Nbr_Dof);
+  Val_Dof.resize(Nbr_Dof);
+  xFunctionBFDof.resize(Nbr_Dof);
+
   // test!
   std::vector<std::vector<std::vector<std::vector<double> > > > E_MH(Nbr_Dof);
   for(unsigned int i = 0; i < E_MH.size(); i++) {
@@ -541,7 +545,7 @@ void Cal_GalerkinTermOfFemEquation_MHBilinear(
     }
   }
 
-  Get_FunctionValue(Nbr_Dof, (void (**)())xFunctionBFDof,
+  Get_FunctionValue(Nbr_Dof, (void (**)())xFunctionBFDof.data(),
                     EquationTerm_P->Case.LocalTerm.Term.TypeOperatorDof,
                     QuantityStorage_P, &FI->Type_FormDof);
 

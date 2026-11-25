@@ -797,6 +797,9 @@ void Treatment_FemFormulation(struct Formulation *Formulation_P)
 
   if(MH_Moving_Matrix) {
     List_Delete(FemLocalTermActive_L);
+    for(int i = 0; i < List_Nbr(QuantityStorage_L); i++)
+      QuantityStorage_Free(
+        (struct QuantityStorage *)List_Pointer(QuantityStorage_L, i));
     List_Delete(QuantityStorage_L);
     return;
   }
@@ -983,6 +986,9 @@ void Treatment_FemFormulation(struct Formulation *Formulation_P)
   /* -------------------------- */
 
   List_Delete(FemLocalTermActive_L);
+  for(int i = 0; i < List_Nbr(QuantityStorage_L); i++)
+    QuantityStorage_Free(
+      (struct QuantityStorage *)List_Pointer(QuantityStorage_L, i));
   List_Delete(QuantityStorage_L);
   Cal_EndGalerkinTermOfFemEquation();
 }

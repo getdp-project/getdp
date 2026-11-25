@@ -170,11 +170,14 @@ void Cal_NumericalIntegralQuantity(struct Element *Element,
                                    void (*xFunctionBF[])(),
                                    struct Value vBFxDof[])
 {
-  struct Value vBFx[NBR_MAX_BASISFUNCTIONS];
+  StackArray<struct Value, NBR_BASISFUNCTIONS_ON_STACK> vBFx;
   int i, j, i_IntPoint;
   double Factor, weight;
-  double vBFu[NBR_MAX_BASISFUNCTIONS][MAX_DIM];
+  StackArray<double[MAX_DIM], NBR_BASISFUNCTIONS_ON_STACK> vBFu;
   struct Element *ES;
+
+  vBFx.resize(Nbr_Dof);
+  vBFu.resize(Nbr_Dof);
 
   /* This routine is valid for all QUADRATURE cases: GAUSS,
      GAUSSLEGENDRE */
