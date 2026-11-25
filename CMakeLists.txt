@@ -449,6 +449,15 @@ if(ENABLE_GMSH)
     list(APPEND EXTERNAL_LIBRARIES ${GMSH_LIB})
     list(APPEND EXTERNAL_INCLUDES ${GMSH_INC} ${GMSH_INC}/gmsh)
     set_config_option(HAVE_GMSH "Gmsh")
+    # the hierarchical basis functions of Gmsh (contrib/HierarchicalBasis),
+    # whose headers are searched for first, before those of the former module
+    # with the same names that an older Gmsh might have left in ${GMSH_INC}/gmsh
+    find_path(GMSH_HIERARCHICAL_INC "HcurlTetrahedron.h"
+              HINTS ${GMSH_INC}/gmsh PATH_SUFFIXES include/gmsh)
+    if(GMSH_HIERARCHICAL_INC)
+      list(INSERT EXTERNAL_INCLUDES 0 ${GMSH_HIERARCHICAL_INC})
+      set_config_option(HAVE_GMSH_HIERARCHICAL "GmshHierarchical")
+    endif()
   endif()
 endif()
 

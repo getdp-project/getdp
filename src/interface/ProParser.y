@@ -2706,6 +2706,15 @@ BasisFunctionTerm :
 	 &BasisFunction_S.Function, &BasisFunction_S.dFunction,
 	 &BasisFunction_S.dInvFunction, &BasisFunction_S.Order,
 	 &BasisFunction_S.ElementType, &BasisFunction_S.Orient);
+      // the Legendre functions of arbitrary order are not in the table
+      if(FlagError &&
+         BF_GetLegendre($2, &BasisFunction_S.Function,
+                        &BasisFunction_S.dFunction,
+                        &BasisFunction_S.dInvFunction,
+                        &BasisFunction_S.Order,
+                        &BasisFunction_S.ElementType,
+                        &BasisFunction_S.Orient))
+        FlagError = 0;
       if(FlagError){
 	Get_Valid_SX3F3N($2, BF_Function);
 	vyyerror(0, "Unknown Function for BasisFunction: %s", $2);

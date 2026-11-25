@@ -11,7 +11,7 @@ set(SRC
     F_PeWe.cpp F_Superconductor.cpp
   BF_Node.cpp BF_NodeXYZ.cpp BF_Node_2.cpp BF_Node_3.cpp
     BF_Edge.cpp BF_Edge_2.cpp BF_Edge_3.cpp BF_Edge_4.cpp
-    BF_Facet.cpp BF_Volume.cpp BF_Region.cpp
+    BF_Facet.cpp BF_Volume.cpp BF_Region.cpp BF_Legendre.cpp
     BF_Perpendicular.cpp BF_GroupOfEntities.cpp
   GF_Helmholtz.cpp GF_HelmholtzxForm.cpp
     GF_Laplace.cpp GF_LaplacexForm.cpp

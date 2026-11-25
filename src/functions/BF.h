@@ -298,4 +298,15 @@ void BF_DivWire(BF_ARG);
 
 #undef BF_ARG
 
+/* Legendre basis functions: hierarchical functions of Gmsh, of arbitrary
+   order, for H1, H(curl), H(div) and L2 (BF_H1Legendre_N0,
+   BF_HcurlLegendre_E<k>, BF_HdivLegendre_F<k>, BF_L2Legendre_V<k>, etc., and
+   their derivatives; see BF_Legendre.cpp): get the functions and the data of
+   the basis function of the given name; return false if it is not the name of
+   such a function */
+
+bool BF_GetLegendre(const char *Name, void (**Function)(),
+                    void (**dFunction)(), void (**dInvFunction)(),
+                    double *Order, int *ElementType, int *Orient);
+
 #endif
