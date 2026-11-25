@@ -163,6 +163,33 @@ void Geo_SetNodesCoordinatesZ(int Nbr_Node, int *Num_Node, double *z);
 double *Geo_GetNodes_uvw(int Type, int *nbn);
 double *Geo_GetBarycenter_uvw(int Type);
 
+// The key of a node for the orientation of the edges and facets of an element
+// from the order of their nodes, so that an entity and its periodic
+// counterpart are oriented in the same way, and that the elements sharing an
+// entity agree:
+// - the tag of the final master of the node: the chain of periodic copies is
+//   followed to the end, since a node on an edge of a periodic cell can be a
+//   copy of a copy (PeriodicNodes keeps one master per node);
+// - for two periodic images of the same node in an entity (in a cell one
+//   element wide), the number of copies followed, then the links applied along
+//   the way (sorted): each node of a slave entity has one more link than the
+//   corresponding node of its master entity, so that both are ordered in the
+//   same way (e.g. with periodicity in three directions, (0, Ly, 0) and
+//   (0, 0, Lz) are as many copies away but through different links);
+// - the tag of the node itself, for the remaining ties (inside the cell).
+struct Geo_NodeKey {
+  int tag;
+  std::vector<int> links;
+  int orig;
+};
+void Geo_GetNodeKey(int Num_Node, struct Geo_NodeKey &Key);
+bool Geo_IsNodeKeyBefore(const struct Geo_NodeKey &a,
+                         const struct Geo_NodeKey &b);
+
+// the first order type of a type of element, and its number of nodes (the
+// vertices of the element, which are its first nodes)
+int Geo_GetFirstOrderElementType(int Type);
+int Geo_GetNbrVerticesOfElementType(int Type);
 void Geo_CreateEdgesOfElement(struct Geo_Element *Geo_Element);
 int *Geo_GetNodesOfEdgeInElement(struct Geo_Element *Geo_Element, int Num_Edge);
 void Geo_CreateFacetsOfElement(struct Geo_Element *Geo_Element);

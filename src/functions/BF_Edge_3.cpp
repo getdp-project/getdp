@@ -18,24 +18,6 @@ extern struct CurrentData Current;
 /* The non-symmetric facet functions are selected according to the NumIndex^th
    smallest global node number */
 
-#if defined(HAVE_KERNEL)
-// Keys of a node of a facet: the tag of its final master, the number of copies
-// followed to reach it (depth), the links applied along the way (sorted), and
-// its own tag
-struct FacetNodeKey {
-  int tag, depth, links[16], orig;
-};
-
-static bool Is_Before(const FacetNodeKey &a, const FacetNodeKey &b)
-{
-  if(a.tag != b.tag) return a.tag < b.tag;
-  if(a.depth != b.depth) return a.depth < b.depth;
-  for(int k = 0; k < a.depth; k++)
-    if(a.links[k] != b.links[k]) return a.links[k] < b.links[k];
-  return a.orig < b.orig;
-}
-#endif
-
 int Get_FacetFunctionIndex(struct Element *Element, int NumEntity, int NumIndex)
 {
 #if !defined(HAVE_KERNEL)
@@ -48,38 +30,16 @@ int Get_FacetFunctionIndex(struct Element *Element, int NumEntity, int NumIndex)
       int *NumNodes = Geo_GetNodesOfFacetInElement(Element->GeoElement, i);
       // Sort the nodes of the facet so that a facet and its periodic
       // counterpart select the same functions, and the two elements sharing a
-      // facet sort its nodes in the same order. The keys are:
-      // - the global tag of the final master of the node: the chain of periodic
-      //   copies is followed to the end, since a node on an edge of the cell
-      //   can be a copy of a copy (PeriodicNodes keeps one master per node);
-      // - for two periodic images of the same node in the facet (in a cell one
-      //   element wide), the number of copies followed (depth), then the links
-      //   applied along the way: each node of a slave facet has one more link
-      //   than the corresponding node of its master facet, so both facets are
-      //   sorted the same way (e.g. with periodicity in three directions,
-      //   (0, Ly, 0) and (0, 0, Lz) have the same depth but different links);
-      // - the original tag, for the remaining ties (inside the cell).
+      // facet sort its nodes in the same order (see Geo_NodeKey)
       int n = 0, loc[8];
-      FacetNodeKey key[8];
+      struct Geo_NodeKey key[8];
       while(n < 8 && NumNodes[n]) {
         loc[n] = NumNodes[n];
-        FacetNodeKey &k = key[n];
-        k.orig = k.tag = Element->GeoElement->NumNodes[NumNodes[n] - 1];
-        k.depth = 0;
-        if(Current.GeoData->PeriodicNodes) {
-          auto it = Current.GeoData->PeriodicNodes->find(k.tag);
-          while(it != Current.GeoData->PeriodicNodes->end() &&
-                it->second.first != k.tag && k.depth < 16) { // guard: cycles
-            k.tag = it->second.first;
-            k.links[k.depth++] = it->second.second;
-            it = Current.GeoData->PeriodicNodes->find(k.tag);
-          }
-          std::sort(k.links, k.links + k.depth);
-        }
+        Geo_GetNodeKey(Element->GeoElement->NumNodes[NumNodes[n] - 1], key[n]);
         n++;
       }
       for(int a = 1; a < n; a++) // insertion sort, at most 4 nodes
-        for(int b = a; b > 0 && Is_Before(key[b], key[b - 1]); b--) {
+        for(int b = a; b > 0 && Geo_IsNodeKeyBefore(key[b], key[b - 1]); b--) {
           std::swap(key[b], key[b - 1]);
           std::swap(loc[b], loc[b - 1]);
         }

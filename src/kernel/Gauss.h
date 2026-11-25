@@ -28,6 +28,7 @@ void Gauss_Hexahedron(GAUSS_ARGS);
 void GaussLegendre_Hexahedron(GAUSS_ARGS);
 
 void Gauss_Prism(GAUSS_ARGS);
+void GaussLegendre_Prism(GAUSS_ARGS);
 
 void Gauss_Pyramid(GAUSS_ARGS);
 

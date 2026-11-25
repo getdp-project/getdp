@@ -1,17 +1,43 @@
-// (curl u, curl v) + (u, v) = (f, v) - <n x curl u, v>, with a known u
-DefineConstant[ p = 2, dim = 2, whitney = 1, ng = 0 ];
-Group {
-  Omega = Region[1]; Bnd = Region[2];
-  Dom = Region[{Omega, Bnd}];
-}
+// (curl u, curl v) + (u, v) = (f, v) - <n x curl u, v>, with a known u, in
+// H(curl) of order p
+DefineConstant[ p = 2, dim = 2, whitney = 0 ];
+Include "legendre_common.pro";
 Function {
-  If(dim == 2)
+  If(per == 2 && dim == 2)
+    u0[] = Vector[Sin[2*Pi*Y[]], Sin[2*Pi*X[]], 0];
+    g[] = 2*Pi*Vector[Cos[2*Pi*X[]]*Sin[2*Pi*Y[]], Sin[2*Pi*X[]]*Cos[2*Pi*Y[]], 0];
+    cu[] = Vector[0, 0, 2*Pi*Cos[2*Pi*X[]] - 2*Pi*Cos[2*Pi*Y[]]];
+    f[] = (4*Pi^2+1)*u0[] + g[];
+  ElseIf(per == 2)
+    u0[] = Vector[Sin[2*Pi*Y[]+Z[]], Sin[2*Z[]+2*Pi*X[]], Sin[2*Pi*X[]+2*Pi*Y[]]];
+    g[] = Vector[2*Pi*Cos[2*Pi*X[]]*Sin[2*Pi*Y[]]*Sin[Z[]],
+                 2*Pi*Sin[2*Pi*X[]]*Cos[2*Pi*Y[]]*Sin[Z[]],
+                 Sin[2*Pi*X[]]*Sin[2*Pi*Y[]]*Cos[Z[]]];
+    cu[] = Vector[2*Pi*Cos[2*Pi*X[]+2*Pi*Y[]] - 2*Cos[2*Z[]+2*Pi*X[]],
+                  Cos[2*Pi*Y[]+Z[]] - 2*Pi*Cos[2*Pi*X[]+2*Pi*Y[]],
+                  2*Pi*Cos[2*Z[]+2*Pi*X[]] - 2*Pi*Cos[2*Pi*Y[]+Z[]]];
+    f[] = Vector[(4*Pi^2+2)*Sin[2*Pi*Y[]+Z[]], (4*Pi^2+5)*Sin[2*Z[]+2*Pi*X[]],
+                 (8*Pi^2+1)*Sin[2*Pi*X[]+2*Pi*Y[]]] + g[];
+  ElseIf(per && dim == 2)
+    u0[] = Vector[Sin[2*Y[]], Sin[2*Pi*X[]], 0];
+    g[] = Vector[2*Pi*Cos[2*Pi*X[]]*Sin[Y[]], Sin[2*Pi*X[]]*Cos[Y[]], 0];
+    cu[] = Vector[0, 0, 2*Pi*Cos[2*Pi*X[]] - 2*Cos[2*Y[]]];
+    f[] = Vector[5*Sin[2*Y[]], (4*Pi^2+1)*Sin[2*Pi*X[]], 0] + g[];
+  ElseIf(per)
+    u0[] = Vector[Sin[2*Y[]+Z[]], Sin[2*Z[]+2*Pi*X[]], Sin[2*Pi*X[]+Y[]]];
+    g[] = Vector[2*Pi*Cos[2*Pi*X[]]*Sin[Y[]]*Sin[Z[]],
+                 Sin[2*Pi*X[]]*Cos[Y[]]*Sin[Z[]],
+                 Sin[2*Pi*X[]]*Sin[Y[]]*Cos[Z[]]];
+    cu[] = Vector[Cos[2*Pi*X[]+Y[]] - 2*Cos[2*Z[]+2*Pi*X[]],
+                  Cos[2*Y[]+Z[]] - 2*Pi*Cos[2*Pi*X[]+Y[]],
+                  2*Pi*Cos[2*Z[]+2*Pi*X[]] - 2*Cos[2*Y[]+Z[]]];
+    f[] = Vector[6*Sin[2*Y[]+Z[]], (4*Pi^2+5)*Sin[2*Z[]+2*Pi*X[]],
+                 (4*Pi^2+2)*Sin[2*Pi*X[]+Y[]]] + g[];
+  ElseIf(dim == 2)
     u0[] = Vector[Sin[2*Y[]], Sin[2*X[]], 0];
     g[] = Vector[Cos[X[]]*Sin[Y[]], Sin[X[]]*Cos[Y[]], 0];
     cu[] = Vector[0, 0, 2*Cos[2*X[]] - 2*Cos[2*Y[]]];
     f[] = 5*u0[] + g[];
-    n[] = Vector[(Fabs[X[]-1] < 1e-6) - (Fabs[X[]] < 1e-6),
-                 (Fabs[Y[]-1] < 1e-6) - (Fabs[Y[]] < 1e-6), 0];
   Else
     u0[] = Vector[Sin[2*Y[]+Z[]], Sin[2*Z[]+X[]], Sin[2*X[]+Y[]]];
     g[] = Vector[Cos[X[]]*Sin[Y[]]*Sin[Z[]], Sin[X[]]*Cos[Y[]]*Sin[Z[]],
@@ -20,49 +46,74 @@ Function {
                   Cos[2*Y[]+Z[]] - 2*Cos[2*X[]+Y[]],
                   Cos[2*Z[]+X[]] - 2*Cos[2*Y[]+Z[]]];
     f[] = 6*u0[] + g[];
-    n[] = Vector[(Fabs[X[]-1] < 1e-6) - (Fabs[X[]] < 1e-6),
-                 (Fabs[Y[]-1] < 1e-6) - (Fabs[Y[]] < 1e-6),
-                 (Fabs[Z[]-1] < 1e-6) - (Fabs[Z[]] < 1e-6)];
   EndIf
   uex[] = u0[] + g[];
 }
-Jacobian {
-  { Name Vol; Case { { Region Dom; Jacobian Vol; } } }
-  { Name Sur; Case { { Region Dom; Jacobian Sur; } } }
-}
-Integration {
-  { Name I; Case { { Type Gauss; Case {
-    { GeoElement Line; NumberOfPoints 10; }
-    { GeoElement Triangle; NumberOfPoints 16; }
-    { GeoElement Tetrahedron; NumberOfPoints 29; } } } } }
-}
+// number of functions per edge (after the Whitney function), triangle,
+// quadrangle, tetrahedron, hexahedron and prism
+nE = p; nTri = (p-1)*(p+1); nQua = 2*p*(p+1);
+nTet = (p-2)*(p-1)*(p+1)/2; nHex = 3*p^2*(p+1); nPri = 3*(p-1)*p*(p+1)/2;
 FunctionSpace {
   { Name H; Type Form1;
     BasisFunction {
       If(whitney)
-        { Name se; NameOfCoef ae; Function BF_Edge; Support Dom; Entity EdgesOf[All]; }
+        { Name se; NameOfCoef ue; Function BF_Edge; Support Dom; Entity EdgesOf[All]; }
       Else
-        { Name se; NameOfCoef ae; Function BF_HcurlLegendre_E0; Support Dom; Entity EdgesOf[All]; }
+        { Name se; NameOfCoef ue; Function BF_HcurlLegendre_E0; Support Dom; Entity EdgesOf[All]; }
       EndIf
-      For k In {1:p}
-        If(!ng || k < p)
-        { Name se~{k}; NameOfCoef ae~{k}; Function BF_HcurlLegendre_E~{k}; Support Dom; Entity EdgesOf[All]; }
+      If(nE > 0)
+        For k In {1:nE}
+          { Name se~{k}; NameOfCoef ue~{k}; Function BF_HcurlLegendre_E~{k}; Support Dom; Entity EdgesOf[All]; }
+        EndFor
+      EndIf
+      If(nTri > 0)
+        For k In {0:nTri-1}
+          { Name st~{k}; NameOfCoef ut~{k}; Function BF_HcurlLegendre_FTri~{k}; Support Dom; Entity FacetsOf[All]; }
+        EndFor
+      EndIf
+      If(nQua > 0)
+        For k In {0:nQua-1}
+          { Name sq~{k}; NameOfCoef uq~{k}; Function BF_HcurlLegendre_FQua~{k}; Support Dom; Entity FacetsOf[All]; }
+        EndFor
+      EndIf
+      If(nTet > 0)
+        For k In {0:nTet-1}
+          { Name svt~{k}; NameOfCoef uvt~{k}; Function BF_HcurlLegendre_VTet~{k}; Support Dom; Entity VolumesOf[All]; }
+        EndFor
+      EndIf
+      If(nHex > 0)
+        For k In {0:nHex-1}
+          { Name svh~{k}; NameOfCoef uvh~{k}; Function BF_HcurlLegendre_VHex~{k}; Support Dom; Entity VolumesOf[All]; }
+        EndFor
+      EndIf
+      If(nPri > 0)
+        For k In {0:nPri-1}
+          { Name svp~{k}; NameOfCoef uvp~{k}; Function BF_HcurlLegendre_VPri~{k}; Support Dom; Entity VolumesOf[All]; }
+        EndFor
+      EndIf
+    }
+    Constraint {
+      If(link)
+        { NameOfCoef ue; EntityType EdgesOf; NameOfConstraint Periodic; }
+        If(nE > 0)
+          For k In {1:nE}
+            { NameOfCoef ue~{k}; EntityType EdgesOf; NameOfConstraint Periodic; }
+          EndFor
         EndIf
-      EndFor
-      If(p > 1)
-        For q In {2:p}
-        For k In {(q-2)*q:(q-1)*(q+1)-1}
-          // without the gradients of the highest order: the first q - 1
-          If(!ng || q < p || k >= (q-2)*q + q-1)
-          { Name sf~{k}; NameOfCoef af~{k}; Function BF_HcurlLegendre_F~{k}; Support Dom; Entity FacetsOf[All]; }
+        If(dim == 3)
+          If(nTri > 0)
+            For k In {0:nTri-1}
+              { NameOfCoef ut~{k}; EntityType FacetsOf; NameOfConstraint Periodic; }
+            EndFor
           EndIf
-        EndFor
-        EndFor
-      EndIf
-      If(dim == 3 && p > 2)
-        For k In {0:(p-2)*(p-1)*(p+1)/2-1}
-          If(!ng || k >= 1) { Name sv~{k}; NameOfCoef av~{k}; Function BF_HcurlLegendre_V~{k}; Support Dom; Entity VolumesOf[All]; } EndIf
-        EndFor
+        EndIf
+        If(dim == 3)
+          If(nQua > 0)
+            For k In {0:nQua-1}
+              { NameOfCoef uq~{k}; EntityType FacetsOf; NameOfConstraint Periodic; }
+            EndFor
+          EndIf
+        EndIf
       EndIf
     }
   }
@@ -79,17 +130,14 @@ Formulation {
   }
 }
 Resolution {
-  { Name R;
-    System { { Name A; NameOfFormulation F; } }
-    Operation { Generate[A]; Solve[A]; SaveSolution[A]; }
-  }
+  { Name R; System { { Name A; NameOfFormulation F; } }
+    Operation { Generate[A]; Solve[A]; SaveSolution[A]; } }
 }
 PostProcessing {
   { Name P; NameOfFormulation F;
     Quantity {
-      { Name u; Value { Term { [ {u} ]; In Omega; Jacobian Vol; } } }
       { Name eu; Value { Integral { [ SquNorm[{u} - uex[]] ]; In Omega; Jacobian Vol; Integration I; } } }
-      { Name ec; Value { Integral { [ SquNorm[{d u} - cu[]] ]; In Omega; Jacobian Vol; Integration I; } } }
+      { Name ed; Value { Integral { [ SquNorm[{d u} - cu[]] ]; In Omega; Jacobian Vol; Integration I; } } }
     }
   }
 }
@@ -97,7 +145,7 @@ PostOperation {
   { Name P; NameOfPostProcessing P;
     Operation {
       Print[ eu[Omega], OnGlobal, Format Table, File "eu.txt" ];
-      Print[ ec[Omega], OnGlobal, Format Table, File "ec.txt" ];
+      Print[ ed[Omega], OnGlobal, Format Table, File "ed.txt" ];
     }
   }
 }

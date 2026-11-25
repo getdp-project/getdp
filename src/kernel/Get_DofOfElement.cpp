@@ -52,6 +52,11 @@ void Get_DofOfElement(struct Element *Element,
   int Nbr_BasisFunction, Nbr_BasisFunctionAll, i_BFunction, StartingIndex, i;
   int *BasisFunctionIndex_P0 = NULL;
 
+  // the basis functions oriented by the order of their nodes need the
+  // periodic nodes of the links of the function space
+  if(FunctionSpace_P->PeriodicNodesGeoData != Current.GeoData)
+    Generate_PeriodicNodes(FunctionSpace_P);
+
   Current.Element = Element;
   Nbr_ElementaryBF = 0;
 
@@ -571,6 +576,23 @@ void Get_CodesOfElement(struct FunctionSpace *FunctionSpace_P,
           (Node, Edge, Facet, Volume, GroupOfNodes, Region, ...)  */
 
   for(i_Entity = StartingIndex; i_Entity < Nbr_Entity; i_Entity++) {
+    // a basis function borne by some of the entities only: the triangular or
+    // the quadrangular facets, or the vertices of a high order element
+    if(BasisFunction_P->EntityFilter != ENTITYFILTER_NONE) {
+      if(TypeConstraint == FACETSOF &&
+         BasisFunction_P->EntityFilter != ENTITYFILTER_VERTICES) {
+        int *n =
+          Geo_GetNodesOfFacetInElement(Current.Element->GeoElement, i_Entity);
+        int nbr = 0;
+        while(nbr < NBR_MAX_SUBENTITIES_IN_ELEMENT && n[nbr]) nbr++;
+        if(nbr != BasisFunction_P->EntityFilter) continue;
+      }
+      else if(TypeConstraint == NODESOF &&
+              BasisFunction_P->EntityFilter == ENTITYFILTER_VERTICES &&
+              i_Entity >= Geo_GetNbrVerticesOfElementType(Current.Element->Type))
+        continue;
+    }
+
     Code_BasisFunction =
       BasisFunction_P->Num + (Num_SubFunction ? Num_SubFunction[i_Entity] : 0);
 

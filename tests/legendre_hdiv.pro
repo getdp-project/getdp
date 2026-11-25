@@ -1,14 +1,30 @@
 // q = - grad phi, div q = f in H(div) x L2, phi given weakly on the boundary:
-// (q, t) - (phi, div t) = - <phi, t . n>, (div q, v) = (f, v)
-// rt = 0: full H(div) of order p (BDM) with L2 of order p - 1 (p >= 1)
-// rt = 1: without the curls of order p (RT of order p - 1) with L2 of order p - 1
-DefineConstant[ p = 1, dim = 3, rt = 0, whitney = 0 ];
+// (q, t) - (phi, div t) = - <phi, t . n>, (div q, v) = (f, v), with H(div) of
+// order p; the divergence of the functions of order p has the order p on the
+// hexahedra and prisms, and p - 1 on the tetrahedra (0 if p = 0)
+DefineConstant[ p = 1, dim = 3, whitney = 0 ];
 Include "legendre_common.pro";
 Function {
-  phiex[] = Sin[2*X[]+Y[]+Z[]];
-  qex[] = -Vector[2, 1, 1] * Cos[2*X[]+Y[]+Z[]];
-  f[] = 6*phiex[];
+  If(per)
+    phiex[] = Sin[2*Pi*X[]]*Cos[Y[]]*Cos[Z[]];
+    qex[] = -Vector[2*Pi*Cos[2*Pi*X[]]*Cos[Y[]]*Cos[Z[]],
+                    -Sin[2*Pi*X[]]*Sin[Y[]]*Cos[Z[]],
+                    -Sin[2*Pi*X[]]*Cos[Y[]]*Sin[Z[]]];
+    f[] = (4*Pi^2+2)*phiex[];
+  Else
+    phiex[] = Sin[2*X[]+Y[]+Z[]];
+    qex[] = -Vector[2, 1, 1] * Cos[2*X[]+Y[]+Z[]];
+    f[] = 6*phiex[];
+  EndIf
 }
+// number of functions per triangle and quadrangle (after the Whitney
+// function), tetrahedron, hexahedron and prism
+nTri = (p+1)*(p+2)/2 - 1; nQua = (p+1)^2 - 1;
+nTet = (p-1)*(p+1)*(p+2)/2; nHex = 3*p*(p+1)^2;
+nPri = (p > 0) ? (3*p^3+5*p^2-2)/2 : 0;
+// number of functions of L2
+lTet = (p > 0) ? p*(p+1)*(p+2)/6 : 1; lHex = (p+1)^3;
+lPri = (p+1)^2*(p+2)/2;
 FunctionSpace {
   { Name Hdiv; Type Form2;
     BasisFunction {
@@ -17,31 +33,65 @@ FunctionSpace {
       Else
         { Name sf; NameOfCoef qf; Function BF_HdivLegendre_F0; Support Dom; Entity FacetsOf[All]; }
       EndIf
-      // the facet functions of order o >= 1 are all curls, as are the first
-      // o^2 - 1 volume functions of order o >= 2
-      For o In {1:p}
-        If(!rt || o < p)
-        For k In {o*(o+1)/2:(o+1)*(o+2)/2-1}
-          { Name sf~{k}; NameOfCoef qf~{k}; Function BF_HdivLegendre_F~{k}; Support Dom; Entity FacetsOf[All]; }
+      If(nTri > 0)
+        For k In {1:nTri}
+          { Name st~{k}; NameOfCoef qt~{k}; Function BF_HdivLegendre_FTri~{k}; Support Dom; Entity FacetsOf[All]; }
         EndFor
+      EndIf
+      If(nQua > 0)
+        For k In {1:nQua}
+          { Name sq~{k}; NameOfCoef qq~{k}; Function BF_HdivLegendre_FQua~{k}; Support Dom; Entity FacetsOf[All]; }
+        EndFor
+      EndIf
+      If(nTet > 0)
+        For k In {0:nTet-1}
+          { Name svt~{k}; NameOfCoef qvt~{k}; Function BF_HdivLegendre_VTet~{k}; Support Dom; Entity VolumesOf[All]; }
+        EndFor
+      EndIf
+      If(nHex > 0)
+        For k In {0:nHex-1}
+          { Name svh~{k}; NameOfCoef qvh~{k}; Function BF_HdivLegendre_VHex~{k}; Support Dom; Entity VolumesOf[All]; }
+        EndFor
+      EndIf
+      If(nPri > 0)
+        For k In {0:nPri-1}
+          { Name svp~{k}; NameOfCoef qvp~{k}; Function BF_HdivLegendre_VPri~{k}; Support Dom; Entity VolumesOf[All]; }
+        EndFor
+      EndIf
+    }
+    Constraint {
+      If(link)
+        { NameOfCoef qf; EntityType FacetsOf; NameOfConstraint Periodic; }
+        If(nTri > 0)
+          For k In {1:nTri}
+            { NameOfCoef qt~{k}; EntityType FacetsOf; NameOfConstraint Periodic; }
+          EndFor
         EndIf
-      EndFor
-      If(p > 1)
-        For o In {2:p}
-        For k In {(o-2)*o*(o+1)/2:(o-1)*(o+1)*(o+2)/2-1}
-          If(!rt || o < p || k >= (o-2)*o*(o+1)/2 + o*o-1)
-          { Name sv~{k}; NameOfCoef qv~{k}; Function BF_HdivLegendre_V~{k}; Support Dom; Entity VolumesOf[All]; }
-          EndIf
-        EndFor
-        EndFor
+        If(nQua > 0)
+          For k In {1:nQua}
+            { NameOfCoef qq~{k}; EntityType FacetsOf; NameOfConstraint Periodic; }
+          EndFor
+        EndIf
       EndIf
     }
   }
   { Name L2; Type Form3;
     BasisFunction {
-      For k In {0:p*(p+1)*(p+2)/6-1}
-        { Name sv~{k}; NameOfCoef pv~{k}; Function BF_L2Legendre_V~{k}; Support Omega; Entity VolumesOf[All]; }
-      EndFor
+      If(lTet > 0)
+        For k In {0:lTet-1}
+          { Name svt~{k}; NameOfCoef pvt~{k}; Function BF_L2Legendre_VTet~{k}; Support Omega; Entity VolumesOf[All]; }
+        EndFor
+      EndIf
+      If(lHex > 0)
+        For k In {0:lHex-1}
+          { Name svh~{k}; NameOfCoef pvh~{k}; Function BF_L2Legendre_VHex~{k}; Support Omega; Entity VolumesOf[All]; }
+        EndFor
+      EndIf
+      If(lPri > 0)
+        For k In {0:lPri-1}
+          { Name svp~{k}; NameOfCoef pvp~{k}; Function BF_L2Legendre_VPri~{k}; Support Omega; Entity VolumesOf[All]; }
+        EndFor
+      EndIf
     }
   }
 }
@@ -68,7 +118,7 @@ PostProcessing {
   { Name P; NameOfFormulation F;
     Quantity {
       { Name eu; Value { Integral { [ SquNorm[{q} - qex[]] ]; In Omega; Jacobian Vol; Integration I; } } }
-      { Name ec; Value { Integral { [ SquNorm[{phi} - phiex[]] ]; In Omega; Jacobian Vol; Integration I; } } }
+      { Name ed; Value { Integral { [ SquNorm[{phi} - phiex[]] ]; In Omega; Jacobian Vol; Integration I; } } }
     }
   }
 }
@@ -76,7 +126,7 @@ PostOperation {
   { Name P; NameOfPostProcessing P;
     Operation {
       Print[ eu[Omega], OnGlobal, Format Table, File "eu.txt" ];
-      Print[ ec[Omega], OnGlobal, Format Table, File "ec.txt" ];
+      Print[ ed[Omega], OnGlobal, Format Table, File "ed.txt" ];
     }
   }
 }

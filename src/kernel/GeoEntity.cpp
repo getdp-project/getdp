@@ -59,6 +59,92 @@ double *Geo_GetNodes_uvw(int Type, int *nbn)
 }
 
 /* ------------------------------------------------------------------------ */
+/*  G e o _ G e t N o d e K e y                                             */
+/* ------------------------------------------------------------------------ */
+
+void Geo_GetNodeKey(int Num_Node, struct Geo_NodeKey &Key)
+{
+  Key.orig = Key.tag = Num_Node;
+  Key.links.clear();
+  extern struct CurrentData Current;
+  if(!Current.GeoData) return;
+  std::map<int, std::pair<int, int> > *periodic = Current.GeoData->PeriodicNodes;
+  if(!periodic || periodic->empty()) return;
+  // follow the chain of periodic copies to its end; a chain cannot be longer
+  // than the number of periodic nodes, unless it loops
+  auto it = periodic->find(Key.tag);
+  while(it != periodic->end() && it->second.first != Key.tag) {
+    if(Key.links.size() > periodic->size()) {
+      Message::Error("Loop in the periodic copies of node %d", Num_Node);
+      break;
+    }
+    Key.tag = it->second.first;
+    Key.links.push_back(it->second.second);
+    it = periodic->find(Key.tag);
+  }
+  std::sort(Key.links.begin(), Key.links.end());
+}
+
+bool Geo_IsNodeKeyBefore(const struct Geo_NodeKey &a,
+                         const struct Geo_NodeKey &b)
+{
+  if(a.tag != b.tag) return a.tag < b.tag;
+  if(a.links.size() != b.links.size()) return a.links.size() < b.links.size();
+  if(a.links != b.links) return a.links < b.links;
+  return a.orig < b.orig;
+}
+
+/* ------------------------------------------------------------------------ */
+/*  G e o _ G e t F i r s t O r d e r E l e m e n t T y p e                 */
+/* ------------------------------------------------------------------------ */
+
+int Geo_GetFirstOrderElementType(int Type)
+{
+  switch(Type) {
+  case LINE_2:
+  case LINE_3:
+  case LINE_4: return LINE;
+  case TRIANGLE_2:
+  case TRIANGLE_3:
+  case TRIANGLE_4: return TRIANGLE;
+  case QUADRANGLE_2:
+  case QUADRANGLE_2_8N:
+  case QUADRANGLE_3:
+  case QUADRANGLE_4: return QUADRANGLE;
+  case TETRAHEDRON_2:
+  case TETRAHEDRON_3:
+  case TETRAHEDRON_4: return TETRAHEDRON;
+  case HEXAHEDRON_2:
+  case HEXAHEDRON_2_20N:
+  case HEXAHEDRON_3:
+  case HEXAHEDRON_4: return HEXAHEDRON;
+  case PRISM_2:
+  case PRISM_2_15N:
+  case PRISM_3:
+  case PRISM_4: return PRISM;
+  case PYRAMID_2:
+  case PYRAMID_2_13N:
+  case PYRAMID_3: return PYRAMID;
+  default: return Type;
+  }
+}
+
+int Geo_GetNbrVerticesOfElementType(int Type)
+{
+  switch(Geo_GetFirstOrderElementType(Type)) {
+  case POINT_ELEMENT: return 1;
+  case LINE: return 2;
+  case TRIANGLE: return 3;
+  case QUADRANGLE: return 4;
+  case TETRAHEDRON: return 4;
+  case HEXAHEDRON: return 8;
+  case PRISM: return 6;
+  case PYRAMID: return 5;
+  default: return 0;
+  }
+}
+
+/* ------------------------------------------------------------------------ */
 /*  G e o _ C r e a t e E d g e s O f E l e m e n t                         */
 /* ------------------------------------------------------------------------ */
 

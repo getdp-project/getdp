@@ -22,6 +22,7 @@ void Get_ValueForConstraint(struct ConstraintInFS *Constraint_P, double Value[],
                             bool KeepCurrentElement = false);
 void Get_PreResolutionForConstraint(struct ConstraintInFS *Constraint_P,
                                     int *Index_TimeFunction);
+void Generate_PeriodicNodes(struct FunctionSpace *FunctionSpace_P);
 void Get_LinkForConstraint(struct ConstraintInFS *Constraint_P, int Num_Entity,
                            int *CodeEntity_Link, int Orient, double Value[]);
 

@@ -4,9 +4,9 @@
 // issues on https://gitlab.onelab.info/getdp/getdp/issues.
 
 // Legendre basis functions: hierarchical functions of arbitrary order of H1,
-// H(curl), H(div) and L2, evaluated by Gmsh (the "H1Legendre", "HcurlLegendre",
+// H(curl), H(div) and L2, computed by Gmsh (the "H1Legendre", "HcurlLegendre",
 // "HdivLegendre" and "L2Legendre" function spaces of its HierarchicalBasis
-// module), on lines, triangles and tetrahedra.
+// module), on lines, triangles, quadrangles, tetrahedra, hexahedra and prisms.
 //
 // A basis function of GetDP is one function per entity (node, edge, facet or
 // volume), whereas the number of functions per entity grows with the order.
@@ -24,30 +24,44 @@
 //
 // (or BF_H1Legendre_E_<k>, etc., as given by BF_H1Legendre_E~{k} in a loop),
 // with their exterior derivatives BF_GradH1Legendre_..., BF_CurlHcurlLegendre_...
-// and BF_DivHdivLegendre_... On simplices the full spaces of order p are made
-// of the following functions, the functions of an entity being sorted by
-// increasing order:
+// and BF_DivHdivLegendre_...
 //
-//   - H1 (polynomials of degree p, p >= 1): N0, the p - 1 first functions of
-//     the edges, the (p - 2) (p - 1) / 2 first functions of the facets and the
-//     (p - 3) (p - 2) (p - 1) / 6 first functions of the volumes;
-//   - H(curl) (polynomials of degree p, p >= 0): the p + 1 first functions of
-//     the edges (E0 is the Whitney function BF_Edge, and Ek, k > 0, the
-//     gradient of order k), the (p - 1) (p + 1) first functions of the facets
-//     and the (p - 2) (p - 1) (p + 1) / 2 first functions of the volumes;
-//   - H(div) (polynomials of degree p, p >= 0): the (p + 1) (p + 2) / 2 first
-//     functions of the facets (F0 is the Whitney function BF_Facet) and the
-//     (p - 1) (p + 1) (p + 2) / 2 first functions of the volumes;
-//   - L2 (polynomials of degree p, p >= 0): the p + 1, (p + 1) (p + 2) / 2 or
-//     (p + 1) (p + 2) (p + 3) / 6 first functions of a line, a triangle or a
-//     tetrahedron.
+// The triangular and quadrangular facets do not bear the same functions, nor
+// the same number of functions for a given order, and neither do the elements
+// of different shapes. On meshes with several shapes the functions can be
+// restricted to the entities of one shape, with FTri<k> and FQua<k> for the
+// facets, and VTet<k>, VHex<k> and VPri<k> for the volumes (and VLin<k>,
+// VTri<k> and VQua<k> for the elements of L2), e.g. BF_HcurlLegendre_FQua<k>.
 //
-// The interior functions of a triangle are facet functions, and those of a line
-// edge functions, so that the functions of H1 and H(curl) on the lines and
-// triangles are the traces of the functions of the triangles and tetrahedra
-// they bound. The functions of H(div) are those of the tetrahedra, and their
-// normal traces on the triangles (a normal vector in the reference triangle,
-// as BF_Facet): there are no functions of H(div) in the plane.
+// The functions of an entity are sorted by increasing order: the space of
+// order p is made of the n first functions of each entity, with n given by
+//
+//                      H1                    H(curl)              H(div)
+//   edge               p - 1                 p + 1                -
+//   triangle           (p-2)(p-1)/2          (p-1)(p+1)           (p+1)(p+2)/2
+//   quadrangle         (p-1)^2               2p(p+1)              (p+1)^2
+//   tetrahedron        (p-3)(p-2)(p-1)/6     (p-2)(p-1)(p+1)/2    (p-1)(p+1)(p+2)/2
+//   hexahedron         (p-1)^3               3p^2(p+1)            3p(p+1)^2
+//   prism              (p-2)(p-1)^2/2        3(p-1)p(p+1)/2       (3p^3+5p^2-2)/2
+//
+// (0 for the prism in H(div) if p = 0), one function per node in H1, and for
+// L2 p+1, (p+1)(p+2)/2, (p+1)^2, (p+1)(p+2)(p+3)/6, (p+1)^3 and (p+1)^2(p+2)/2
+// functions on a line, a triangle, a quadrangle, a tetrahedron, a hexahedron
+// and a prism. In H(curl), E0 is the Whitney function (BF_Edge) and on the
+// simplices Ek, k > 0, is the gradient of order k; in H(div), F0 is the Whitney
+// function (BF_Facet).
+//
+// The interior functions of a triangle or a quadrangle are facet functions,
+// and those of a line edge functions, so that the functions of H1 and H(curl)
+// on the lines, triangles and quadrangles are the traces of the functions of
+// the elements they bound. The functions of H(div) are those of the volumes,
+// and their normal traces on the triangles and quadrangles (a normal vector in
+// the reference element, as BF_Facet): there are no functions of H(div) in the
+// plane.
+//
+// Gmsh gives the functions on the reference element, and those of the facets
+// for each orientation of a facet; the orientation of the edges and facets of
+// an element is applied here, as in Gmsh, from the tags of the nodes.
 
 #include <algorithm>
 #include <array>
@@ -77,91 +91,308 @@
 #include "HierarchicalBasis.h"
 
 // the number of different functions that can be used in a problem
-#define MAX_FUNCTIONS 2048
+#define MAX_FUNCTIONS 4096
 
 // the highest order of the function spaces of Gmsh
 #define MAX_ORDER 40
 
 // the points kept in the cache of each family of elements (the integration
-// points, for each orientation of the elements; many more points in the
-// post-processing)
-#define MAX_CACHE 4096
+// points; many more points in the post-processing)
+#define MAX_CACHE 2048
 
 namespace {
 
   enum Space { H1 = 0, HCURL = 1, HDIV = 2, L2 = 3 };
 
-  // the names of a space, of its exterior derivative and of the part of the
-  // space in the kernel of the derivative, in Gmsh
-  const char *spaceName[4][3] = {
-    {"H1Legendre", "GradH1Legendre", nullptr},
-    {"HcurlLegendre", "CurlHcurlLegendre", "HcurlLegendreGrad"},
-    {"HdivLegendre", "DivHdivLegendre", "HdivLegendreCurl"},
-    {"L2Legendre", nullptr, nullptr}};
+  // the names of a space and of the part of the space in the kernel of the
+  // exterior derivative, in Gmsh
+  const char *spaceName[4][2] = {{"H1Legendre", nullptr},
+                                 {"HcurlLegendre", "HcurlLegendreGrad"},
+                                 {"HdivLegendre", "HdivLegendreCurl"},
+                                 {"L2Legendre", nullptr}};
 
   // number of components of the functions of a space (0) and of their
   // derivatives (1)
   const int numComponents[4][2] = {{1, 3}, {3, 3}, {3, 1}, {1, 1}};
 
+  // The shapes of the elements: the nodes of their edges and facets, as
+  // numbered and ordered by the basis functions of Gmsh (see getEdgeSolin() and
+  // getFaceSolin() in Gmsh), the quadrangular facets coming first
+  enum { PNT = 0, LIN, TRI, QUA, TET, HEX, PRI, NUM_SHAPES };
+
+  struct Shape {
+    int type; // in Gmsh
+    int dim, numVertices, numEdges, numFacets;
+    int edges[12][2];
+    int facets[6][4]; // -1 for the fourth node of a triangle
+    bool simplex;
+  };
+
+  const Shape shapes[NUM_SHAPES] = {
+    {TYPE_PNT, 0, 1, 0, 0, {}, {}, true},
+    {TYPE_LIN, 1, 2, 1, 0, {{0, 1}}, {}, true},
+    {TYPE_TRI, 2, 3, 3, 1, {{0, 1}, {1, 2}, {2, 0}}, {{0, 1, 2, -1}}, true},
+    {TYPE_QUA,
+     2,
+     4,
+     4,
+     1,
+     {{0, 1}, {1, 2}, {3, 2}, {0, 3}},
+     {{0, 1, 3, 2}},
+     false},
+    {TYPE_TET,
+     3,
+     4,
+     6,
+     4,
+     {{0, 1}, {1, 2}, {2, 0}, {0, 3}, {2, 3}, {1, 3}},
+     {{0, 1, 2, -1}, {0, 1, 3, -1}, {0, 2, 3, -1}, {1, 2, 3, -1}},
+     true},
+    {TYPE_HEX,
+     3,
+     8,
+     12,
+     6,
+     {{0, 1},
+      {0, 3},
+      {0, 4},
+      {1, 2},
+      {1, 5},
+      {3, 2},
+      {2, 6},
+      {3, 7},
+      {4, 5},
+      {4, 7},
+      {5, 6},
+      {7, 6}},
+     {{0, 1, 3, 2},
+      {0, 1, 4, 5},
+      {0, 3, 4, 7},
+      {1, 2, 5, 6},
+      {3, 2, 7, 6},
+      {4, 5, 7, 6}},
+     false},
+    {TYPE_PRI,
+     3,
+     6,
+     9,
+     5,
+     {{0, 1}, {0, 2}, {0, 3}, {1, 2}, {1, 4}, {2, 5}, {3, 4}, {3, 5}, {4, 5}},
+     {{0, 1, 3, 4}, {0, 2, 3, 5}, {1, 2, 4, 5}, {0, 1, 2, -1}, {3, 4, 5, -1}},
+     false}};
+
+  int getShape(int elementType)
+  {
+    switch(elementType) {
+    case POINT_ELEMENT: return PNT;
+    case LINE:
+    case LINE_2:
+    case LINE_3:
+    case LINE_4: return LIN;
+    case TRIANGLE:
+    case TRIANGLE_2:
+    case TRIANGLE_3:
+    case TRIANGLE_4: return TRI;
+    case QUADRANGLE:
+    case QUADRANGLE_2:
+    case QUADRANGLE_2_8N:
+    case QUADRANGLE_3:
+    case QUADRANGLE_4: return QUA;
+    case TETRAHEDRON:
+    case TETRAHEDRON_2:
+    case TETRAHEDRON_3:
+    case TETRAHEDRON_4: return TET;
+    case HEXAHEDRON:
+    case HEXAHEDRON_2:
+    case HEXAHEDRON_2_20N:
+    case HEXAHEDRON_3:
+    case HEXAHEDRON_4: return HEX;
+    case PRISM:
+    case PRISM_2:
+    case PRISM_2_15N:
+    case PRISM_3:
+    case PRISM_4: return PRI;
+    }
+    return -1;
+  }
+
+  // the types of elements of each shape, in GetDP
+  const int elementTypes[NUM_SHAPES] = {
+    POINT_ELEMENT,
+    LINE | LINE_2 | LINE_3 | LINE_4,
+    TRIANGLE | TRIANGLE_2 | TRIANGLE_3 | TRIANGLE_4,
+    QUADRANGLE | QUADRANGLE_2 | QUADRANGLE_2_8N | QUADRANGLE_3 | QUADRANGLE_4,
+    TETRAHEDRON | TETRAHEDRON_2 | TETRAHEDRON_3 | TETRAHEDRON_4,
+    HEXAHEDRON | HEXAHEDRON_2 | HEXAHEDRON_2_20N | HEXAHEDRON_3 | HEXAHEDRON_4,
+    PRISM | PRISM_2 | PRISM_2_15N | PRISM_3 | PRISM_4};
+
+  // The orientation of a facet for the basis functions of Gmsh, from the tags
+  // of its nodes (see MFace::getOrientationFlagForFace() in Gmsh)
+  void facetFlags(const long long *t, int n, int flags[3])
+  {
+    long long s[4]; // the sorted tags
+    for(int i = 0; i < n; i++) s[i] = t[i];
+    std::sort(s, s + n);
+    flags[2] = 1;
+    if(n == 3) {
+      if(s[0] == t[0]) {
+        flags[0] = 0;
+        flags[1] = (s[1] == t[1]) ? 1 : -1;
+      }
+      else if(t[1] == s[0]) {
+        flags[0] = 1;
+        flags[1] = (t[0] == s[2]) ? 1 : -1;
+      }
+      else {
+        flags[0] = 2;
+        flags[1] = (t[1] == s[2]) ? 1 : -1;
+      }
+      return;
+    }
+    int c = 0;
+    for(int i = 0; i < 4; i++)
+      if(s[0] == t[i]) c = i;
+    long long opposed = t[3 - c];
+    long long a = s[0], b = (s[1] == opposed) ? s[2] : s[1];
+    if(a == t[0]) {
+      flags[0] = 1;
+      flags[1] = 1;
+      flags[2] = (b == t[1]) ? 1 : -1;
+    }
+    else if(a == t[1]) {
+      flags[0] = -1;
+      flags[1] = 1;
+      flags[2] = (b == t[0]) ? 1 : -1;
+    }
+    else if(a == t[2]) {
+      flags[0] = 1;
+      flags[1] = -1;
+      flags[2] = (b == t[3]) ? 1 : -1;
+    }
+    else {
+      flags[0] = -1;
+      flags[1] = -1;
+      flags[2] = (b == t[2]) ? 1 : -1;
+    }
+  }
+
+  // an index for the orientation of a facet
+  int facetIndex(const int flags[3], bool triangle)
+  {
+    if(triangle) return flags[0] + (flags[1] == -1 ? 3 : 0);
+    return (flags[0] == -1 ? 1 : 0) | (flags[1] == -1 ? 2 : 0) |
+           (flags[2] == -1 ? 4 : 0);
+  }
+
+  // the value or the derivative of a function
+  void store(Space space, int derivative, const Dual &f, double s[])
+  {
+    if(derivative && space == H1)
+      for(int i = 0; i < 3; i++) s[i] = f.d[i];
+    else
+      s[0] = f.v;
+  }
+  void store(Space space, int derivative, const DualVector &f, double s[])
+  {
+    if(!derivative)
+      for(int i = 0; i < 3; i++) s[i] = f.c[i].v;
+    else if(space == HCURL)
+      for(int i = 0; i < 3; i++) s[i] = f.curl(i);
+    else
+      s[0] = f.div();
+  }
+  // the component along w, for the normal traces
+  double normal(const Dual &) { return 0.; }
+  double normal(const DualVector &f) { return f.c[2].v; }
+  Dual scale(double a, const Dual &f) { return a * f; }
+  DualVector scale(double a, const DualVector &f) { return a * f; }
+
   // The basis functions of a space on a family of elements (points, lines,
-  // triangles or tetrahedra), up to the highest order asked for so far
+  // triangles, ...), up to the highest order asked for so far
   class Family {
   public:
-    // the functions of the given space on the elements of the given type in
-    // Gmsh; if trace is set, the functions on the triangles are the normal
-    // traces of the functions of the tetrahedra
-    Family(Space space, int type, int numVertices, bool trace = false)
-      : _space(space), _type(type), _numVertices(numVertices), _trace(trace)
-    {
-    }
-
+    virtual ~Family() {}
     // the function at the given position on the node, edge, facet or volume
     // (type 0, 1, 2 or 3) number numEntity of the element (starting at 1, in
     // the numbering of GetDP), or its derivative, in the reference element
+    virtual void evaluate(struct Element *Element, int type, int position,
+                          int numEntity, double u, double v, double w,
+                          int derivative, double s[]) = 0;
+    // the order in Gmsh of the function at the given position on an entity of
+    // the given type with the given number of nodes if it is a facet (-1 if
+    // there is none), and whether it is known to be in the kernel of the
+    // derivative
+    virtual int order(int type, int numNodes, int position, bool &kernel) = 0;
+  };
+
+  // E is the type of the functions: Dual for the scalar functions of H1 and
+  // L2, DualVector for the vector functions of H(curl) and H(div)
+  template <class E> class FamilyOf : public Family {
+  public:
+    // the functions of the given space on the elements of the given shape; if
+    // volume is not negative, the functions are the normal traces of the
+    // functions of the first facet of the elements of that shape
+    FamilyOf(Space space, int shape, int volume = -1)
+      : _space(space), _element(&shapes[shape]),
+        _shape(&shapes[(volume < 0) ? shape : volume]), _trace(volume >= 0)
+    {
+    }
+
     void evaluate(struct Element *Element, int type, int position,
                   int numEntity, double u, double v, double w, int derivative,
                   double s[])
     {
       const int nc = numComponents[_space][derivative];
       for(int i = 0; i < nc; i++) s[i] = 0.;
+      int entity = 0;
       if(_trace) {
-        // the normal trace on a triangle of the functions of the facet of a
-        // tetrahedron, which only depends on the orientation of the facet: that
-        // of the first facet (w = 0) of a tetrahedron whose fourth node has the
-        // largest tag; the derivative has no trace
+        // the normal trace of the functions of the first facet (w = 0 in a
+        // tetrahedron, w = -1 in a hexahedron) of a volume whose other nodes
+        // have the largest tags: it only depends on the orientation of the
+        // facet; the derivative has no trace
         if(derivative) return;
-        int index = _find(2, 0, position);
-        if(index < 0) return;
-        const int *n = Element->GeoElement->NumNodes;
-        int t[4] = {n[0], n[1], n[2], INT_MAX};
-        s[2] = _values(0, _orientation(t, 4), u, v, 0.)[3 * index + 2];
-        return;
+        type = 2;
+        w = (_shape->type == TYPE_TET) ? 0. : -1.;
       }
-      // the functions of L2 are those of the element, whatever its dimension
-      if(_space == L2)
-        type = (_type == TYPE_LIN) ? 1 : (_type == TYPE_TRI) ? 2 : 3;
-      int entity = _entity(Element, type, numEntity);
-      if(entity < 0) return;
-      int index = _find(type, entity, position);
+      else {
+        // the functions of L2 are those of the element, whatever its dimension
+        if(_space == L2) type = _element->dim;
+        entity = _entity(Element, type, numEntity);
+        if(entity < 0) return;
+      }
+      int index = _index(type, entity, position);
       if(index < 0) return;
-      const std::vector<double> &values = _values(
-        derivative, _orientation(Element->GeoElement->NumNodes, _numVertices),
-        u, v, w);
-      for(int i = 0; i < nc; i++) s[i] = values[nc * index + i];
+      _orient(Element);
+      Point &p = _point(u, v, w);
+      if(type == 0)
+        store(_space, derivative, p.vertex[index], s);
+      else if(type == 1) {
+        if(_reversed[entity] &&
+           _basis->getEdgeFunctionSignForReversedEdge(position) < 0)
+          store(_space, derivative, scale(-1., p.edge[index]), s);
+        else
+          store(_space, derivative, p.edge[index], s);
+      }
+      else if(type == 2) {
+        const E &f = _facet(p, entity)[index];
+        if(_trace)
+          s[2] = normal(f);
+        else
+          store(_space, derivative, f, s);
+      }
+      else
+        store(_space, derivative, p.bubble[index], s);
     }
 
-    // the order in Gmsh of the function at the given position on an entity of
-    // the given type (-1 if there is none), and whether it is in the kernel of
-    // the derivative
-    int order(int type, int position, bool &kernel)
+    int order(int type, int numNodes, int position, bool &kernel)
     {
       kernel = false;
-      if(_space == L2)
-        type = (_type == TYPE_LIN) ? 1 : (_type == TYPE_TRI) ? 2 : 3;
+      if(_space == L2) type = _shape->dim;
       for(int p = (_space == H1) ? 1 : 0; p <= MAX_ORDER; p++) {
-        if(!_has(spaceName[_space][0], p, type, position)) continue;
-        if(p > 0 && spaceName[_space][2])
-          kernel = _has(spaceName[_space][2], p, type, position);
+        if(!_has(spaceName[_space][0], p, type, numNodes, position)) continue;
+        // only the simplices give the kernel of the derivative for all spaces
+        if(p > 0 && spaceName[_space][1] && _shape->simplex)
+          kernel = _has(spaceName[_space][1], p, type, numNodes, position);
         return p;
       }
       return -1;
@@ -169,72 +400,107 @@ namespace {
 
   private:
     Space _space;
-    int _type, _numVertices;
+    // the shape of the elements, and of the elements of the functions (a
+    // volume for the traces)
+    const Shape *_element, *_shape;
     bool _trace;
-    // the functions and their derivatives, at the current order
+    // the functions at the current order: the numbers of functions per vertex,
+    // edge, quadrangular and triangular facet, and in the volume
     int _order = -1;
-    HierarchicalBasis *_basis[2] = {nullptr, nullptr};
-    // the index of a function in the values, by type, entity and position
-    std::map<std::array<int, 3>, int> _index;
+    HierarchicalBasis *_basis = nullptr;
+    int _perVertex = 0, _perEdge = 0, _perQuad = 0, _perTri = 0, _perBubble = 0;
     // the edges and facets in the numbering of Gmsh, by their number in GetDP
     std::vector<int> _edges, _facets;
-    // the values of all the functions (0) and of their derivatives (1) at a
-    // point (u, v, w) for an orientation of the element
-    typedef std::array<double, 4> Key;
-    std::map<Key, std::vector<double> > _cache[2];
-    const std::vector<double> *_last[2] = {nullptr, nullptr};
-    Key _lastKey[2];
+    // the orientation of the edges and facets of the last element
+    struct Geo_Element *_oriented = nullptr;
+    bool _reversed[12];
+    int _flags[6][3], _flagsIndex[6];
+    // the functions at a point of the reference element, and those of each
+    // facet for the orientations of the facet met so far
+    struct Point {
+      std::vector<E> vertex, edge, facet, bubble;
+      std::vector<E> oriented[6][8];
+    };
+    typedef std::array<double, 3> Key;
+    std::map<Key, Point> _cache;
+    Point *_last = nullptr;
+    Key _lastKey;
 
-    // the type of the elements of the functions in Gmsh
-    int _basisType() const { return _trace ? TYPE_TET : _type; }
-
-    bool _has(const char *name, int order, int type, int position)
+    bool _has(const char *name, int order, int type, int numNodes,
+              int position)
     {
-      HierarchicalBasis *b =
-        HierarchicalBasis::create(name, _basisType(), order);
+      HierarchicalBasis *b = HierarchicalBasis::create(name, _shape->type, order);
       if(!b) return false;
       bool found = false;
-      for(auto &f : b->getFunctions())
-        if(f.type == type && f.entity == 0 && f.position == position)
+      for(auto &f : b->getFunctions()) {
+        if(f.type != type || f.position != position) continue;
+        // the first entity, or the first facet with that number of nodes
+        if(type == 2 && numNodes) {
+          if(f.entity == ((numNodes == 4) ? 0 : b->getNumQuadFace()))
+            found = true;
+        }
+        else if(f.entity == 0)
           found = true;
+      }
       delete b;
       return found;
     }
 
     bool _setOrder(int order)
     {
-      for(int i = 0; i < 2; i++) {
-        if(_basis[i]) delete _basis[i];
-        _basis[i] = nullptr;
-        // L2 has no derivative
-        if(spaceName[_space][i])
-          _basis[i] =
-            HierarchicalBasis::create(spaceName[_space][i], _basisType(), order);
-        _cache[i].clear();
-        _last[i] = nullptr;
-      }
-      _index.clear();
+      if(_basis) delete _basis;
+      _cache.clear();
+      _last = nullptr;
       _order = -1;
-      if(!_basis[0] || (spaceName[_space][1] && !_basis[1])) return false;
-      const std::vector<HierarchicalBasis::Function> &f =
-        _basis[0]->getFunctions();
-      for(std::size_t i = 0; i < f.size(); i++)
-        _index[{f[i].type, f[i].entity, f[i].position}] = i;
+      _basis =
+        HierarchicalBasis::create(spaceName[_space][0], _shape->type, order);
+      if(!_basis) return false;
+      const int ne = _basis->getNumEdge(), nq = _basis->getNumQuadFace(),
+                nt = _basis->getNumTriFace();
+      _perVertex = _basis->getNumVertexFunction() ? 1 : 0;
+      _perEdge = ne ? _basis->getNumEdgeFunction() / ne : 0;
+      _perQuad = nq ? _basis->getNumQuadFaceFunction() / nq : 0;
+      _perTri = nt ? _basis->getNumTriFaceFunction() / nt : 0;
+      _perBubble = _basis->getNumBubbleFunction();
       _order = order;
       return true;
     }
 
-    int _find(int type, int entity, int position)
+    // whether the facet is a triangle
+    bool _triangle(int facet) const { return _shape->facets[facet][3] < 0; }
+
+    // the index of a function among those of the entities of its type (-1 if
+    // there is none at the current order)
+    int _indexAtOrder(int type, int entity, int position) const
     {
-      auto it = _index.find({type, entity, position});
-      if(it != _index.end()) return it->second;
+      if(_order < 0) return -1;
+      switch(type) {
+      case 0: return (position < _perVertex) ? entity : -1;
+      case 1: return (position < _perEdge) ? entity * _perEdge + position : -1;
+      case 2:
+        // the functions of the quadrangular facets come first
+        if(_triangle(entity)) {
+          int nq = _basis->getNumQuadFace();
+          return (position < _perTri) ?
+                   nq * _perQuad + (entity - nq) * _perTri + position :
+                   -1;
+        }
+        return (position < _perQuad) ? entity * _perQuad + position : -1;
+      default: return (position < _perBubble) ? position : -1;
+      }
+    }
+
+    int _index(int type, int entity, int position)
+    {
+      int index = _indexAtOrder(type, entity, position);
+      if(index >= 0) return index;
       // not in the space of the current order: raise the order
       int old = _order;
       for(int p = std::max(old + 1, (_space == H1) ? 1 : 0); p <= MAX_ORDER;
           p++) {
         if(!_setOrder(p)) break;
-        it = _index.find({type, entity, position});
-        if(it != _index.end()) return it->second;
+        index = _indexAtOrder(type, entity, position);
+        if(index >= 0) return index;
       }
       static const char *names[4] = {"nodes", "edges", "facets", "volume"};
       Message::Error("No function at position %d on the %s of this type of "
@@ -248,33 +514,33 @@ namespace {
     // GetDP and in Gmsh: match them through their nodes
     void _numberEntities(struct Element *Element)
     {
-      static const int edges[6][2] = {{0, 1}, {1, 2}, {2, 0},
-                                      {0, 3}, {2, 3}, {1, 3}};
-      static const int facets[4][3] = {
-        {0, 1, 2}, {0, 1, 3}, {0, 2, 3}, {1, 2, 3}};
       struct Geo_Element *ge = Element->GeoElement;
       _edges = {0};
       _facets = {0};
-      if(_type != TYPE_TRI && _type != TYPE_TET) return;
+      if(_shape->dim < 2) return;
       if(ge->NbrEdges == 0) Geo_CreateEdgesOfElement(ge);
       _edges.assign(ge->NbrEdges, -1);
       for(int i = 0; i < ge->NbrEdges; i++) {
         int *n = Geo_GetNodesOfEdgeInElement(ge, i);
         int mask = (1 << (abs(n[0]) - 1)) | (1 << (abs(n[1]) - 1));
-        for(int j = 0; j < ((_type == TYPE_TRI) ? 3 : 6); j++)
-          if(mask == ((1 << edges[j][0]) | (1 << edges[j][1]))) _edges[i] = j;
+        for(int j = 0; j < _shape->numEdges; j++)
+          if(mask ==
+             ((1 << _shape->edges[j][0]) | (1 << _shape->edges[j][1])))
+            _edges[i] = j;
       }
-      if(_type == TYPE_TRI) return;
+      if(_shape->dim < 3) return;
       if(ge->NbrFacets == 0) Geo_CreateFacetsOfElement(ge);
       _facets.assign(ge->NbrFacets, -1);
       for(int i = 0; i < ge->NbrFacets; i++) {
         int *n = Geo_GetNodesOfFacetInElement(ge, i);
         int mask = 0;
-        for(int k = 0; k < 3; k++) mask |= (1 << (abs(n[k]) - 1));
-        for(int j = 0; j < 4; j++)
-          if(mask == ((1 << facets[j][0]) | (1 << facets[j][1]) |
-                      (1 << facets[j][2])))
-            _facets[i] = j;
+        for(int k = 0; k < 4 && n[k]; k++) mask |= (1 << (abs(n[k]) - 1));
+        for(int j = 0; j < _shape->numFacets; j++) {
+          int m = 0;
+          for(int k = 0; k < 4; k++)
+            if(_shape->facets[j][k] >= 0) m |= (1 << _shape->facets[j][k]);
+          if(mask == m) _facets[i] = j;
+        }
       }
     }
 
@@ -282,7 +548,8 @@ namespace {
     {
       if(type == 3) return 0;
       if(type == 0) { // the nodes have the same numbers
-        if(numEntity >= 1 && numEntity <= _numVertices) return numEntity - 1;
+        if(numEntity >= 1 && numEntity <= _shape->numVertices)
+          return numEntity - 1;
         // no function on the nodes of the high order elements
         return -1;
       }
@@ -297,78 +564,102 @@ namespace {
       return e[numEntity - 1];
     }
 
-    // The orientation of an element in Gmsh: the rank of the order of the tags
-    // of its vertices among the permutations of the vertices, in lexicographic
-    // order. FIXME: on periodic meshes the tags of the master nodes should be
-    // used, as in Get_FacetFunctionIndex()
-    int _orientation(const int *t, int n)
+    // The orientation of the edges and facets of the element, from the order
+    // of their nodes (see Geo_NodeKey: the order of the tags of the nodes, or
+    // of their master nodes on periodic meshes, so that an entity and its
+    // periodic counterpart bear the same functions): an edge is reversed if
+    // its first node is not the first one in that order
+    void _orient(struct Element *Element)
     {
-      int rank = 0, f = 1;
-      for(int i = n - 2; i >= 0; i--) {
-        int smaller = 0;
-        for(int j = i + 1; j < n; j++)
-          if(t[j] < t[i]) smaller++;
-        f *= (n - 1 - i);
-        rank += smaller * f;
+      struct Geo_Element *ge = Element->GeoElement;
+      if(ge == _oriented) return;
+      _oriented = ge;
+      // the rank of the nodes of the element in the order of their keys (the
+      // tags of their master nodes on periodic meshes), then the other nodes
+      // of the volume of a trace
+      long long t[8];
+      const int n = _element->numVertices;
+      struct Geo_NodeKey key[8];
+      for(int i = 0; i < n; i++) Geo_GetNodeKey(ge->NumNodes[i], key[i]);
+      for(int i = 0; i < n; i++) {
+        t[i] = 0;
+        for(int j = 0; j < n; j++)
+          if(Geo_IsNodeKeyBefore(key[j], key[i])) t[i]++;
       }
-      return rank;
+      for(int i = n; i < _shape->numVertices; i++) t[i] = i;
+      for(int i = 0; i < _shape->numEdges; i++)
+        _reversed[i] = (t[_shape->edges[i][0]] > t[_shape->edges[i][1]]);
+      for(int i = 0; i < _shape->numFacets; i++) {
+        long long f[4];
+        int n = _triangle(i) ? 3 : 4;
+        for(int k = 0; k < n; k++) f[k] = t[_shape->facets[i][k]];
+        facetFlags(f, n, _flags[i]);
+        _flagsIndex[i] = facetIndex(_flags[i], n == 3);
+      }
     }
 
-    const std::vector<double> &_values(int derivative, int orientation,
-                                       double u, double v, double w)
+    // the functions at a point of the reference element
+    Point &_point(double u, double v, double w)
     {
-      const int d = derivative;
-      Key key = {(double)orientation, u, v, w};
-      if(_last[d] && key == _lastKey[d]) return *_last[d];
-      auto it = _cache[d].find(key);
-      if(it == _cache[d].end()) {
-        if(_cache[d].size() >= MAX_CACHE) _cache[d].clear();
-        it = _cache[d].insert({key, std::vector<double>()}).first;
-        _basis[d]->evaluate({u, v, w}, {orientation}, it->second);
+      Key key = {u, v, w};
+      if(_last && key == _lastKey) return *_last;
+      auto it = _cache.find(key);
+      if(it == _cache.end()) {
+        if(_cache.size() >= MAX_CACHE) _cache.clear();
+        it = _cache.insert({key, Point()}).first;
+        Point &p = it->second;
+        p.vertex.resize(_basis->getNumVertexFunction());
+        p.edge.resize(_basis->getNumEdgeFunction());
+        p.facet.resize(_basis->getNumQuadFaceFunction() +
+                       _basis->getNumTriFaceFunction());
+        p.bubble.resize(_basis->getNumBubbleFunction());
+        const Dual x[3] = {Dual::coordinate(0, u), Dual::coordinate(1, v),
+                           Dual::coordinate(2, w)};
+        _basis->functions(x, p.vertex, p.edge, p.facet, p.bubble);
       }
-      _last[d] = &it->second;
-      _lastKey[d] = key;
+      _last = &it->second;
+      _lastKey = key;
       return it->second;
+    }
+
+    // the functions of the facets at a point, with those of the given facet
+    // oriented as in the current element
+    const std::vector<E> &_facet(Point &p, int facet)
+    {
+      std::vector<E> &f = p.oriented[facet][_flagsIndex[facet]];
+      if(f.empty()) {
+        f = p.facet;
+        const Dual x[3] = {Dual::coordinate(0, _lastKey[0]),
+                           Dual::coordinate(1, _lastKey[1]),
+                           Dual::coordinate(2, _lastKey[2])};
+        _basis->faceFunctions(x, _flags[facet][0], _flags[facet][1],
+                              _flags[facet][2], facet, f);
+      }
+      return f;
     }
   };
 
   // the functions of a space on the elements of the given type in GetDP, if
   // any
-  Family *getFamily(Space space, int elementType)
+  Family *getFamily(Space space, int shape)
   {
-    static Family *families[4][4];
+    static Family *families[4][NUM_SHAPES];
     static bool init = false;
     if(!init) {
       init = true;
-      for(int s = 0; s < 4; s++) {
-        families[s][0] = nullptr;
-        families[s][1] = new Family((Space)s, TYPE_LIN, 2);
-        families[s][2] = new Family((Space)s, TYPE_TRI, 3);
-        families[s][3] = new Family((Space)s, TYPE_TET, 4);
+      for(int s = 0; s < NUM_SHAPES; s++) {
+        families[H1][s] = new FamilyOf<Dual>(H1, s);
+        families[HCURL][s] = (s == PNT) ? nullptr :
+                                          new FamilyOf<DualVector>(HCURL, s);
+        families[HDIV][s] =
+          (s < TET) ? nullptr : new FamilyOf<DualVector>(HDIV, s);
+        families[L2][s] = (s == PNT) ? nullptr : new FamilyOf<Dual>(L2, s);
       }
-      families[H1][0] = new Family(H1, TYPE_PNT, 1);
-      // no functions of H(div) on lines, and normal traces on triangles
-      delete families[HDIV][1];
-      families[HDIV][1] = nullptr;
-      delete families[HDIV][2];
-      families[HDIV][2] = new Family(HDIV, TYPE_TRI, 3, true);
+      // the normal traces of the functions of H(div)
+      families[HDIV][TRI] = new FamilyOf<DualVector>(HDIV, TRI, TET);
+      families[HDIV][QUA] = new FamilyOf<DualVector>(HDIV, QUA, HEX);
     }
-    switch(elementType) {
-    case POINT_ELEMENT: return families[space][0];
-    case LINE:
-    case LINE_2:
-    case LINE_3:
-    case LINE_4: return families[space][1];
-    case TRIANGLE:
-    case TRIANGLE_2:
-    case TRIANGLE_3:
-    case TRIANGLE_4: return families[space][2];
-    case TETRAHEDRON:
-    case TETRAHEDRON_2:
-    case TETRAHEDRON_3:
-    case TETRAHEDRON_4: return families[space][3];
-    }
-    return nullptr;
+    return (shape >= 0) ? families[space][shape] : nullptr;
   }
 
   // A basis function does not know which function it is: each function used
@@ -384,7 +675,7 @@ namespace {
   template <int I> void BF(BF_ARG)
   {
     const Slot &s = slots[I];
-    Family *family = getFamily(s.space, Element->Type);
+    Family *family = getFamily(s.space, getShape(Element->Type));
     if(!family) {
       for(int i = 0; i < numComponents[s.space][s.derivative]; i++)
         Value[i] = 0.;
@@ -429,7 +720,8 @@ namespace {
 
 bool BF_GetLegendre(const char *Name, void (**Function)(),
                     void (**dFunction)(), void (**dInvFunction)(),
-                    double *Order, int *ElementType, int *Orient)
+                    double *Order, int *ElementType, int *Orient,
+                    int *EntityFilter)
 {
   // the names of the functions: the space and whether it is the derivative
   static const struct {
@@ -452,13 +744,22 @@ bool BF_GetLegendre(const char *Name, void (**Function)(),
   int type = (s[0] == 'N') ? 0 : (s[0] == 'E') ? 1 : (s[0] == 'F') ? 2 :
              (s[0] == 'V') ? 3 : -1;
   if(type < 0) return false;
+  s++;
+  // the shape of the entities bearing the function, if given: 1 to 6 for
+  // lines, triangles, quadrangles, tetrahedra, hexahedra and prisms
+  static const char *tags[7] = {"", "Lin", "Tri", "Qua", "Tet", "Hex", "Pri"};
+  int tag = 0;
+  for(int i = 1; i < 7; i++)
+    if(!strncmp(s, tags[i], 3)) tag = i;
+  if(tag) s += 3;
   // the position can follow an underscore, as in the names built in a loop
   // (BF_HcurlLegendre_E~{k})
-  s += (s[1] == '_') ? 2 : 1;
+  if(s[0] == '_') s++;
   if(!s[0] || strlen(s) > 4) return false;
   for(const char *c = s; *c; c++)
     if(*c < '0' || *c > '9') return false;
   int position = atoi(s);
+  *EntityFilter = ENTITYFILTER_NONE;
 
 #if defined(HAVE_GMSH_HIERARCHICAL) && defined(HAVE_KERNEL)
   Space space = (Space)sp;
@@ -469,28 +770,63 @@ bool BF_GetLegendre(const char *Name, void (**Function)(),
                    Name);
     return false;
   }
-  // the functions are defined on the entity of the lowest dimension bearing
-  // them and on the elements it bounds
-  const int lin = LINE | LINE_2 | LINE_3 | LINE_4;
-  const int tri = TRIANGLE | TRIANGLE_2 | TRIANGLE_3 | TRIANGLE_4;
-  const int tet = TETRAHEDRON | TETRAHEDRON_2 | TETRAHEDRON_3 | TETRAHEDRON_4;
-  if(space == L2)
-    *ElementType = lin | tri | tet;
-  else
-    *ElementType = (type == 0) ? (POINT_ELEMENT | lin | tri | tet) :
-                   (type == 1) ? (lin | tri | tet) :
-                   (type == 2) ? (tri | tet) :
-                                 tet;
-  // the order of the function in Gmsh, on the elements of the lowest dimension
-  // on which it is a function of the space (the tetrahedra for L2, where the
-  // order of a function depends on the dimension of the element)
-  Family *family = getFamily(
-    space, (space == L2 || space == HDIV) ? TETRAHEDRON :
-           (type < 2) ? LINE :
-           (type == 2) ? TRIANGLE :
-                         TETRAHEDRON);
-  bool kernel;
-  int order = family->order(type, position, kernel);
+  // the shapes that can be given for the entity: triangles and quadrangles
+  // for the facets, volumes for the volumes, any element for L2
+  bool validTag = !tag || (space == L2 && type == 3) ||
+                  (type == 2 && (tag == TRI || tag == QUA)) ||
+                  (type == 3 && tag >= TET);
+  if(!validTag) {
+    Message::Error("No function '%s': wrong shape for this entity", Name);
+    return false;
+  }
+
+  // the functions are defined on the entity bearing them and on the elements
+  // it bounds
+  const int *e = elementTypes;
+  int shape; // a shape giving the order of the function
+  if(space == L2) {
+    *ElementType = tag ? e[tag] : (e[LIN] | e[TRI] | e[QUA] | e[TET] | e[HEX] |
+                                   e[PRI]);
+    // the order of a function depends on the shape of the element
+    shape = tag ? tag : TET;
+  }
+  else if(type == 0) {
+    *ElementType =
+      e[PNT] | e[LIN] | e[TRI] | e[QUA] | e[TET] | e[HEX] | e[PRI];
+    // no function on the high order nodes of an element
+    *EntityFilter = ENTITYFILTER_VERTICES;
+    shape = LIN;
+  }
+  else if(type == 1) {
+    *ElementType = e[LIN] | e[TRI] | e[QUA] | e[TET] | e[HEX] | e[PRI];
+    shape = LIN;
+  }
+  else if(type == 2) {
+    if(tag == TRI) {
+      *ElementType = e[TRI] | e[TET] | e[PRI];
+      *EntityFilter = ENTITYFILTER_TRIANGLES;
+    }
+    else if(tag == QUA) {
+      *ElementType = e[QUA] | e[HEX] | e[PRI];
+      *EntityFilter = ENTITYFILTER_QUADRANGLES;
+    }
+    else
+      *ElementType = e[TRI] | e[QUA] | e[TET] | e[HEX] | e[PRI];
+    // H(div) has no functions in the plane
+    if(space == HDIV)
+      shape = (tag == QUA) ? HEX : TET;
+    else
+      shape = (tag == QUA) ? QUA : TRI;
+  }
+  else {
+    *ElementType = tag ? e[tag] : (e[TET] | e[HEX] | e[PRI]);
+    shape = tag ? tag : TET;
+  }
+
+  Family *family = getFamily(space, shape);
+  bool kernel = false;
+  int order =
+    family ? family->order(type, (tag == QUA) ? 4 : 3, position, kernel) : -1;
   if(order < 0) {
     Message::Error("No function '%s' up to order %d", Name, MAX_ORDER);
     return false;
@@ -503,25 +839,29 @@ bool BF_GetLegendre(const char *Name, void (**Function)(),
   *dFunction = (space == L2) ? f : derivative ? (void (*)())BF_Zero : df;
   *dInvFunction = derivative ? f : (void (*)())BF_Zero;
   // The orders of GetDP. For H1 and L2, the order in Gmsh. For H(curl) and
-  // H(div), 0.5 for the Whitney functions, p for the functions of order p in
-  // the kernel of the derivative (the gradients and the curls), which complete
-  // the polynomials of degree p, and p - 0.5 for the other functions of order p
-  // (see the function space types in Gmsh). One order less for the derivatives.
-  double o = (space == H1 || space == L2) ? order :
-             kernel ? order :
-             (order > 0) ? order - 0.5 :
-                           0.5;
+  // H(div) on the simplices, 0.5 for the Whitney functions, p for the functions
+  // of order p in the kernel of the derivative (the gradients and the curls),
+  // which complete the polynomials of degree p, and p - 0.5 for the other
+  // functions of order p (see the function space types in Gmsh); on the other
+  // shapes, where the orders of GetDP do not match those of Gmsh, p + 0.5. One
+  // order less for the derivatives.
+  double o;
+  if(space == H1 || space == L2)
+    o = order;
+  else if(shapes[shape].simplex)
+    o = kernel ? order : (order > 0) ? order - 0.5 : 0.5;
+  else
+    o = order + 0.5;
   if(derivative) o = (o >= 1.) ? o - 1. : 0.;
   *Order = o;
-  // the functions are oriented by Gmsh, from the tags of the nodes
+  // the functions are oriented here, from the tags of the nodes
   *Orient = 0;
   return true;
 #else
   (void)sp;
   (void)derivative;
   (void)position;
-  Message::Error("'%s' requires the HierarchicalBasis module of Gmsh",
-                 Name);
+  Message::Error("'%s' requires the HierarchicalBasis module of Gmsh", Name);
   return false;
 #endif
 }

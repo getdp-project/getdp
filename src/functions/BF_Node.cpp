@@ -12,6 +12,10 @@
 #include "ProDefine.h"
 #include "Message.h"
 
+#if defined(HAVE_KERNEL)
+#include "GeoData.h"
+#endif
+
 #if defined(HAVE_GMSH)
 #include <gmsh/BasisFactory.h>
 #include <gmsh/nodalBasis.h>
@@ -691,3 +695,37 @@ void BF_GradNode(struct Element *Element, int NumNode, double u, double v,
 }
 
 #undef WrongNumNode
+
+/* ------------------------------------------------------------------------ */
+/*  B F _ N o d e _ 1 N                                                     */
+/* ------------------------------------------------------------------------ */
+
+/* The first order nodal functions, whatever the order of the element (BF_Node
+   gives the functions of the order of the element): the functions of its
+   vertices, the other nodes bearing no function */
+
+void BF_Node_1N(struct Element *Element, int NumNode, double u, double v,
+                double w, double *s)
+{
+#if !defined(HAVE_KERNEL)
+  Message::Error("BF_Node_1N requires Kernel");
+#else
+  int Type = Element->Type;
+  Element->Type = Geo_GetFirstOrderElementType(Type);
+  BF_Node(Element, NumNode, u, v, w, s);
+  Element->Type = Type;
+#endif
+}
+
+void BF_GradNode_1N(struct Element *Element, int NumNode, double u, double v,
+                    double w, double s[])
+{
+#if !defined(HAVE_KERNEL)
+  Message::Error("BF_GradNode_1N requires Kernel");
+#else
+  int Type = Element->Type;
+  Element->Type = Geo_GetFirstOrderElementType(Type);
+  BF_GradNode(Element, NumNode, u, v, w, s);
+  Element->Type = Type;
+#endif
+}

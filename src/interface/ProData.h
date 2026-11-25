@@ -379,6 +379,10 @@ struct FunctionSpace {
   List_T *BasisFunction, *SubSpace, *GlobalQuantity, *Constraint;
 
   struct DofData *DofData, *MainDofData;
+
+  // the mesh for which the periodic nodes of the links of the constraints
+  // have been generated (see Generate_PeriodicNodes)
+  struct GeoData *PeriodicNodesGeoData;
 };
 
 struct BasisFunction {
@@ -394,7 +398,18 @@ struct BasisFunction {
   double Order;
   int ElementType;
   int Orient;
+  // the entities of an element bearing the function, among those of the type
+  // of the function (ENTITYFILTER_)
+  int EntityFilter;
 };
+
+/* BasisFunction.EntityFilter: all the entities, the vertices of the element
+   (not its high order nodes) for a function of the nodes, or the triangular or
+   quadrangular facets for a function of the facets */
+#define ENTITYFILTER_NONE 0
+#define ENTITYFILTER_VERTICES 1
+#define ENTITYFILTER_TRIANGLES 3
+#define ENTITYFILTER_QUADRANGLES 4
 
 struct GlobalBasisFunction {
   int EntityIndex; /* Must be the first element of the structure */

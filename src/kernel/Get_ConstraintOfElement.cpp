@@ -1290,6 +1290,78 @@ void Generate_LinkRegions(struct ConstraintInFS *Constraint_P, List_T *Region_L,
 
 /*  G e n e r a t e _ L i n k */
 
+// Keep track of the slave -> master nodes of the groups with a link of nodes,
+// edges or facets: the basis functions of the edges and facets that depend on
+// the order of the tags of their nodes (BF_Edge_3F, the Legendre functions)
+// need them to be the same on an entity and on its periodic counterpart
+static void Keep_PeriodicNodes(struct ConstraintInFS *Constraint_P,
+                               struct Group *Group_P,
+                               struct Group *RegionRef_P)
+{
+  List_T *ExtendedListNodes_L;
+  Generate_ElementaryEntities(Group_P->InitialList, &ExtendedListNodes_L,
+                              NODESOF);
+  List_T *CouplesOfNodes_L = List_Create(List_Nbr(ExtendedListNodes_L), 1,
+                                         sizeof(struct TwoIntOneDouble));
+  Generate_LinkNodes(
+    ExtendedListNodes_L, NULL, RegionRef_P, NULL,
+    Constraint_P->ConstraintPerRegion->Case.Link.FilterIndex,
+    Constraint_P->ConstraintPerRegion->Case.Link.FunctionIndex,
+    Constraint_P->ConstraintPerRegion->Case.Link.FunctionRefIndex,
+    Constraint_P->ConstraintPerRegion->Case.Link.CoefIndex,
+    Constraint_P->ConstraintPerRegion->Case.Link.ToleranceFactor,
+    CouplesOfNodes_L);
+  // the link is identified by the first region of its slave group, which
+  // does not depend on the type of the entities of the constraint nor on the
+  // function space
+  int link = Constraint_P->EntityIndex;
+  if(List_Nbr(Group_P->InitialList)) List_Read(Group_P->InitialList, 0, &link);
+  if(!Current.GeoData->PeriodicNodes)
+    Current.GeoData->PeriodicNodes = new std::map<int, std::pair<int, int> >;
+  for(int i = 0; i < List_Nbr(CouplesOfNodes_L); i++) {
+    struct TwoIntOneDouble t;
+    List_Read(CouplesOfNodes_L, i, &t);
+    (*Current.GeoData->PeriodicNodes)[t.Int1] = std::make_pair(t.Int2, link);
+    Message::Debug("Keeping track of periodic node slave %d -> master %d",
+                   t.Int1, t.Int2);
+  }
+  List_Delete(CouplesOfNodes_L);
+  List_Delete(ExtendedListNodes_L);
+}
+
+// Generate the periodic nodes of all the links of nodes, edges and facets of
+// a function space. The links themselves are only generated when the
+// constraints are treated, in the pre-processing; the basis functions that
+// depend on the periodic nodes need them whenever they are evaluated, also when
+// the processing or the post-processing is run on its own.
+void Generate_PeriodicNodes(struct FunctionSpace *FunctionSpace_P)
+{
+  if(FunctionSpace_P->PeriodicNodesGeoData == Current.GeoData) return;
+  FunctionSpace_P->PeriodicNodesGeoData = Current.GeoData;
+
+  // as for the links, the expressions are evaluated without element
+  struct Element *old = Current.Element;
+  for(int i = 0; i < List_Nbr(FunctionSpace_P->Constraint); i++) {
+    struct ConstraintInFS *Constraint_P =
+      (struct ConstraintInFS *)List_Pointer(FunctionSpace_P->Constraint, i);
+    if(!Constraint_P->ConstraintPerRegion ||
+       (Constraint_P->ConstraintPerRegion->Type != CST_LINK &&
+        Constraint_P->ConstraintPerRegion->Type != CST_LINKCPLX))
+      continue;
+    struct Group *Group_P =
+      (struct Group *)List_Pointer(Problem_S.Group, Constraint_P->EntityIndex);
+    if(Group_P->FunctionType != NODESOF && Group_P->FunctionType != EDGESOF &&
+       Group_P->FunctionType != FACETSOF)
+      continue;
+    struct Group *RegionRef_P = (struct Group *)List_Pointer(
+      Problem_S.Group,
+      Constraint_P->ConstraintPerRegion->Case.Link.RegionRefIndex);
+    Current.Element = 0;
+    Keep_PeriodicNodes(Constraint_P, Group_P, RegionRef_P);
+  }
+  Current.Element = old;
+}
+
 void Generate_Link(struct ConstraintInFS *Constraint_P, int Flag_New)
 {
   struct ConstraintActive *Active;
@@ -1347,45 +1419,17 @@ void Generate_Link(struct ConstraintInFS *Constraint_P, int Flag_New)
       Constraint_P->ConstraintPerRegion->Case.Link.CoefIndex,
       Constraint_P->ConstraintPerRegion->Case.Link.ToleranceFactor,
       Active->Case.Link.Couples);
+    Keep_PeriodicNodes(Constraint_P, Group_P, RegionRef_P);
     break;
   case EDGESOF:
     Generate_LinkEdges(Constraint_P, Group_P, RegionRef_P, SubRegionRef_P,
                        Active->Case.Link.Couples);
+    Keep_PeriodicNodes(Constraint_P, Group_P, RegionRef_P);
     break;
   case FACETSOF:
     Generate_LinkFacets(Constraint_P, Group_P, RegionRef_P, SubRegionRef_P,
                         Active->Case.Link.Couples);
-    {
-      // keep track of slave->master nodes on the groups where we have facet
-      // links, so that we can retrieve the periodic node information when
-      // generating high-order facet functions (BF_Edge_3F), which depend on an
-      // ordering based on global node tags
-      List_T *ExtendedListNodes_L;
-      Generate_ElementaryEntities(Group_P->InitialList, &ExtendedListNodes_L,
-                                  NODESOF);
-      List_T *CouplesOfNodes_L = List_Create(List_Nbr(ExtendedListNodes_L), 1,
-                                             sizeof(struct TwoIntOneDouble));
-      Generate_LinkNodes(
-        ExtendedListNodes_L, NULL, RegionRef_P, NULL,
-        Constraint_P->ConstraintPerRegion->Case.Link.FilterIndex,
-        Constraint_P->ConstraintPerRegion->Case.Link.FunctionIndex,
-        Constraint_P->ConstraintPerRegion->Case.Link.FunctionRefIndex,
-        Constraint_P->ConstraintPerRegion->Case.Link.CoefIndex,
-        Constraint_P->ConstraintPerRegion->Case.Link.ToleranceFactor,
-        CouplesOfNodes_L);
-      if(!Current.GeoData->PeriodicNodes)
-        Current.GeoData->PeriodicNodes = new std::map<int, std::pair<int, int> >;
-      for(int i = 0; i < List_Nbr(CouplesOfNodes_L); i++) {
-        struct TwoIntOneDouble t;
-        List_Read(CouplesOfNodes_L, i, &t);
-        (*Current.GeoData->PeriodicNodes)[t.Int1] =
-          std::make_pair(t.Int2, Constraint_P->EntityIndex);
-        Message::Debug("Keeping track of periodic node slave %d -> master %d",
-                       t.Int1, t.Int2);
-      }
-      List_Delete(CouplesOfNodes_L);
-      List_Delete(ExtendedListNodes_L);
-    }
+    Keep_PeriodicNodes(Constraint_P, Group_P, RegionRef_P);
     break;
   case REGION:
     Generate_LinkRegions(Constraint_P, Group_P->InitialList,

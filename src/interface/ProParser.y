@@ -2561,6 +2561,7 @@ FunctionSpace :
     { FunctionSpace_S.Name = NULL; FunctionSpace_S.Type = FORM0;
       FunctionSpace_S.BasisFunction = FunctionSpace_S.SubSpace =
 	FunctionSpace_S.GlobalQuantity = FunctionSpace_S.Constraint = NULL;
+      FunctionSpace_S.PeriodicNodesGeoData = NULL;
       level_Append = 0;
     }
 
@@ -2663,6 +2664,7 @@ BasisFunction :
       BasisFunction_S.SubdFunction = NULL;
       BasisFunction_S.SupportIndex = -1;
       BasisFunction_S.EntityIndex  = -1;
+      BasisFunction_S.EntityFilter = ENTITYFILTER_NONE;
       level_Append_2 = (level_Append)? level_Append-1 : 0;
       index_Append_2 = -1;
     }
@@ -2706,6 +2708,10 @@ BasisFunctionTerm :
 	 &BasisFunction_S.Function, &BasisFunction_S.dFunction,
 	 &BasisFunction_S.dInvFunction, &BasisFunction_S.Order,
 	 &BasisFunction_S.ElementType, &BasisFunction_S.Orient);
+      // the first order nodal functions are borne by the vertices only
+      if(BasisFunction_S.Function == (void(*)())BF_Node_1N ||
+         BasisFunction_S.Function == (void(*)())BF_GradNode_1N)
+        BasisFunction_S.EntityFilter = ENTITYFILTER_VERTICES;
       // the Legendre functions of arbitrary order are not in the table
       if(FlagError &&
          BF_GetLegendre($2, &BasisFunction_S.Function,
@@ -2713,7 +2719,8 @@ BasisFunctionTerm :
                         &BasisFunction_S.dInvFunction,
                         &BasisFunction_S.Order,
                         &BasisFunction_S.ElementType,
-                        &BasisFunction_S.Orient))
+                        &BasisFunction_S.Orient,
+                        &BasisFunction_S.EntityFilter))
         FlagError = 0;
       if(FlagError){
 	Get_Valid_SX3F3N($2, BF_Function);

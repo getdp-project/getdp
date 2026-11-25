@@ -15,6 +15,7 @@
 /* H^1 Basis Functions and their gradients */
 
 void BF_Node(BF_ARG);
+void BF_Node_1N(BF_ARG);
 void BF_Node_2E(BF_ARG);
 void BF_Node_2F(BF_ARG);
 void BF_Node_2V(BF_ARG);
@@ -23,6 +24,7 @@ void BF_Node_3F(BF_ARG);
 void BF_Node_3V(BF_ARG);
 
 void BF_GradNode(BF_ARG);
+void BF_GradNode_1N(BF_ARG);
 void BF_GradNode_2E(BF_ARG);
 void BF_GradNode_2F(BF_ARG);
 void BF_GradNode_2V(BF_ARG);
@@ -302,11 +304,13 @@ void BF_DivWire(BF_ARG);
    order, for H1, H(curl), H(div) and L2 (BF_H1Legendre_N0,
    BF_HcurlLegendre_E<k>, BF_HdivLegendre_F<k>, BF_L2Legendre_V<k>, etc., and
    their derivatives; see BF_Legendre.cpp): get the functions and the data of
-   the basis function of the given name; return false if it is not the name of
-   such a function */
+   the basis function of the given name (EntityFilter gives the entities
+   bearing the function, see ENTITYFILTER_); return false if it is not the name
+   of such a function */
 
 bool BF_GetLegendre(const char *Name, void (**Function)(),
                     void (**dFunction)(), void (**dInvFunction)(),
-                    double *Order, int *ElementType, int *Orient);
+                    double *Order, int *ElementType, int *Orient,
+                    int *EntityFilter);
 
 #endif
