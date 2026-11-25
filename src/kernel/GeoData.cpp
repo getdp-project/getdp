@@ -109,47 +109,6 @@ static struct Geo_Node *Geo_FindNode(struct GeoData *GeoData_P, int Num)
   return (i < 0) ? NULL : (struct Geo_Node *)List_Pointer(GeoData_P->Nodes, i);
 }
 
-// The number of corner nodes of an element (its first nodes: the others are on
-// its edges, facets or inside)
-int Geo_GetNbCornerNodes(int Type, int NbrNodes)
-{
-  switch(Type) {
-  case POINT_ELEMENT: return 1;
-  case LINE:
-  case LINE_2:
-  case LINE_3:
-  case LINE_4: return 2;
-  case TRIANGLE:
-  case TRIANGLE_2:
-  case TRIANGLE_3:
-  case TRIANGLE_4: return 3;
-  case QUADRANGLE:
-  case QUADRANGLE_2:
-  case QUADRANGLE_2_8N:
-  case QUADRANGLE_3:
-  case QUADRANGLE_4:
-  case TETRAHEDRON:
-  case TETRAHEDRON_2:
-  case TETRAHEDRON_3:
-  case TETRAHEDRON_4: return 4;
-  case HEXAHEDRON:
-  case HEXAHEDRON_2:
-  case HEXAHEDRON_2_20N:
-  case HEXAHEDRON_3:
-  case HEXAHEDRON_4: return 8;
-  case PRISM:
-  case PRISM_2:
-  case PRISM_2_15N:
-  case PRISM_3:
-  case PRISM_4: return 6;
-  case PYRAMID:
-  case PYRAMID_2:
-  case PYRAMID_2_13N:
-  case PYRAMID_3: return 5;
-  default: return NbrNodes;
-  }
-}
-
 // Calls f(lower, top) for each element and each element of higher dimension
 // that contains all its corner nodes (a surface in a volume, a line in a
 // surface or a volume, ...), those of the highest dimension first, then in the
@@ -169,7 +128,9 @@ void Geo_ForEachElementContaining(struct GeoData *GeoData_P,
   // the corner nodes of an element (their positions in the list of the nodes);
   // returns their number, or -1 if the rank does not have one of them
   auto corners = [&](struct Geo_Element *ge, int *c) {
-    const int nc = std::min(Geo_GetNbCornerNodes(ge->Type, ge->NbrNodes), 8);
+    // (its first nodes; all its nodes if its type is not known)
+    int nc = Geo_GetNbrVerticesOfElementType(ge->Type);
+    if(!nc) nc = std::min(ge->NbrNodes, 8);
     for(int k = 0; k < nc; k++) {
       struct Geo_Node *node = Geo_FindNode(GeoData_P, abs(ge->NumNodes[k]));
       if(!node) return -1;
