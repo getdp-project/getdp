@@ -132,10 +132,9 @@ int Geo_GetGeoElementIndex(struct Geo_Element *GeoElement);
 struct Geo_Element *Geo_GetGeoElementOfNum(int Num_Element);
 int Geo_GetDimOfElement(int Type);
 int Geo_GetNbCornerNodes(int Type, int NbrNodes);
-// Calls f(lower, top) for the elements of lower dimension than the mesh (surfaces,
-// lines, points) and the elements of the highest dimension that contain all their
-// corner nodes, in the order of the elements; f returns false to go to the next
-// element of lower dimension
+// Calls f(lower, top) for each element and each element of higher dimension
+// that contains all its corner nodes, those of the highest dimension first,
+// then in the order of the elements; f returns false to go to the next element
 void Geo_ForEachElementContaining(struct GeoData *GeoData_P,
                                   const std::function<bool(int, int)> &f);
 

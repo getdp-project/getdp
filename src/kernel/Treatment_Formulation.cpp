@@ -465,8 +465,8 @@ static bool IsElementOnLinkRegion(int i_Element)
   return onLink[i_Element];
 }
 
-// Whether the element, of the highest dimension, contains an element of lower
-// dimension (a surface, a line, a point) of the partition of the rank (see
+// Whether the element contains an element of lower dimension (a surface, a
+// line, a point) of the partition of the rank (see
 // Geo_SendParts). The rank evaluates quantities on such an element, e.g. with
 // Trace in the element on one side of a surface, and thus needs the Dofs of
 // the elements that contain it, whoever has their partition.

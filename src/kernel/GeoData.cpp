@@ -155,13 +155,13 @@ int Geo_GetNbCornerNodes(int Type, int NbrNodes)
   }
 }
 
-// Calls f(lower, top) for each element of lower dimension than the mesh (a
-// surface, a line or a point) and each element of the highest dimension that
-// contains all its corner nodes (in the order of the elements), until f returns
-// false for this element of lower dimension. The elements of the highest
-// dimension that have a node as a corner are tabulated, so that the search for
-// the elements that contain an element only goes through those of its first
-// corner node.
+// Calls f(lower, top) for each element and each element of higher dimension
+// that contains all its corner nodes (a surface in a volume, a line in a
+// surface or a volume, ...), those of the highest dimension first, then in the
+// order of the elements, until f returns false for this element. The elements
+// that have a node as a corner are tabulated, so that the search for the
+// elements that contain an element only goes through those of its first corner
+// node.
 void Geo_ForEachElementContaining(struct GeoData *GeoData_P,
                                   const std::function<bool(int, int)> &f)
 {
@@ -183,19 +183,22 @@ void Geo_ForEachElementContaining(struct GeoData *GeoData_P,
     return nc;
   };
 
+  std::vector<char> dimOf(n);
   int dim = 0;
-  for(int e = 0; e < n; e++) dim = std::max(dim, Geo_GetDimOfElement(element(e)->Type));
+  for(int e = 0; e < n; e++) {
+    dimOf[e] = Geo_GetDimOfElement(element(e)->Type);
+    dim = std::max(dim, (int)dimOf[e]);
+  }
+  if(!dim) return;
 
-  // the elements of the highest dimension that have each node as a corner
-  // (compressed rows, in the order of the elements)
-  std::vector<int> first(nNodes + 1, 0), list;
+  // the elements that can contain another one (all but the points) that have
+  // each node as a corner (compressed rows, in the order of the elements)
+  std::vector<int> first(nNodes + 1, 0), list, fill;
   int c[8];
   for(int pass = 0; pass < 2; pass++) {
-    std::vector<int> fill(first.begin(), first.end() - 1);
     for(int e = 0; e < n; e++) {
-      struct Geo_Element *ge = element(e);
-      if(Geo_GetDimOfElement(ge->Type) != dim) continue;
-      const int nc = corners(ge, c);
+      if(!dimOf[e]) continue;
+      const int nc = corners(element(e), c);
       for(int k = 0; k < nc; k++) {
         if(pass == 0)
           first[c[k] + 1]++;
@@ -205,24 +208,31 @@ void Geo_ForEachElementContaining(struct GeoData *GeoData_P,
     }
     if(pass == 0) {
       for(int i = 0; i < nNodes; i++) first[i + 1] += first[i];
-      list.resize(first[nNodes] + 1);
+      list.resize(first[nNodes]);
+      fill.assign(first.begin(), first.end() - 1);
     }
   }
 
   int lc[8], pc[8];
+  std::vector<int> containing;
   for(int e = 0; e < n; e++) {
-    struct Geo_Element *ge = element(e);
-    if(Geo_GetDimOfElement(ge->Type) == dim) continue;
-    const int nc = corners(ge, lc);
+    if(dimOf[e] == dim) continue;
+    const int nc = corners(element(e), lc);
     if(nc <= 0) continue;
+    containing.clear();
     for(int j = first[lc[0]]; j < first[lc[0] + 1]; j++) {
+      if(dimOf[list[j]] <= dimOf[e]) continue;
       const int npc = corners(element(list[j]), pc);
       if(npc < 0) continue;
       bool all = true;
       for(int k = 1; k < nc && all; k++)
         all = (std::find(pc, pc + npc, lc[k]) != pc + npc);
-      if(all && !f(e, list[j])) break;
+      if(all) containing.push_back(list[j]);
     }
+    std::stable_sort(containing.begin(), containing.end(),
+                     [&](int a, int b) { return dimOf[a] > dimOf[b]; });
+    for(int top : containing)
+      if(!f(e, top)) break;
   }
 }
 
@@ -230,9 +240,10 @@ void Geo_ForEachElementContaining(struct GeoData *GeoData_P,
 // and the Dofs are numbered by partition, so that a rank owns most of the rows
 // of its elements. If the mesh does not come with one partition for each rank,
 // its elements are thus partitioned here, by recursive coordinate bisection of
-// the elements of the highest dimension (or by merging its partitions, if their
-// number is a multiple of the number of ranks). Partitioning the mesh with Gmsh
-// gives better partitions.
+// the elements that are in no element of higher dimension, the others following
+// the element that contains them (or by merging its partitions, if their number
+// is a multiple of the number of ranks). Partitioning the mesh with Gmsh gives
+// better partitions.
 static void Geo_SetPartitions(struct GeoData *GeoData_P)
 {
   int np = Message::GetCommSize(), n = List_Nbr(GeoData_P->Elements);
@@ -253,19 +264,16 @@ static void Geo_SetPartitions(struct GeoData *GeoData_P)
   else {
     Message::Info("Partitioning the mesh for %d ranks (it has %d partitions)",
                   np, nbr);
-    // only the elements of the highest dimension are split on their barycenters
-    int dim = 0;
-    for(int i = 0; i < n; i++)
-      dim = std::max(dim, Geo_GetDimOfElement(
-        ((struct Geo_Element *)List_Pointer(GeoData_P->Elements, i))->Type));
+    // the barycenters of the elements
     std::vector<double> x[3];
-    std::vector<int> e;
     for(int d = 0; d < 3; d++) x[d].resize(n, 0.);
+    std::vector<char> dimOf(n);
+    int dim = 0;
     for(int i = 0; i < n; i++) {
       struct Geo_Element *ele =
         (struct Geo_Element *)List_Pointer(GeoData_P->Elements, i);
-      if(Geo_GetDimOfElement(ele->Type) != dim) continue;
-      e.push_back(i);
+      dimOf[i] = Geo_GetDimOfElement(ele->Type);
+      dim = std::max(dim, (int)dimOf[i]);
       for(int j = 0; j < ele->NbrNodes; j++) {
         struct Geo_Node *node_P;
         if((node_P = Geo_FindNode(GeoData_P, abs(ele->NumNodes[j])))) {
@@ -275,25 +283,35 @@ static void Geo_SetPartitions(struct GeoData *GeoData_P)
         }
       }
     }
-    Geo_Bisect(GeoData_P, x, e, 0, (int)e.size(), 1, np);
-    // the others (the surfaces, lines and points) follow the first element of
-    // the highest dimension that contains them, like those of the partitions
-    // of Gmsh: split on their own barycenters, they would often go to another
-    // partition than the elements that contain them, and the rank of such an
-    // element would not have the Dofs of its edges and facets (it only defines
-    // those of the elements of its partition), whence a wrong value of the
-    // quantities evaluated on it; the ones that are in no element go to the
-    // last rank (partition 0)
-    for(int i = 0; i < n; i++) {
-      struct Geo_Element *ele =
-        (struct Geo_Element *)List_Pointer(GeoData_P->Elements, i);
-      if(Geo_GetDimOfElement(ele->Type) != dim) ele->Partition = 0;
-    }
+    // An element of lower dimension (a surface, a line, a point) follows the
+    // first element of the highest dimension that contains it, like those of
+    // the partitions of Gmsh: split on its own barycenter, it would often go to
+    // another partition than the elements that contain it, and its rank would
+    // not have the Dofs of its edges and facets (it only defines those of the
+    // elements of its partition), whence a wrong value of the quantities
+    // evaluated on it.
+    std::vector<int> container(n, -1);
     Geo_ForEachElementContaining(GeoData_P, [&](int lower, int top) {
-      ((struct Geo_Element *)List_Pointer(GeoData_P->Elements, lower))->Partition =
-        ((struct Geo_Element *)List_Pointer(GeoData_P->Elements, top))->Partition;
+      container[lower] = top;
       return false;
     });
+    // The elements that are in no element of higher dimension are split on
+    // their barycenters, those of each dimension together: the elements of the
+    // highest dimension, but also e.g. the surfaces of a mesh that has volumes
+    // elsewhere, which would otherwise all go to the same rank. From the highest
+    // dimension down, so that the partition of the element that contains
+    // another one is known.
+    for(int d = dim; d >= 0; d--) {
+      std::vector<int> e;
+      for(int i = 0; i < n; i++)
+        if(dimOf[i] == d && container[i] < 0) e.push_back(i);
+      if(!e.empty()) Geo_Bisect(GeoData_P, x, e, 0, (int)e.size(), 1, np);
+      for(int i = 0; i < n; i++)
+        if(dimOf[i] == d && container[i] >= 0)
+          ((struct Geo_Element *)List_Pointer(GeoData_P->Elements, i))->Partition =
+            ((struct Geo_Element *)List_Pointer(GeoData_P->Elements, container[i]))
+              ->Partition;
+    }
   }
   GeoData_P->NbrPartitions = np;
 }
@@ -466,7 +484,7 @@ Geo_ElementsOfRanks(struct GeoData *GeoData_P, int last)
     }
   }
 
-  // and the elements of the highest dimension that contain an element of lower
+  // and the elements of higher dimension that contain an element of lower
   // dimension of the partition of a rank (e.g. a surface where it evaluates a
   // quantity with Trace, in the element on one side of it, which is not
   // always in the same partition), as they are elements whose Dofs it defines
