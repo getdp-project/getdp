@@ -154,14 +154,16 @@ void Pre_TermOfFemEquation(struct Element *Element,
   if(QuantityStorageEqu_P->NumLastElementForEquDefinition != Element->Num) {
     QuantityStorageEqu_P->NumLastElementForEquDefinition = Element->Num;
 
-    if(QuantityStorageEqu_P->TypeQuantity == INTEGRALQUANTITY &&
+    // (the type of the quantity, not QuantityStorage.TypeQuantity, which is
+    // the type of the field: Form3 has the value of INTEGRALQUANTITY)
+    if(QuantityStorageEqu_P->DefineQuantity->Type == INTEGRALQUANTITY &&
        Dof_UseLocalDofs()) {
       Message::Error("Rank-local Dofs (use -all-dofs) do not handle integral quantities yet");
       return;
     }
 
     for(i = 0; i < QuantityStorageEqu_P->NbrElementaryBasisFunction; i++) {
-      bool NonLocal = (QuantityStorageEqu_P->TypeQuantity == INTEGRALQUANTITY) ||
+      bool NonLocal = (QuantityStorageEqu_P->DefineQuantity->Type == INTEGRALQUANTITY) ||
                  IsEquationNonLocal(
                    QuantityStorageEqu_P->BasisFunction[i].BasisFunction);
       switch(QuantityStorageEqu_P->BasisFunction[i].Constraint) {
@@ -221,7 +223,7 @@ void Pre_TermOfFemEquation(struct Element *Element,
     QuantityStorageDof_P->NumLastElementForDofDefinition = Element->Num;
 
     for(i = 0; i < QuantityStorageDof_P->NbrElementaryBasisFunction; i++) {
-      bool NonLocal = (QuantityStorageDof_P->TypeQuantity == INTEGRALQUANTITY) ||
+      bool NonLocal = (QuantityStorageDof_P->DefineQuantity->Type == INTEGRALQUANTITY) ||
                  IsEquationNonLocal(
                    QuantityStorageDof_P->BasisFunction[i].BasisFunction);
 
