@@ -7596,6 +7596,8 @@ PostSubOperations :
       PostSubOperation_S.Format = -1;
       PostSubOperation_S.FileOut = NULL;
       PostSubOperation_S.Depth = 1;
+      PostSubOperation_S.HighOrder = 0;
+      PostSubOperation_S.ExportOrder = 0;
       PostSubOperation_S.Smoothing = 0;
       PostSubOperation_S.Skin = 0;
       PostSubOperation_S.Comma = NULL;
@@ -8062,6 +8064,16 @@ PrintOption :
   | ',' tDepth FExpr
     {
       PostSubOperation_S.Depth = (int)$3;
+    }
+  | ',' tOrder FExpr
+    {
+      PostSubOperation_S.HighOrder = (int)$3;
+      if(PostSubOperation_S.HighOrder < 1)
+        vyyerror(0, "Order of Print should be at least 1");
+    }
+  | ',' tOrder tAuto
+    {
+      PostSubOperation_S.HighOrder = -1;
     }
   | ',' tSkin
     {

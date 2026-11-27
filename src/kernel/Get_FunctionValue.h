@@ -26,6 +26,7 @@ int Get_IntegrationDegree(struct Element *Element,
                           struct QuantityStorage *QuantityStorage_P,
                           int Type_Operator);
 int Get_GeometricIntegrationDegree(struct Element *Element);
+int Get_GeometricOrder(int Type, bool *Simplex);
 double Cal_InterpolationOrder(struct Element *Element,
                               struct QuantityStorage *QuantityStorage);
 double Cal_MaxEdgeLength(struct Element *Element);

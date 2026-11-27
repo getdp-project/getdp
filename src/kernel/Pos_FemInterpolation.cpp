@@ -311,6 +311,57 @@ void Pos_FemInterpolation(struct Element *Element,
 
       /* interpolate (vBFxDof is real-valued) */
 
+      // at the points of a set given for the element (the nodes of the
+      // element on which a field is exported) the values of the Dofs are
+      // those of the first point
+      const double *DofValues = NULL;
+      if(Type_Quantity != QUANTITY_BF && TheElement_P->Num != NO_ELEMENT) {
+        const unsigned long long pass =
+          Cal_GetReferencePointPass(TheElement_P);
+        if(pass) {
+          struct DofValuesOfElement {
+            struct QuantityStorage *Quantity;
+            struct Solution *Solution;
+            unsigned long long Pass;
+            int NbrDof, NbrHar;
+            std::vector<double> Values;
+          };
+          static std::vector<DofValuesOfElement> Kept(4);
+          static int Next = 0;
+          struct DofData *DofData_P = QuantityStorage_P->FunctionSpace->DofData;
+          DofValuesOfElement *D = NULL;
+          for(auto &d : Kept)
+            if(d.Pass == pass && d.Quantity == QuantityStorage_P &&
+               d.Solution == DofData_P->CurrentSolution &&
+               d.NbrDof == Nbr_Dof && d.NbrHar == Current.NbrHar)
+              D = &d;
+          if(!D) {
+            D = &Kept[Next];
+            Next = (Next + 1) % Kept.size();
+            D->Pass = pass;
+            D->Quantity = QuantityStorage_P;
+            D->Solution = DofData_P->CurrentSolution;
+            D->NbrDof = Nbr_Dof;
+            D->NbrHar = Current.NbrHar;
+            D->Values.resize((std::size_t)Nbr_Dof * Current.NbrHar);
+            for(j = 0; j < Nbr_Dof; j++) {
+              double *d = &D->Values[(std::size_t)j * Current.NbrHar];
+              if(Current.NbrHar == 1)
+                Dof_GetRealDofValue(DofData_P,
+                                    QuantityStorage_P->BasisFunction[j].Dof, d);
+              else
+                for(k = 0; k < Current.NbrHar; k += 2)
+                  Dof_GetComplexDofValue(
+                    DofData_P,
+                    QuantityStorage_P->BasisFunction[j].Dof +
+                      k / 2 * gCOMPLEX_INCREMENT,
+                    &d[k], &d[k + 1]);
+            }
+          }
+          DofValues = D->Values.data();
+        }
+      }
+
       switch(Type_Form) {
       case FORM0:
       case FORM3:
@@ -323,6 +374,8 @@ void Pos_FemInterpolation(struct Element *Element,
                          Current.SubRegion) ?
                           1. :
                           0.;
+            else if(DofValues)
+              Val_Dof = DofValues[j];
             else
               Dof_GetRealDofValue(QuantityStorage_P->FunctionSpace->DofData,
                                   QuantityStorage_P->BasisFunction[j].Dof,
@@ -339,6 +392,10 @@ void Pos_FemInterpolation(struct Element *Element,
                               1. :
                               0.;
                 Val_Dof_i = 0.;
+              }
+              else if(DofValues) {
+                Val_Dof_r = DofValues[j * Current.NbrHar + k];
+                Val_Dof_i = DofValues[j * Current.NbrHar + k + 1];
               }
               else {
                 Dof_GetComplexDofValue(
@@ -370,6 +427,8 @@ void Pos_FemInterpolation(struct Element *Element,
                          Current.SubRegion) ?
                           1. :
                           0.;
+            else if(DofValues)
+              Val_Dof = DofValues[j];
             else
               Dof_GetRealDofValue(QuantityStorage_P->FunctionSpace->DofData,
                                   QuantityStorage_P->BasisFunction[j].Dof,
@@ -388,6 +447,10 @@ void Pos_FemInterpolation(struct Element *Element,
                               1. :
                               0.;
                 Val_Dof_i = 0.;
+              }
+              else if(DofValues) {
+                Val_Dof_r = DofValues[j * Current.NbrHar + k];
+                Val_Dof_i = DofValues[j * Current.NbrHar + k + 1];
               }
               else {
                 Dof_GetComplexDofValue(

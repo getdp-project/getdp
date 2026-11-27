@@ -19,7 +19,7 @@ line), by type of entity (edges, facets and volumes), and function by function.
  - Definition by type of entity and function by function
  - Automatic Jacobian and integration, adapted to the order of the functions
  - Error with respect to an exact solution; post-processing of high order
-   fields with `Depth`
+   fields on elements of their order with `Order`
 
 See the comments in `high_order.pro` and `high_order.geo` for details.
 

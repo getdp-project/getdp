@@ -181,7 +181,10 @@ PostProcessing {
 PostOperation {
   { Name Map; NameOfPostProcessing Post;
     Operation {
-      Print [ u, OnElementsOf Vol, Depth ((dim == 2) ? 3 : 1), File "u.pos" ];
+      // The field is exported on elements of its order, or of the order of
+      // the mesh if it is higher (see tutorial 11): the elements of the view
+      // are curved as those of the mesh.
+      Print [ u, OnElementsOf Vol, Order Auto, File "u.pos" ];
       Print [ error2[Vol], OnGlobal, Format Table,
         StoreInVariable $error2, File > "error.txt" ];
       Print [ norm2[Vol], OnGlobal, Format Table,

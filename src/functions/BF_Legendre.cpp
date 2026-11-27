@@ -777,6 +777,28 @@ namespace {
     return (numNodes == 4) ? QUA : TRI;
   }
 
+  // The order in GetDP of a function (or of its derivative) of order p in
+  // Gmsh on a shape: for H1 and L2, p; for H(curl) and H(div) on the
+  // simplices, 0.5 for the Whitney functions, p for the functions of order p
+  // in the kernel of the derivative (the gradients and the curls), which
+  // complete the polynomials of degree p, and p - 0.5 for the other functions
+  // of order p (see the function space types in Gmsh); on the other shapes,
+  // where the orders of GetDP do not match those of Gmsh, p + 0.5. One order
+  // less for the derivatives.
+  double getOrder(Space space, int derivative, int shape, int order,
+                  bool kernel)
+  {
+    double o;
+    if(space == H1 || space == L2)
+      o = order;
+    else if(shapes[shape].simplex)
+      o = kernel ? order : (order > 0) ? order - 0.5 : 0.5;
+    else
+      o = order + 0.5;
+    if(derivative) o = (o >= 1.) ? o - 1. : 0.;
+    return o;
+  }
+
   // Set the function at the given position on the entities of the given type,
   // borne by the elements of the given types (the order of the function is
   // that on the given shape, with numNodes nodes per facet)
@@ -795,22 +817,7 @@ namespace {
     bf->Function = derivative ? df : f;
     bf->dFunction = (space == L2) ? f : derivative ? (void (*)())BF_Zero : df;
     bf->dInvFunction = derivative ? f : (void (*)())BF_Zero;
-    // The orders of GetDP. For H1 and L2, the order in Gmsh. For H(curl) and
-    // H(div) on the simplices, 0.5 for the Whitney functions, p for the
-    // functions of order p in the kernel of the derivative (the gradients and
-    // the curls), which complete the polynomials of degree p, and p - 0.5 for
-    // the other functions of order p (see the function space types in Gmsh);
-    // on the other shapes, where the orders of GetDP do not match those of
-    // Gmsh, p + 0.5. One order less for the derivatives.
-    double o;
-    if(space == H1 || space == L2)
-      o = order;
-    else if(shapes[shape].simplex)
-      o = kernel ? order : (order > 0) ? order - 0.5 : 0.5;
-    else
-      o = order + 0.5;
-    if(derivative) o = (o >= 1.) ? o - 1. : 0.;
-    bf->Order = o;
+    bf->Order = getOrder(space, derivative, shape, order, kernel);
     bf->ElementType = elementType;
     // the functions are oriented here, from the tags of the nodes
     bf->Orient = 0;
@@ -829,6 +836,66 @@ bool BF_IsLegendre(void (*Function)())
   return usedFunctions.count(Function) != 0;
 #else
   return false;
+#endif
+}
+
+double BF_GetLegendreOrder(void (*Function)(), int ElementType,
+                           int EntityFilter)
+{
+#if defined(HAVE_GMSH_HIERARCHICAL) && defined(HAVE_KERNEL)
+  if(!usedFunctions.count(Function)) return -1.;
+  const BF_Pointer *table = getTable(std::make_index_sequence<MAX_FUNCTIONS>());
+  std::size_t i = 0;
+  while(i < slots.size() && (void (*)())table[i] != Function) i++;
+  if(i == slots.size()) return -1.;
+  const Slot &slot = slots[i];
+  const int shape = getShape(ElementType);
+  if(shape < 0) return -1.;
+  // (the results are kept: finding the order of a function builds the bases
+  // of the lower orders)
+  static std::map<std::vector<int>, double> orders;
+  const std::vector<int> key = {(int)i, shape, EntityFilter};
+  auto it = orders.find(key);
+  if(it != orders.end()) return it->second;
+  double o = -1.;
+  // the shapes giving the functions of the entities of the element (as in
+  // BF_GetLegendreSpace): a line for the nodes and the edges, the triangles
+  // and the quadrangles for the facets, the element itself for the volumes
+  // and for L2
+  const Shape &S = shapes[shape];
+  std::vector<std::pair<int, int> > bearers; // shape, number of nodes
+  if(slot.space == L2 || slot.type == 3) {
+    if(slot.space == L2 || S.dim == 3) bearers.push_back({shape, 0});
+  }
+  else if(slot.type < 2) {
+    if(S.dim >= 1 || slot.type == 0) bearers.push_back({LIN, 0});
+  }
+  else {
+    for(int numNodes = 3; numNodes <= 4; numNodes++) {
+      if(EntityFilter == ((numNodes == 3) ? ENTITYFILTER_QUADRANGLES :
+                                            ENTITYFILTER_TRIANGLES))
+        continue;
+      bool found = (S.dim == 2 && S.numVertices == numNodes);
+      for(int f = 0; f < S.numFacets && S.dim == 3; f++)
+        if((S.facets[f][3] < 0) == (numNodes == 3)) found = true;
+      if(found) bearers.push_back({facetShape(slot.space, numNodes), numNodes});
+    }
+  }
+  for(auto &b : bearers) {
+    Family *family = getFamily(slot.space, b.first);
+    if(!family) continue;
+    bool kernel = false;
+    int order = family->order(slot.type, b.second, slot.position, kernel);
+    if(order < 0) continue;
+    // (on the elements that are not simplices the functions of the edges
+    // and of the triangles are not of lower degree in the element)
+    o = std::max(o, getOrder(slot.space, slot.derivative,
+                             S.simplex ? b.first : shape, order, kernel));
+  }
+  orders[key] = o;
+  return o;
+#else
+  return -1.;
 #endif
 }
 

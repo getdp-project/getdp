@@ -107,7 +107,7 @@ struct Quadrature *Get_QuadratureOfElement(
 
 // the order of the geometry of the elements of a type, and whether they are
 // simplices
-static int Get_GeometricOrder(int Type, bool *Simplex)
+int Get_GeometricOrder(int Type, bool *Simplex)
 {
   *Simplex = false;
   switch(Type) {

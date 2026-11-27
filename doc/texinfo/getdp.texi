@@ -5267,7 +5267,28 @@ the label).
 Recursive division of the elements if @var{expression-cst} is greater than
 zero, derefinement if @var{expression-cst} is smaller than zero. If
 @var{expression-cst} is equal to zero, evaluation at the barycenter of the
-elements.
+elements. With a depth @var{d} greater than one each element is divided
+@var{d}-1 times, i.e. in 2^(@var{d}-1) intervals along its edges, and the
+quantity is evaluated at the vertices of all the parts (all the shapes of
+elements can be divided: a pyramid is divided in pyramids and tetrahedra).
+
+@item Order
+@var{expression-cst} | Auto
+
+Export the quantity on elements of order @var{expression-cst}: the quantity is
+evaluated at the nodes of the Lagrange elements of that order built on the
+elements of the mesh, which are written with the result as a mesh of their
+own, made on the fly (the nodes on the vertices, the edges and the faces are
+shared by the elements). This is the way to export a high order field: a
+polynomial field is exported exactly on elements of its order, at a fraction
+of the cost (in time and in file size) of a recursive division. With
+@code{Auto} the order is the highest order of the basis functions of the
+quantity on the elements of the region, and at least the order of these
+elements. @code{Order} applies to the mesh-based views in @code{Gmsh} format of
+a single quantity on the elements of a region (@code{OnElementsOf}), written
+with their mesh, and requires GetDP to be linked with the Gmsh library; in all
+the other cases the elements are divided instead, with the @code{Depth} that
+gives as many intervals along the edges.
 
 @item AtGaussPoints
 @var{expression-cst}

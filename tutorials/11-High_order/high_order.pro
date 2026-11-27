@@ -382,18 +382,24 @@ PostOperation {
   { Name Map; NameOfPostProcessing Wav;
     Operation {
       // A field of order "p" is not well represented by its values at the
-      // nodes of a coarse mesh. With "Depth" each element is recursively
-      // subdivided before the field is evaluated, which gives a faithful
-      // picture of what was actually computed (the subdivision is not
-      // available for hexahedra, and is limited in 3D to keep the size of the
-      // file reasonable):
-      If(dim == 2)
-        Print [ e, OnElementsOf Vol_Wav, Depth 3, File "e.pos" ];
-      ElseIf(shape == 0)
-        Print [ e, OnElementsOf Vol_Wav, Depth 2, File "e.pos" ];
-      Else
-        Print [ e, OnElementsOf Vol_Wav, File "e.pos" ];
-      EndIf
+      // nodes of a coarse mesh. With "Order" the field is exported on
+      // elements of the given order, i.e. evaluated at the nodes of the
+      // Lagrange elements of that order, which are written in the file as a
+      // mesh of their own, made on the fly: this is exact if the order is that
+      // of the field. "Order Auto" takes the highest order of the basis
+      // functions of the field (and at least the order of the mesh). In Gmsh,
+      // select "Adapt visualization grid" in the options of the view
+      // ("View.AdaptVisualizationGrid") to see more than the values at the
+      // vertices.
+      Print [ e, OnElementsOf Vol_Wav, Order Auto, File "e.pos" ];
+      // The other way is to divide each element recursively before the field
+      // is evaluated, with "Depth": the field is then linear on each of the
+      // 4^(Depth-1) (2D) or 8^(Depth-1) (3D) parts of an element. This costs
+      // much more for the same accuracy, but it is available for all the
+      // kinds of output (cuts, other formats, ...), where "Order" is replaced
+      // by the "Depth" that gives as many intervals along the edges, e.g.:
+      //
+      //   Print [ e, OnElementsOf Vol_Wav, Depth 3, File "e_depth.pos" ];
       Print [ error2[Vol_Wav], OnGlobal, Format Table,
         StoreInVariable $error2, File > "error.txt" ];
       Print [ norm2[Vol_Wav], OnGlobal, Format Table,

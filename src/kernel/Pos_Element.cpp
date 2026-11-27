@@ -18,9 +18,13 @@
 #include "Message.h"
 #include "ProDefine.h"
 
+#include <map>
+#include <algorithm>
+
 #if defined(HAVE_GMSH)
 #include <gmsh/BasisFactory.h>
 #include <gmsh/nodalBasis.h>
+#include <gmsh/ElementType.h>
 #endif
 
 extern struct CurrentData Current;
@@ -196,12 +200,31 @@ void Cut_PostElement(struct PostElement *PE, struct Geo_Element *GE,
                      int DecomposeInSimplex)
 {
   struct Element E;
-  struct PostElement *C[8];
+  struct PostElement *C[10];
 
   double u01, u02, u03, u12, u13, u23;
   double v01, v02, v03, v12, v13, v23;
   double w01, w02, w03, w12, w13, w23;
   int i, j, NbCut = 0;
+
+  // the tetrahedra of the divisions (of a tetrahedron or of a pyramid, or of
+  // an element decomposed in simplices) get the orientation of the element
+  if(PE->Type == TETRAHEDRON && PE->NbrNodes == 4) {
+    const double a[3] = {PE->u[1] - PE->u[0], PE->v[1] - PE->v[0],
+                         PE->w[1] - PE->w[0]};
+    const double b[3] = {PE->u[2] - PE->u[0], PE->v[2] - PE->v[0],
+                         PE->w[2] - PE->w[0]};
+    const double c[3] = {PE->u[3] - PE->u[0], PE->v[3] - PE->v[0],
+                         PE->w[3] - PE->w[0]};
+    if(a[0] * (b[1] * c[2] - b[2] * c[1]) - a[1] * (b[0] * c[2] - b[2] * c[0]) +
+         a[2] * (b[0] * c[1] - b[1] * c[0]) <
+       0.) {
+      std::swap(PE->NumNodes[0], PE->NumNodes[1]);
+      std::swap(PE->u[0], PE->u[1]);
+      std::swap(PE->v[0], PE->v[1]);
+      std::swap(PE->w[0], PE->w[1]);
+    }
+  }
 
   /* Recursive division */
 
@@ -518,10 +541,106 @@ void Cut_PostElement(struct PostElement *PE, struct Geo_Element *GE,
       NbCut = 8;
       break;
 
+    case HEXAHEDRON: {
+      // the 8 hexahedra of the grid of the vertices, of the middles of the
+      // edges and of the centers of the faces and of the element: the point (a, b, c) of the grid, with a, b, c in {0, 1, 2},
+      // is the mean of the vertices on its side in each direction
+      static const int vertex[2][2][2] = {{{0, 4}, {3, 7}}, {{1, 5}, {2, 6}}};
+      const int n3 = 2;
+      for(int c0 = 0; c0 < 2; c0++)
+        for(int c1 = 0; c1 < 2; c1++)
+          for(int c2 = 0; c2 < n3; c2++) {
+            struct PostElement *c =
+              Create_PostElement(Index, PE->Type, PE->NbrNodes, PE->Depth);
+            for(int i = 0; i < 2; i++)
+              for(int j = 0; j < 2; j++)
+                for(int k = 0; k < n3; k++) {
+                  const int g[3] = {c0 + i, c1 + j, c2 + k};
+                  double uvw[3] = {0., 0., 0.};
+                  int num = 0;
+                  for(int a = 0; a < 2; a++)
+                    for(int b = 0; b < 2; b++)
+                      for(int d = 0; d < n3; d++) {
+                        if(g[0] == 2 * (1 - a) || g[1] == 2 * (1 - b) ||
+                           (n3 == 2 && g[2] == 2 * (1 - d)))
+                          continue;
+                        const int v = vertex[a][b][d];
+                        uvw[0] += PE->u[v];
+                        uvw[1] += PE->v[v];
+                        uvw[2] += PE->w[v];
+                        num++;
+                      }
+                  const int v = vertex[i][j][k];
+                  c->u[v] = uvw[0] / num;
+                  c->v[v] = uvw[1] / num;
+                  c->w[v] = uvw[2] / num;
+                }
+            C[NbCut++] = c;
+          }
+      Destroy_PostElement(PE);
+    } break;
+
+    case PRISM:
+    case PYRAMID: {
+      // the points of the division, as means of vertices: for the prism, the
+      // vertices (0-5), the middles of the edges of the triangles (6-8 and
+      // 9-11) and the same points at mid-height (12-17); for the pyramid, the
+      // vertices (0-4), the middles of the edges of the base (5-8), its center
+      // (9) and the middles of the edges to the apex (10-13)
+      static const int prismPoints[18][4] = {
+        {0, -1},  {1, -1},  {2, -1},     {3, -1},     {4, -1},       {5, -1},
+        {0, 1, -1}, {1, 2, -1}, {0, 2, -1}, {3, 4, -1}, {4, 5, -1}, {3, 5, -1},
+        {0, 3, -1}, {1, 4, -1}, {2, 5, -1}, {0, 1, 3, 4}, {1, 2, 4, 5},
+        {0, 2, 3, 5}};
+      static const int pyramidPoints[14][4] = {
+        {0, -1},    {1, -1},    {2, -1},      {3, -1},    {4, -1},
+        {0, 1, -1}, {1, 2, -1}, {2, 3, -1},   {3, 0, -1}, {0, 1, 2, 3},
+        {0, 4, -1}, {1, 4, -1}, {2, 4, -1},   {3, 4, -1}};
+      // 8 prisms; 6 pyramids and 4 tetrahedra
+      static const int prisms[8][6] = {
+        {0, 6, 8, 12, 15, 17},    {6, 1, 7, 15, 13, 16},
+        {8, 7, 2, 17, 16, 14},    {6, 7, 8, 15, 16, 17},
+        {12, 15, 17, 3, 9, 11},   {15, 13, 16, 9, 4, 10},
+        {17, 16, 14, 11, 10, 5},  {15, 16, 17, 9, 10, 11}};
+      static const int pyramids[10][5] = {
+        {0, 5, 9, 8, 10},     {5, 1, 6, 9, 11},     {9, 6, 2, 7, 12},
+        {8, 9, 7, 3, 13},     {10, 11, 12, 13, 4},  {10, 13, 12, 11, 9},
+        {5, 10, 11, 9, -1},   {6, 11, 12, 9, -1},   {7, 12, 13, 9, -1},
+        {8, 13, 10, 9, -1}};
+      const bool prism = (PE->Type == PRISM);
+      const int numPoints = prism ? 18 : 14;
+      double P[18][3];
+      for(int i = 0; i < numPoints; i++) {
+        const int *v = prism ? prismPoints[i] : pyramidPoints[i];
+        int num = 0;
+        P[i][0] = P[i][1] = P[i][2] = 0.;
+        for(int j = 0; j < 4 && v[j] >= 0; j++, num++) {
+          P[i][0] += PE->u[v[j]];
+          P[i][1] += PE->v[v[j]];
+          P[i][2] += PE->w[v[j]];
+        }
+        for(int j = 0; j < 3; j++) P[i][j] /= num;
+      }
+      for(int k = 0; k < (prism ? 8 : 10); k++) {
+        const int *nodes = prism ? prisms[k] : pyramids[k];
+        const int num = prism ? 6 : ((nodes[4] < 0) ? 4 : 5);
+        struct PostElement *c = Create_PostElement(
+          Index, prism ? PRISM : ((num == 4) ? TETRAHEDRON : PYRAMID), num,
+          PE->Depth);
+        for(int i = 0; i < num; i++) {
+          c->u[i] = P[nodes[i]][0];
+          c->v[i] = P[nodes[i]][1];
+          c->w[i] = P[nodes[i]][2];
+        }
+        C[NbCut++] = c;
+      }
+      Destroy_PostElement(PE);
+    } break;
+
     default:
-      Message::Error(
-        "Recursive division not implemented for Quadrangles, Hexahedra, "
-        "Prisms and Pyramids");
+      Message::Error("Recursive division not implemented for elements of "
+                     "type %s",
+                     Get_StringForDefine(Element_Type, PE->Type));
       break;
     }
 
@@ -589,6 +708,115 @@ static struct PostElement *Create_HighOrderPostElement(struct Geo_Element *GE,
   return PE;
 }
 
+static const struct LagrangePostElement *LagrangePostPoints = NULL;
+
+static void Get_LagrangePostPoint(int Nbr_Points, int Num, double *u, double *v,
+                                  double *w, double *wght)
+{
+  *u = LagrangePostPoints->u[Num];
+  *v = LagrangePostPoints->v[Num];
+  *w = LagrangePostPoints->w[Num];
+  *wght = 0.;
+}
+
+struct Quadrature *Get_LagrangePostPoints(const struct LagrangePostElement *L)
+{
+  LagrangePostPoints = L;
+  return const_cast<struct Quadrature *>(&L->Points);
+}
+
+const struct LagrangePostElement *
+Get_LagrangePostElement(struct Geo_Element *GE, int Order)
+{
+#if defined(HAVE_GMSH)
+  // (the highest order of all the shapes in Gmsh)
+  if(Order < 1 || Order > 9) return NULL;
+  static std::map<std::pair<int, int>, struct LagrangePostElement> elements;
+  auto it = elements.find({GE->Type, Order});
+  if(it != elements.end()) return it->second.GmshType ? &it->second : NULL;
+  struct LagrangePostElement &L = elements[{GE->Type, Order}];
+  L.GmshType = 0;
+  const int type = GetDP2Gmsh(GE->Type);
+  if(GE->Type == POINT_ELEMENT)
+    L.GmshType = type;
+  else if(type > 0)
+    L.GmshType = ElementType::getType(ElementType::getParentType(type), Order);
+  const nodalBasis *basis =
+    L.GmshType ? BasisFactory::getNodalBasis(L.GmshType) : NULL;
+  const nodalBasis *primary =
+    L.GmshType ?
+      BasisFactory::getNodalBasis(ElementType::getPrimaryType(type)) :
+      NULL;
+  if(!basis || !primary) {
+    L.GmshType = 0;
+    return NULL;
+  }
+  L.Points.ElementType = GE->Type;
+  L.Points.NumberOfPoints = L.Points.MaxNumberOfPoints =
+    basis->points.size1();
+  L.Points.NumberOfDivisions = L.Points.MaxNumberOfDivisions = 1;
+  L.Points.StoppingCriterion = 0.;
+  L.Points.Function = (void (*)())Get_LagrangePostPoint;
+  L.Dimension = basis->dimension;
+  L.NbrNodes = basis->points.size1();
+  L.NbrVertices = primary->points.size1();
+  struct Element E;
+  Get_InitDofOfElement(&E);
+  E.GeoElement = GE;
+  E.Type = GE->Type;
+  std::vector<double> sf(L.NbrVertices);
+  const double scale = (double)Order * Order * Order;
+  for(int i = 0; i < L.NbrNodes; i++) {
+    const int dim = basis->points.size2();
+    L.u.push_back((dim >= 1) ? basis->points(i, 0) : 0.);
+    L.v.push_back((dim >= 2) ? basis->points(i, 1) : 0.);
+    L.w.push_back((dim >= 3) ? basis->points(i, 2) : 0.);
+    Get_BFGeoElement(&E, L.u[i], L.v[i], L.w[i]);
+    L.n.insert(L.n.end(), E.n, E.n + GE->NbrNodes);
+    // the shape functions of the vertices are multiples of 1 / Order^3 at the
+    // nodes of the boundary of the element
+    primary->f(L.u[i], L.v[i], L.w[i], sf.data());
+    std::vector<std::pair<int, int> > vertices;
+    for(int j = 0; j < L.NbrVertices; j++)
+      if(fabs(sf[j]) > 1.e-8)
+        vertices.push_back({j, (int)floor(sf[j] * scale + 0.5)});
+    L.Vertices.push_back(vertices);
+  }
+  return &L;
+#else
+  return NULL;
+#endif
+}
+
+// The post element of the Lagrange element of a given order on GE
+static struct PostElement *
+Create_LagrangePostElement(struct Geo_Element *GE, int Index, int Order)
+{
+  const struct LagrangePostElement *L = Get_LagrangePostElement(GE, Order);
+  if(!L) return NULL;
+  struct PostElement *PE = Create_PostElement(Index, GE->Type, L->NbrNodes, 1);
+  struct Element E;
+  Get_InitDofOfElement(&E);
+  E.GeoElement = GE;
+  E.Num = GE->Num;
+  E.Type = GE->Type;
+  Get_NodesCoordinatesOfElement(&E);
+  const double *n = L->n.data();
+  for(int i = 0; i < L->NbrNodes; i++) {
+    PE->NumNodes[i] = -1;
+    PE->u[i] = L->u[i];
+    PE->v[i] = L->v[i];
+    PE->w[i] = L->w[i];
+    PE->x[i] = PE->y[i] = PE->z[i] = 0.;
+    for(int j = 0; j < GE->NbrNodes; j++, n++) {
+      PE->x[i] += E.x[j] * *n;
+      PE->y[i] += E.y[j] * *n;
+      PE->z[i] += E.z[j] * *n;
+    }
+  }
+  return PE;
+}
+
 #define POS_CUT_FILL                                                           \
   Cut_PostElement(PE, GE, PE_L, Index, Depth, 0, DecomposeInSimplex)
 #define POS_CUT_SKIN                                                           \
@@ -596,9 +824,18 @@ static struct PostElement *Create_HighOrderPostElement(struct Geo_Element *GE,
 
 void Fill_PostElement(struct Geo_Element *GE, List_T *PE_L, int Index,
                       int Depth, int Skin, int DecomposeInSimplex,
-                      int HighOrder, int Gauss)
+                      int HighOrder, int Gauss, int ExportOrder)
 {
   struct PostElement *PE;
+
+  if(ExportOrder > 0) {
+    if((PE = Create_LagrangePostElement(GE, Index, ExportOrder)))
+      List_Add(PE_L, &PE);
+    else
+      Message::Error("No element of order %d for elements of type %s",
+                     ExportOrder, Get_StringForDefine(Element_Type, GE->Type));
+    return;
+  }
 
   if(Gauss > 0) {
     Depth = 0;

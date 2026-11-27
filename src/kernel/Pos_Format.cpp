@@ -14,6 +14,8 @@
 #include <set>
 #include <climits>
 #include <algorithm>
+#include <array>
+#include <unordered_map>
 
 #include "GetDPVersion.h"
 #include "GetDPConfig.h"
@@ -252,8 +254,14 @@ static void Gmsh_PrintElementNodeData(struct PostSubOperation *PSO_P,
         int stride = (*L[i]).size() / Nb[i];
         int mult = (stride - 1) / numTimeStep / Current.NbrHar / numComp;
         // (the element is in the mesh of the rank that evaluated it)
-        int type[2] = {
-          GetDP2Gmsh(Geo_GetGeoElementOfNum((int)(*L[i])[0])->Type), mult};
+        struct Geo_Element *GE = Geo_GetGeoElementOfNum((int)(*L[i])[0]);
+        int type[2] = {GetDP2Gmsh(GE->Type), mult};
+        // (the elements of the order of the Print)
+        if(PSO_P->ExportOrder) {
+          const struct LagrangePostElement *LE =
+            Get_LagrangePostElement(GE, PSO_P->ExportOrder);
+          if(LE) type[0] = LE->GmshType;
+        }
         std::size_t n = Nb[i];
         if(Flag_BIN) {
           Gmsh_Write(type, 2 * sizeof(int));
@@ -1208,6 +1216,25 @@ static void Gmsh_GetMesh(struct PostSubOperation *PSO_P, std::string &nodeText,
                  ->InitialList;
   const int me = GmshParallel ? Message::GetCommRank() : 0;
 
+  // With an order (ExportOrder) the elements are those of the Lagrange
+  // elements of that order on the elements of the mesh, with new nodes (after
+  // the nodes of the mesh) other than the vertices: the nodes on the edges and
+  // the faces are shared by the elements (they are identified by the vertices
+  // on which they depend, see LagrangePostElement). In parallel each rank
+  // shares the new nodes among its elements, and numbers each one from the
+  // number of the first of its elements that has it: the ranks need not
+  // exchange anything for their numbers to differ (the numbers are sparse),
+  // and only the nodes on the interfaces of the partitions are duplicated.
+  const int order = PSO_P->ExportOrder;
+  for(int i = 0; i < 4; i++) nodeHeader[i] = elementHeader[i] = 0;
+  auto lagrange = [&](Geo_Element *e) {
+    const struct LagrangePostElement *L = Get_LagrangePostElement(e, order);
+    if(!L)
+      Message::Error("No element of order %d for elements of type %s", order,
+                     Get_StringForDefine(Element_Type, e->Type));
+    return L;
+  };
+
   // the elements of this rank by entity (dimension, tag) and type, and the
   // lowest rank of the elements that contain each node
   std::map<std::vector<int>, std::vector<Geo_Element *> > elements;
@@ -1216,21 +1243,77 @@ static void Gmsh_GetMesh(struct PostSubOperation *PSO_P, std::string &nodeText,
     Geo_Element *e = Geo_GetGeoElement(i);
     if(Region_L && !List_Search(Region_L, &e->Region, fcmp_int)) continue;
     int rank = !GmshParallel ? 0 : Geo_RankOfPartition(e->Partition);
-    if(rank == me)
-      elements[{Geo_GetDimOfElement(e->Type), e->ElementaryRegion,
-                GetDP2Gmsh(e->Type)}]
+    if(rank == me) {
+      int type = GetDP2Gmsh(e->Type);
+      if(order) {
+        const struct LagrangePostElement *L = lagrange(e);
+        if(!L) return;
+        type = L->GmshType;
+      }
+      elements[{Geo_GetDimOfElement(e->Type), e->ElementaryRegion, type}]
         .push_back(e);
+    }
     for(int j = 0; j < e->NbrNodes; j++) {
       auto it = lowest.insert({abs(e->NumNodes[j]), rank}).first;
       it->second = std::min(it->second, rank);
     }
   }
-  // the nodes of this rank, in the entity of the first of its elements that
-  // has them, and the physical groups of the entities
-  std::map<std::vector<int>, std::vector<int> > nodes;
+
+  // the first new node, and the numbers kept for the new nodes of each
+  // element in parallel
+  std::size_t newNode = 0;
+  const std::size_t newPerElement =
+    (std::size_t)(order + 1) * (order + 1) * (order + 1);
+  if(order) {
+    unsigned long long maxNode = 0;
+    for(int i = 0; i < Geo_GetNbrGeoNodes(); i++)
+      maxNode =
+        std::max(maxNode, (unsigned long long)Geo_GetGeoNode(i)->Num);
+#if defined(HAVE_MPI)
+    if(GmshParallel)
+      MPI_Allreduce(MPI_IN_PLACE, &maxNode, 1, MPI_UNSIGNED_LONG_LONG, MPI_MAX,
+                    MPI_COMM_WORLD);
+#endif
+    newNode = maxNode + 1;
+  }
+  // the new nodes shared by the elements: the vertices on which they depend,
+  // with their weights, sorted
+  typedef std::array<int, 8> SharedNode;
+  struct HashSharedNode {
+    std::size_t operator()(const SharedNode &n) const
+    {
+      std::size_t h = 0;
+      for(int i : n) h = h * 1000003u + (std::size_t)i + 0x9e3779b9u;
+      return h;
+    }
+  };
+  std::unordered_map<SharedNode, std::size_t, HashSharedNode> shared;
+
+  // the elements, and the nodes of this rank, in the entity of the first of
+  // its elements that has them (tags and coordinates), and the physical groups
+  // of the entities
+  std::map<std::vector<int>,
+           std::pair<std::vector<std::size_t>, std::vector<double> > >
+    nodes;
   std::set<int> done;
   std::set<std::vector<int> > physicals;
-  for(auto &b : elements)
+  std::size_t min[2] = {SIZE_MAX, SIZE_MAX}, max[2] = {0, 0};
+  std::size_t numNodes = 0;
+  std::vector<std::size_t> tags;
+  std::vector<double> x, y, z;
+  elementHeader[0] = elements.size();
+  elementHeader[1] = 0;
+  for(auto &b : elements) {
+    auto &entityNodes = nodes[{b.first[0], b.first[1]}];
+    auto addNode = [&](std::size_t tag, double X, double Y, double Z) {
+      entityNodes.first.push_back(tag);
+      entityNodes.second.insert(entityNodes.second.end(), {X, Y, Z});
+      min[0] = std::min(min[0], tag);
+      max[0] = std::max(max[0], tag);
+      numNodes++;
+    };
+    Gmsh_BlockHeader(elementText, b.first[0], b.first[1], b.first[2],
+                     b.second.size());
     for(auto e : b.second) {
       // (the elements made by GetDP, e.g. in a moving band, have none)
       if(e->Region > 0 &&
@@ -1240,46 +1323,97 @@ static void Gmsh_GetMesh(struct PostSubOperation *PSO_P, std::string &nodeText,
                             (double)e->Region, n->x, n->y, n->z};
         entities.insert(entities.end(), record, record + 6);
       }
-      for(int j = 0; j < e->NbrNodes; j++) {
+      const struct LagrangePostElement *L = order ? lagrange(e) : NULL;
+      const int numVertices = L ? L->NbrVertices : e->NbrNodes;
+      for(int j = 0; j < numVertices; j++) {
         int num = abs(e->NumNodes[j]);
-        if(lowest[num] == me && done.insert(num).second)
-          nodes[{b.first[0], b.first[1]}].push_back(num);
+        if(lowest[num] == me && done.insert(num).second) {
+          Geo_Node *n = Geo_GetGeoNodeOfNum(num);
+          addNode(num, n->x, n->y, n->z);
+        }
       }
-    }
-
-  std::size_t min[2] = {SIZE_MAX, SIZE_MAX}, max[2] = {0, 0};
-  nodeHeader[0] = nodes.size();
-  nodeHeader[1] = done.size();
-  for(auto &b : nodes) {
-    Gmsh_BlockHeader(nodeText, b.first[0], b.first[1], 0, b.second.size());
-    for(int num : b.second) Gmsh_Tag(nodeText, num, "\n");
-    for(int num : b.second) {
-      Geo_Node *n = Geo_GetGeoNodeOfNum(num);
-      double x[3] = {n->x, n->y, n->z};
-      char str[100];
-      if(Flag_BIN)
-        nodeText.append((const char *)x, sizeof(x));
-      else
-        nodeText.append(str, snprintf(str, sizeof(str), "%.16g %.16g %.16g\n",
-                                      x[0], x[1], x[2]));
-      min[0] = std::min(min[0], (std::size_t)num);
-      max[0] = std::max(max[0], (std::size_t)num);
-    }
-  }
-  elementHeader[0] = elements.size();
-  elementHeader[1] = 0;
-  for(auto &b : elements) {
-    Gmsh_BlockHeader(elementText, b.first[0], b.first[1], b.first[2],
-                     b.second.size());
-    for(auto e : b.second) {
+      tags.resize(L ? L->NbrNodes : e->NbrNodes);
+      if(!L)
+        for(int j = 0; j < e->NbrNodes; j++) tags[j] = abs(e->NumNodes[j]);
+      else {
+        x.resize(e->NbrNodes);
+        y.resize(e->NbrNodes);
+        z.resize(e->NbrNodes);
+        Geo_GetNodesCoordinates(e->NbrNodes, e->NumNodes, x.data(), y.data(),
+                                z.data());
+        for(int k = 0; k < L->NbrNodes; k++) {
+          const std::vector<std::pair<int, int> > &v = L->Vertices[k];
+          if(v.size() == 1) {
+            tags[k] = abs(e->NumNodes[v[0].first]);
+            continue;
+          }
+          // (in parallel, from the number of the element, which no other
+          // rank has)
+          auto newTag = [&]() {
+            return GmshParallel ?
+                     newNode + (std::size_t)e->Num * newPerElement + k :
+                     newNode++;
+          };
+          std::size_t *sharedTag = NULL;
+          if(L->Dimension == 3 && (int)v.size() == L->NbrVertices)
+            tags[k] = newTag();
+          else {
+            std::pair<int, int> s[4];
+            for(std::size_t i = 0; i < v.size() && i < 4; i++)
+              s[i] = {abs(e->NumNodes[v[i].first]), v[i].second};
+            std::sort(s, s + std::min<std::size_t>(v.size(), 4));
+            SharedNode key = {{0, 0, 0, 0, 0, 0, 0, 0}};
+            for(std::size_t i = 0; i < v.size() && i < 4; i++) {
+              key[2 * i] = s[i].first;
+              key[2 * i + 1] = s[i].second;
+            }
+            auto it = shared.insert({key, 0});
+            if(!it.second) {
+              tags[k] = it.first->second;
+              continue;
+            }
+            sharedTag = &it.first->second;
+            tags[k] = newTag();
+          }
+          if(sharedTag) *sharedTag = tags[k];
+          const double *n = &L->n[(std::size_t)k * e->NbrNodes];
+          double X = 0., Y = 0., Z = 0.;
+          for(int j = 0; j < e->NbrNodes; j++) {
+            X += x[j] * n[j];
+            Y += y[j] * n[j];
+            Z += z[j] * n[j];
+          }
+          addNode(tags[k], X, Y, Z);
+        }
+      }
       Gmsh_Tag(elementText, e->Num, " ");
-      for(int j = 0; j < e->NbrNodes; j++)
-        Gmsh_Tag(elementText, abs(e->NumNodes[j]),
-                 (j == e->NbrNodes - 1) ? "\n" : " ");
+      for(std::size_t j = 0; j < tags.size(); j++)
+        Gmsh_Tag(elementText, tags[j], (j == tags.size() - 1) ? "\n" : " ");
       min[1] = std::min(min[1], (std::size_t)e->Num);
       max[1] = std::max(max[1], (std::size_t)e->Num);
       elementHeader[1]++;
     }
+  }
+
+  nodeHeader[0] = 0;
+  nodeHeader[1] = numNodes;
+  for(auto &b : nodes) {
+    if(b.second.first.empty()) continue;
+    nodeHeader[0]++;
+    Gmsh_BlockHeader(nodeText, b.first[0], b.first[1], 0,
+                     b.second.first.size());
+    for(std::size_t tag : b.second.first) Gmsh_Tag(nodeText, tag, "\n");
+    if(Flag_BIN)
+      nodeText.append((const char *)b.second.second.data(),
+                      b.second.second.size() * sizeof(double));
+    else
+      for(std::size_t i = 0; i < b.second.second.size(); i += 3) {
+        char str[100];
+        nodeText.append(str, snprintf(str, sizeof(str), "%.16g %.16g %.16g\n",
+                                      b.second.second[i],
+                                      b.second.second[i + 1],
+                                      b.second.second[i + 2]));
+      }
   }
 #if defined(HAVE_MPI)
   if(GmshParallel) {

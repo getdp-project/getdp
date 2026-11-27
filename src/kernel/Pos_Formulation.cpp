@@ -5,10 +5,15 @@
 
 #include <string.h>
 #include <math.h>
+#include <algorithm>
+#include <set>
+#include "GetDPConfig.h"
 #include "ProData.h"
 #include "DofData.h"
 #include "GeoData.h"
 #include "Get_DofOfElement.h"
+#include "Get_FunctionValue.h"
+#include "BF.h"
 #include "Cal_Quantity.h"
 #include "Pos_Print.h"
 #include "Pos_Format.h"
@@ -23,6 +28,9 @@
 #include <gmsh/PViewData.h>
 #endif
 #include "MallocUtils.h"
+#if defined(HAVE_MPI)
+#include <mpi.h>
+#endif
 #include "SolvingAnalyse.h"
 #if defined(HAVE_GSL)
 #include <gsl/gsl_errno.h>
@@ -423,6 +431,99 @@ bool Pos_IsOnFirstRankOnly(struct Formulation *Formulation_P,
   }
 }
 
+// The order of the elements on which a Print with Order exports its field
+// (ExportOrder): the one that is given or, with Auto, the highest order of the
+// basis functions of the quantities of the Print and of the elements of its
+// region. The field is then evaluated at the nodes of the Lagrange elements of
+// that order, which are written as the mesh of the view: this is only possible
+// in a mesh-based Gmsh view of a quantity without cumulative part. The other
+// Prints on the elements of a region divide the elements instead (Depth), so
+// that there are as many intervals along an edge.
+static void Pos_SetExportOrder(struct Formulation *Formulation_P,
+                               struct PostProcessing *PostProcessing_P,
+                               struct PostSubOperation *PSO_P)
+{
+  PSO_P->ExportOrder = 0;
+  if(!PSO_P->HighOrder || PSO_P->Type != POP_PRINT ||
+     PSO_P->SubType != PRINT_ONELEMENTSOF || PSO_P->Depth != 1 ||
+     Formulation_P->Type != FEMEQUATION)
+    return;
+  int order = PSO_P->HighOrder;
+  if(order < 0) {
+    // the types of the elements of the region, and their highest order
+    struct Group *Group_P = (struct Group *)List_Pointer(
+      Problem_S.Group, PSO_P->Case.OnRegion.RegionIndex);
+    std::set<int> types;
+    for(int i = 0; i < Geo_GetNbrGeoElements(); i++) {
+      struct Geo_Element *GE = Geo_GetGeoElement(i);
+      if(Group_P->Type == ELEMENTLIST ||
+         List_Search(Group_P->InitialList, &GE->Region, fcmp_int))
+        types.insert(GE->Type);
+    }
+    order = 1;
+    for(int type : types) {
+      bool simplex;
+      order = std::max(order, Get_GeometricOrder(type, &simplex));
+    }
+    // the highest order of the basis functions of the quantities on these
+    // elements
+    for(int k = 0; k < 2; k++) {
+      if(PSO_P->PostQuantityIndex[k] < 0) continue;
+      struct PostQuantity *PQ = (struct PostQuantity *)List_Pointer(
+        PostProcessing_P->PostQuantity, PSO_P->PostQuantityIndex[k]);
+      for(int i = 0; i < List_Nbr(PQ->PostQuantityTerm); i++) {
+        struct PostQuantityTerm *T =
+          (struct PostQuantityTerm *)List_Pointer(PQ->PostQuantityTerm, i);
+        for(int j = 0; j < T->NbrQuantityIndex; j++) {
+          struct DefineQuantity *DQ = (struct DefineQuantity *)List_Pointer(
+            Formulation_P->DefineQuantity, T->QuantityIndexTable[j]);
+          if(DQ->Type != LOCALQUANTITY || DQ->FunctionSpaceIndex < 0) continue;
+          struct FunctionSpace *FS = (struct FunctionSpace *)List_Pointer(
+            Problem_S.FunctionSpace, DQ->FunctionSpaceIndex);
+          for(int l = 0; l < List_Nbr(FS->BasisFunction); l++) {
+            struct BasisFunction *BF =
+              (struct BasisFunction *)List_Pointer(FS->BasisFunction, l);
+            for(int type : types) {
+              if(!(BF->ElementType & type)) continue;
+              // (the order of a Legendre function depends on the element)
+              double o =
+                BF_GetLegendreOrder(BF->Function, type, BF->EntityFilter);
+              if(o < 0.) {
+                if(BF_IsLegendre(BF->Function)) continue;
+                o = BF->Order;
+              }
+              // (the orders of the incomplete polynomials are half integers)
+              order = std::max(order, (int)ceil(o - 1.e-6));
+            }
+          }
+        }
+      }
+    }
+#if defined(HAVE_MPI)
+    // (a view written by all the ranks: each one has the elements of its
+    // partition)
+    if(Pos_IsParallelView(Formulation_P, PSO_P))
+      MPI_Allreduce(MPI_IN_PLACE, &order, 1, MPI_INT, MPI_MAX, MPI_COMM_WORLD);
+#endif
+    order = std::min(order, 9);
+  }
+#if defined(HAVE_GMSH)
+  if(PSO_P->Format == FORMAT_GMSH && Format_GmshMeshBased(PSO_P) &&
+     PSO_P->StoreInMeshBasedField < 0 && !PSO_P->NoMesh &&
+     !PSO_P->Smoothing && !PSO_P->Adapt && !PSO_P->Sort &&
+     PSO_P->PostQuantityIndex[0] >= 0 && PSO_P->PostQuantitySupport[0] < 0 &&
+     PSO_P->PostQuantityIndex[1] < 0 && !Pos_StoresMinMax(PSO_P)) {
+    PSO_P->ExportOrder = order;
+    return;
+  }
+#endif
+  // (2^(Depth - 1) intervals along an edge)
+  for(int n = 1; n < order; n *= 2) PSO_P->Depth++;
+  Message::Info("Print with Order %d done with Depth %d (the Lagrange "
+                "elements are only available in mesh-based Gmsh views)",
+                order, PSO_P->Depth);
+}
+
 void Pos_Formulation(struct Formulation *Formulation_P,
                      struct PostProcessing *PostProcessing_P,
                      struct PostSubOperation *PostSubOperation_P)
@@ -464,6 +565,8 @@ void Pos_Formulation(struct Formulation *Formulation_P,
     Pos_SetStoreFields(true);
     return;
   }
+
+  Pos_SetExportOrder(Formulation_P, PostProcessing_P, PostSubOperation_P);
 
   bool parallelView = Pos_IsParallelView(Formulation_P, PostSubOperation_P);
   Format_SetGmshParallel(parallelView);

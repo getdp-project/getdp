@@ -1429,6 +1429,22 @@ if(${Python3_FOUND} AND GMSH)
     test_legendre(l2 l2 "-setnumber dim 2 -setnumber shape 3 -setnumber p 2")
   endif()
 
+  # Print with Order: a field exported on Lagrange elements of a given order
+  # (in a mesh made on the fly) and read back by Gmsh, on tetrahedra and prisms
+  # and on hexahedra and prisms; Depth on the same elements (see
+  # tests/print_order.pro)
+  if(HAVE_GMSH)
+    foreach(s 3 4)
+      add_test(NAME print_order_${s}
+               COMMAND ${RUN_TEST} --workdir ${CMAKE_SOURCE_DIR}/tests
+               --name "print_order_${s}"
+               --gmsh-options "legendre.geo -3 -setnumber dim 3 -setnumber shape ${s}"
+               --getdp-options "print_order.pro -msh legendre.msh -solve Check")
+      test_mpi(print_order_${s} tests
+               "legendre.geo -3 -setnumber dim 3 -setnumber shape ${s}"
+               "print_order.pro -msh legendre.msh -solve Check")
+    endforeach()
+  endif()
   # automatic Jacobian and integration: the default of the terms, 'Jacobian
   # Auto' and 'Integration Auto', compared with explicit methods (see
   # tests/auto.pro)

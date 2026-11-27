@@ -23,6 +23,7 @@
 #include "Cal_Value.h"
 #include "Pos_Formulation.h"
 #include "Pos_Element.h"
+#include "Cal_GalerkinTermOfFemEquation.h"
 #include "Pos_Search.h"
 #include "Pos_Print.h"
 #include "Pos_Format.h"
@@ -937,7 +938,7 @@ void Pos_PrintOnElementsOf(struct PostQuantity *NCPQ_P,
             0;
         Fill_PostElement(Element.GeoElement, PostElement_L, iGeo, PSO_P->Depth,
                          PSO_P->Skin, DecomposeInSimplex, HighOrder,
-                         PSO_P->Gauss);
+                         PSO_P->Gauss, PSO_P->ExportOrder);
       }
     }
 
@@ -991,6 +992,14 @@ void Pos_PrintOnElementsOf(struct PostQuantity *NCPQ_P,
           Current.Region = Element.Region = Element.GeoElement->Region;
           Get_NodesCoordinatesOfElement(&Element);
           if(gather) evaluated.addElement(PE, Element.Num);
+          // the nodes of the Lagrange elements are the same points for all
+          // the elements of a type
+          const struct LagrangePostElement *Lagrange =
+            PSO_P->ExportOrder ?
+              Get_LagrangePostElement(Element.GeoElement, PSO_P->ExportOrder) :
+              NULL;
+          struct Quadrature *Points =
+            Lagrange ? Get_LagrangePostPoints(Lagrange) : NULL;
 
           for(iTime = 0; iTime < NbrTimeStep; iTime++) {
             Pos_InitAllSolutions(PSO_P->TimeStep_L, iTime);
@@ -999,6 +1008,9 @@ void Pos_PrintOnElementsOf(struct PostQuantity *NCPQ_P,
               Current.x = PE->x[iNode];
               Current.y = PE->y[iNode];
               Current.z = PE->z[iNode];
+              if(Points)
+                Cal_SetReferencePoint(&Element, Points, iNode, PE->u[iNode],
+                                      PE->v[iNode], PE->w[iNode]);
               Cal_PostQuantity(NCPQ_P, DefineQuantity_P0, QuantityStorage_P0,
                                PSO_P->SingleProcess,
                                NULL, &Element, PE->u[iNode], PE->v[iNode],
@@ -1013,6 +1025,7 @@ void Pos_PrintOnElementsOf(struct PostQuantity *NCPQ_P,
             else
               minMaxAndFormat(PE, iTime);
           }
+          if(Points) Cal_SetReferencePoint(NULL, NULL, 0, 0., 0., 0.);
         }
       }
 

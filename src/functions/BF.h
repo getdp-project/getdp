@@ -327,6 +327,14 @@ bool BF_GetLegendre(const char *Name, struct BasisFunction *Function);
 /* whether Function is one of the Legendre functions */
 bool BF_IsLegendre(void (*Function)());
 
+/* the order (as in BasisFunction.Order) of a Legendre function on the
+   elements of the given type, on the entities kept by the given filter
+   (ENTITYFILTER_); -1 if it is not a Legendre function or if it has no order
+   on these elements. (The order of a basis function is that on the first
+   shape bearing it, see BF_GetLegendreSpace.) */
+double BF_GetLegendreOrder(void (*Function)(), int ElementType,
+                           int EntityFilter);
+
 /* The values of the Legendre functions in the reference element only depend,
    for the elements of one type, on the orientation of the edges and facets,
    i.e. on the order of the nodes of the element: get a number identifying

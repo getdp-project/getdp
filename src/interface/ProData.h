@@ -1635,6 +1635,10 @@ struct PostSubOperation {
   int PostQuantityIndex[2], PostQuantitySupport[2];
   int Type, SubType, CombinationType;
   int Depth, Skin, Smoothing, Dimension, HarmonicToTime, CatFile;
+  // the order of the elements on which the field is exported (Order: 0 if
+  // not given, -1 for Auto), and the one that is used for the current Print
+  // (0 for none, see Pos_Formulation)
+  int HighOrder, ExportOrder;
   char *Comma;
   int TimeToHarmonic;
   int FourierTransform;

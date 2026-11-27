@@ -163,7 +163,11 @@ namespace {
     struct Quadrature *Quadrature = NULL;
     int index = 0;
     double u = 0., v = 0., w = 0.;
+    // (for the points given by Cal_SetReferencePoint: counts the first
+    // points of the sets)
+    unsigned long long pass = 0;
   } integrationPoint;
+  unsigned long long referencePointPass = 0;
 
 } // namespace
 
@@ -177,6 +181,26 @@ const double *Cal_GetReferenceValuesAtIntegrationPoint(
   const double *values = referenceValues.get(
     Element, p.Quadrature, n, (BF_Pointer *)Functions, QuantityStorage);
   return values ? values + (std::size_t)p.index * n * 3 : NULL;
+}
+
+void Cal_SetReferencePoint(struct Element *Element,
+                           struct Quadrature *Points, int Index, double u,
+                           double v, double w)
+{
+  if(!Element) referenceValues.recycle();
+  if(Element && !Index) referencePointPass++;
+  integrationPoint.pass = Element ? referencePointPass : 0;
+  integrationPoint.Element = Element;
+  integrationPoint.Quadrature = Points;
+  integrationPoint.index = Index;
+  integrationPoint.u = u;
+  integrationPoint.v = v;
+  integrationPoint.w = w;
+}
+
+unsigned long long Cal_GetReferencePointPass(struct Element *Element)
+{
+  return (integrationPoint.Element == Element) ? integrationPoint.pass : 0;
 }
 
 /* ------------------------------------------------------------------------ */
