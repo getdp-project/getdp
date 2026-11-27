@@ -1369,6 +1369,23 @@ if(${Python3_FOUND} AND GMSH)
   test_mpi(parallel_part_files_tree tutorials/10-Gauging
            "transfo.geo -3 -bin ; transfo.msh -part 3 -part_split -part_ghosts -setnumber Mesh.PartitionSplitLocalBrep 1 -bin -save"
            "transfo.pro -solve \#1 ; transfo.pro -pos \#1")
+  # the global basis functions of the cuts that Gmsh computes (Cohomology), in
+  # the T-Omega and A-v formulations (the latter with a tree gauge), with the
+  # current or the voltage of the coil imposed (see tests/cohomology.pro)
+  foreach(r TOmega Av)
+    foreach(v 0 1)
+      set(name cohomology_${r})
+      if(v)
+        set(name ${name}_voltage)
+      endif()
+      add_test(NAME ${name}
+               COMMAND ${RUN_TEST} --workdir ${CMAKE_SOURCE_DIR}/tests
+               --name "${name}" --gmsh-options "cohomology.geo -3"
+               --getdp-options "cohomology.pro -setnumber voltage ${v} -solve ${r} -pos ${r}")
+      test_mpi(${name} tests "cohomology.geo -3"
+               "cohomology.pro -setnumber voltage ${v} -solve ${r} -pos ${r}")
+    endforeach()
+  endforeach()
   test_mpi(parallel_scaling tests "scaling.geo -3 -setnumber N 6"
            "scaling.pro -solve Solve")
   if(PETSC_VARIABLES MATCHES "HYPRE_LIB = [^\n\r]*-lHYPRE")
@@ -1392,6 +1409,21 @@ if(${Python3_FOUND} AND GMSH)
                --getdp-options "solve_nl.pro -msh parallel.msh -solve ${r} -pos ${r}")
       test_mpi(solve_nl_${r} tests "parallel.geo -2"
                "solve_nl.pro -msh parallel.msh -solve ${r} -pos ${r}")
+    endforeach()
+    # the fields of the PETSc preconditioner fieldsplit, which are the unknowns
+    # of each basis function and global quantity, with the voltage or the charge
+    # of the global equation imposed (see tests/fieldsplit.pro)
+    foreach(c 0 1)
+      set(name fieldsplit)
+      if(c)
+        set(name ${name}_charge)
+      endif()
+      add_test(NAME ${name}
+               COMMAND ${RUN_TEST} --workdir ${CMAKE_SOURCE_DIR}/tests
+               --name "${name}" --gmsh-options "parallel.geo -2"
+               --getdp-options "fieldsplit.pro -msh parallel.msh -setnumber charge ${c} -solve FieldSplit -pos FieldSplit")
+      test_mpi(${name} tests "parallel.geo -2"
+               "fieldsplit.pro -msh parallel.msh -setnumber charge ${c} -solve FieldSplit -pos FieldSplit")
     endforeach()
   endif()
 endif()

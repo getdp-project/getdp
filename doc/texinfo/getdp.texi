@@ -687,7 +687,13 @@ the coordinates of the nodes that it needs. With @code{-getdp_ams_zero_beta}
 the matrix is declared to have no mass term (e.g. magnetostatics without
 gauge, whose right-hand side must then be compatible: see
 @code{-getdp_ams_clean_rhs}), and @code{-getdp_ams_check} prints a check of
-the discrete gradient.
+the discrete gradient. The edge unknowns can also be one of the fields of the
+block preconditioner @code{-pc_type fieldsplit}, whose fields are named by the
+coefficients of the basis functions: e.g. @code{-pc_type fieldsplit
+-fieldsplit_phi_pc_type hypre -fieldsplit_h_pc_type hypre
+-fieldsplit_h_pc_hypre_type ams} for an h-phi formulation whose coefficients
+are @code{h} on the edges of the conductors and @code{phi} on the nodes of the
+air.
 @end itemize
 
 The script @file{utils/misc/scaling.py} runs a model problem
@@ -5900,7 +5906,16 @@ command line (e.g. with @code{-ksp_type gmres -pc_type ilu}), through a
 specific option file (with @code{-solver file}), through the
 @file{.petscrc} file located in your home directly, or directly in the
 @code{Resolution} field using the @code{SetGlobalSolverOptions[]}
-command.
+command. With the block preconditioner @code{-pc_type fieldsplit}, each
+field is made of the unknowns of a basis function (or of a global
+quantity), and is named by its coefficient: e.g. @code{-fieldsplit_phi_pc_type
+gamg} sets the preconditioner of the unknowns of the coefficients
+@code{phi}. A name that several function spaces use is followed by the name of
+the space (e.g. @code{I_SpaceA} and @code{I_SpaceB}). With
+@code{-getdp_fieldsplit_fields phi,t} only the fields @code{phi} and @code{t}
+are kept, the other unknowns making a last field named @code{rest} (e.g. the
+global quantities and the unknowns of circuits, whose blocks alone can be
+singular).
 
 With Sparskit-based linear solvers can either specify options directly
 on command line (e.g. with @code{-Nb_Fill 200}), specify an option file

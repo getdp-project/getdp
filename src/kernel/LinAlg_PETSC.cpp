@@ -1921,16 +1921,65 @@ static void _askRanks(std::vector<std::vector<int> > &ask, F answer)
   Message::Exchange(recv, ask);
 }
 
-static bool _getAMSEdges(AMSEdges &a)
+// A field of a fieldsplit preconditioner of the matrix A: the unknowns of the
+// type of Dof numType, which are the rows is of A (see _setupAMSOfFields)
+struct AMSField {
+  int numType;
+  Mat A;
+  IS is;
+};
+
+// Replaces the rows of A by the rows of the matrix of the field, or -1 for the
+// rows that are not in the field (all the ranks call it)
+static void _rowsInField(const AMSField &field, std::vector<int> &rows)
+{
+  // the field has the rows of each rank in increasing order, after those of
+  // the previous ranks
+  PetscInt n, first = 0;
+  const PetscInt *idx;
+  _try(ISGetLocalSize(field.is, &n));
+  _try(ISGetIndices(field.is, &idx));
+  MPI_Comm comm = PetscObjectComm((PetscObject)field.A);
+  PetscMPIInt size, rank;
+  MPI_Comm_size(comm, &size);
+  MPI_Comm_rank(comm, &rank);
+  MPI_Exscan(&n, &first, 1, MPIU_INT, MPI_SUM, comm);
+  if(!rank) first = 0;
+  auto rowInField = [&](int row) {
+    const PetscInt *it = std::lower_bound(idx, idx + n, (PetscInt)row);
+    return (it == idx + n || *it != row) ? -1 : (int)(first + (it - idx));
+  };
+  // a rank asks the rows it does not own to their owner
+  const PetscInt *ranges;
+  _try(MatGetOwnershipRanges(field.A, &ranges));
+  std::vector<std::vector<int> > ask(size), where(size);
+  for(std::size_t i = 0; i < rows.size(); i++) {
+    if(rows[i] < 0) continue;
+    int owner = _ownerOf(ranges, size, rows[i]);
+    if(owner == rank)
+      rows[i] = rowInField(rows[i]);
+    else {
+      ask[owner].push_back(rows[i]);
+      where[owner].push_back(i);
+    }
+  }
+  if(size > 1) _askRanks(ask, rowInField);
+  for(int r = 0; r < size; r++)
+    for(std::size_t j = 0; j < ask[r].size(); j++) rows[where[r][j]] = ask[r][j];
+  _try(ISRestoreIndices(field.is, &idx));
+}
+
+// The edges of the unknowns of the field, or of the system if there is none
+static bool _getAMSEdges(AMSEdges &a, const AMSField *field = nullptr)
 {
   struct DofData *DofData_P = Current.DofData;
-  int NumType = 0;
-  for(int i = 0; i < List_Nbr(DofData_P->DofList); i++) {
+  int NumType = field ? field->numType : 0;
+  for(int i = 0; i < List_Nbr(DofData_P->DofList) && !field; i++) {
     struct Dof *Dof_P = (struct Dof *)List_Pointer(DofData_P->DofList, i);
     if(!i) NumType = Dof_P->NumType;
     else if(Dof_P->NumType != NumType) {
       Message::Error("AMS needs a system with the edge unknowns of a single "
-                     "basis function");
+                     "basis function (or a field of fieldsplit)");
       return false;
     }
   }
@@ -1989,6 +2038,7 @@ static bool _getAMSEdges(AMSEdges &a)
       for(std::size_t j = 0; j < send[r].size(); j++)
         rows[asked[r][j]] = send[r][j];
   }
+  if(field) _rowsInField(*field, rows);
 
   i = 0;
   for(auto &e : edges) {
@@ -2132,13 +2182,19 @@ static void _checkAMS(Mat A, Mat G)
 // on Dirichlet boundaries). Each rank sets its own rows; the nodes are numbered
 // the same way by all the ranks, or by their owner (see _numberAMSNodes).
 // Options read here: -getdp_ams_zero_beta for a matrix without mass term,
-// -getdp_ams_check (see _checkAMS).
-static void _setupAMS(PC pc, Mat A)
+// -getdp_ams_check (see _checkAMS). With a field, pc and A are those of the
+// field (see _setupAMSOfFields).
+static void _setupAMS(PC pc, Mat A, const AMSField *field = nullptr)
 {
   AMSEdges a;
-  if(!_getAMSEdges(a)) return;
+  if(!_getAMSEdges(a, field)) return;
   std::vector<int> col, myNodes;
   PetscInt ncols = _numberAMSNodes(A, a, col, myNodes);
+  if(!ncols) { // (the number of nodes is the same on all the ranks)
+    Message::Error("AMS: no node has all its edges in the unknowns (e.g. because "
+                   "of a tree gauge), so there is no discrete gradient");
+    return;
+  }
   PetscInt nloc = myNodes.size();
 
   PetscInt rstart, rend;
@@ -2181,8 +2237,6 @@ static void _setupAMS(PC pc, Mat A)
   _try(MatDestroy(&G)); // referenced by the preconditioner
 }
 
-// Whether pc is hypre's AMS and has not been set up yet: _setupAMS is done once
-// per preconditioner, to which it attaches G
 // whether the preconditioner is one of hypre's
 static bool _isHypre(PC pc)
 {
@@ -2199,6 +2253,8 @@ static Mat _getAMSGradient(PC pc)
   return (Mat)G;
 }
 
+// Whether pc is hypre's AMS and has not been set up yet: _setupAMS is done once
+// per preconditioner, to which it attaches G
 static bool _needsAMSSetup(PC pc)
 {
   if(!_isHypre(pc) || _getAMSGradient(pc)) return false;
@@ -2535,9 +2591,226 @@ static void _checkMumps(PC pc)
 }
 #endif
 
+// The name of the coefficient of the basis function of a type of Dof, or of its
+// global quantity, and the name of its function space
+static std::string _nameOfDofType(int numType, std::string &space)
+{
+  for(int i = 0; i < List_Nbr(Problem_S.FunctionSpace); i++) {
+    struct FunctionSpace *fs =
+      (struct FunctionSpace *)List_Pointer(Problem_S.FunctionSpace, i);
+    space = fs->Name ? fs->Name : "";
+    for(int j = 0; j < List_Nbr(fs->BasisFunction); j++) {
+      struct BasisFunction *bf =
+        (struct BasisFunction *)List_Pointer(fs->BasisFunction, j);
+      int n = bf->SubFunction ? List_Nbr(bf->SubFunction) : 1;
+      if(numType >= bf->Num && numType < bf->Num + n && bf->NameOfCoef)
+        return bf->NameOfCoef;
+    }
+    for(int j = 0; j < List_Nbr(fs->GlobalQuantity); j++) {
+      struct GlobalQuantity *gq =
+        (struct GlobalQuantity *)List_Pointer(fs->GlobalQuantity, j);
+      if(gq->Num == numType) return gq->Name;
+    }
+  }
+  space = "";
+  return std::to_string(numType);
+}
+
+// The names of the fields of the types of Dofs: their coefficients (or global
+// quantities), followed by the name of the function space for a name that
+// several spaces use (e.g. I_SpaceA and I_SpaceB), and then by a number for the
+// subfunctions of a basis function (e.g. h_1 and h_2)
+static std::vector<std::string> _namesOfDofTypes(const std::vector<int> &types)
+{
+  std::vector<std::string> names(types.size()), spaces(types.size());
+  for(std::size_t i = 0; i < types.size(); i++)
+    names[i] = _nameOfDofType(types[i], spaces[i]);
+  auto shared = [](const std::vector<std::string> &v, std::size_t i) {
+    return std::count(v.begin(), v.end(), v[i]) > 1;
+  };
+  std::vector<std::string> coef = names;
+  for(std::size_t i = 0; i < types.size(); i++)
+    if(shared(coef, i)) names[i] = coef[i] + "_" + spaces[i];
+  std::vector<std::string> coefSpace = names;
+  std::map<std::string, int> k;
+  for(std::size_t i = 0; i < types.size(); i++)
+    if(shared(coefSpace, i))
+      names[i] = coefSpace[i] + "_" + std::to_string(++k[coefSpace[i]]);
+  return names;
+}
+
+// The types of Dofs of the unknowns of all the ranks, in increasing order, and
+// the unknowns of each type that this rank owns, i.e. their rows in the matrix
+// A (all the ranks call it)
+static std::vector<int>
+_typesOfUnknowns(Mat A, std::map<int, std::vector<PetscInt> > &rows)
+{
+  PetscInt first, last;
+  _try(MatGetOwnershipRange(A, &first, &last));
+  struct DofData *D = Current.DofData;
+  for(int i = 0; i < List_Nbr(D->DofList); i++) {
+    struct Dof *d = (struct Dof *)List_Pointer(D->DofList, i);
+    if(d->Type != DOF_UNKNOWN && d->Type != DOF_UNKNOWN_INIT) continue;
+    PetscInt row = d->Case.Unknown.NumDof - 1;
+    if(row >= first && row < last) rows[d->NumType].push_back(row);
+  }
+  std::vector<int> types;
+  for(auto &r : rows) types.push_back(r.first);
+  PetscMPIInt size;
+  MPI_Comm_size(PetscObjectComm((PetscObject)A), &size);
+  if(size > 1) Message::Gather(types, true);
+  std::sort(types.begin(), types.end());
+  types.erase(std::unique(types.begin(), types.end()), types.end());
+  return types;
+}
+
+// A field of the fieldsplit preconditioner: a name and its types of Dofs
+struct DofField {
+  std::string name;
+  std::vector<int> types;
+};
+
+// The fields of the fieldsplit preconditioner for the types of Dofs of the
+// unknowns: by default, one field per type, named by its coefficient (see
+// _namesOfDofTypes); with -getdp_fieldsplit_fields name1,name2,..., only the
+// types with these names have a field of their own, the unknowns of all the
+// other types making a last field named "rest" (e.g. the global quantities and
+// the unknowns of circuits, whose blocks alone can be singular)
+static std::vector<DofField> _fieldsOfTypes(const std::vector<int> &types)
+{
+  std::vector<std::string> names = _namesOfDofTypes(types);
+  char *keep[100];
+  PetscInt nkeep = 100;
+  PetscBool set = PETSC_FALSE;
+  _try(PetscOptionsGetStringArray(PETSC_NULL, PETSC_NULL,
+                                  "-getdp_fieldsplit_fields", keep, &nkeep,
+                                  &set));
+  std::vector<DofField> fields;
+  if(!set) {
+    for(std::size_t i = 0; i < types.size(); i++)
+      fields.push_back({names[i], {types[i]}});
+    return fields;
+  }
+  DofField rest = {"rest", {}};
+  for(std::size_t i = 0; i < types.size(); i++) {
+    bool own = false;
+    for(PetscInt k = 0; k < nkeep && !own; k++) own = (names[i] == keep[k]);
+    if(own)
+      fields.push_back({names[i], {types[i]}});
+    else
+      rest.types.push_back(types[i]);
+  }
+  for(PetscInt k = 0; k < nkeep; k++) {
+    if(std::find(names.begin(), names.end(), keep[k]) == names.end())
+      Message::Warning("No unknowns '%s' for -getdp_fieldsplit_fields", keep[k]);
+    _try(PetscFree(keep[k]));
+  }
+  if(rest.types.size()) fields.push_back(rest);
+  return fields;
+}
+
+// With -pc_type fieldsplit, sets the fields of the preconditioner pc of the
+// matrix A (see _fieldsOfTypes): e.g. -fieldsplit_phi_pc_type gamg sets the
+// preconditioner of the unknowns of the coefficients phi
+static void _setFields(PC pc, Mat A)
+{
+  PetscBool split;
+  _try(PetscObjectTypeCompare((PetscObject)pc, PCFIELDSPLIT, &split));
+  if(!split) return;
+
+  // all the ranks set the same fields, in the same order: those of the types of
+  // Dofs of all the ranks
+  std::map<int, std::vector<PetscInt> > rows;
+  std::vector<int> types = _typesOfUnknowns(A, rows);
+  if(types.empty()) return;
+  std::vector<DofField> fields = _fieldsOfTypes(types);
+  MPI_Comm comm = PetscObjectComm((PetscObject)A);
+
+  // the fields are already set if pc was used before
+  IS is;
+  _try(PCFieldSplitGetIS(pc, fields[0].name.c_str(), &is));
+  if(is) return;
+
+  for(auto &field : fields) {
+    std::vector<PetscInt> r;
+    for(int type : field.types)
+      r.insert(r.end(), rows[type].begin(), rows[type].end());
+    std::sort(r.begin(), r.end());
+    _try(ISCreateGeneral(comm, (PetscInt)r.size(), r.data(), PETSC_COPY_VALUES,
+                         &is));
+    _try(PCFieldSplitSetIS(pc, field.name.c_str(), is));
+    PetscInt n;
+    _try(ISGetSize(is, &n));
+    Message::Info("Field '%s': %ld unknowns", field.name.c_str(), (long)n);
+    _try(ISDestroy(&is));
+  }
+}
+
+#if defined(PETSC_HAVE_HYPRE)
+// With -pc_type fieldsplit, gives the discrete gradient to the preconditioner
+// of each field that is hypre's AMS, e.g. with -fieldsplit_he_pc_type hypre
+// -fieldsplit_he_pc_hypre_type ams for the edge unknowns of the coefficients he
+// (the fields are set up here, their preconditioners in the solve)
+static void _setupAMSOfFields(KSP ksp, PC pc, Mat A)
+{
+  PetscBool split;
+  _try(PetscObjectTypeCompare((PetscObject)pc, PCFIELDSPLIT, &split));
+  if(!split) return;
+  _try(KSPSetUp(ksp));
+  PetscInt n;
+  KSP *sub;
+  _try(PCFieldSplitGetSubKSP(pc, &n, &sub));
+  std::vector<DofField> fields;
+  for(PetscInt i = 0; i < n; i++) {
+    PC subpc;
+    _try(KSPGetPC(sub[i], &subpc));
+    if(!_needsAMSSetup(subpc)) continue;
+    if(fields.empty()) { // the fields set by _setFields
+      std::map<int, std::vector<PetscInt> > rows;
+      fields = _fieldsOfTypes(_typesOfUnknowns(A, rows));
+    }
+    if(fields[i].types.size() != 1) {
+      Message::Error("AMS needs a field of a single type of edge unknowns "
+                     "(field '%s')", fields[i].name.c_str());
+      continue;
+    }
+    AMSField field = {fields[i].types[0], A, PETSC_NULL};
+    _try(PCFieldSplitGetISByIndex(pc, i, &field.is));
+    Mat subA;
+    _try(KSPGetOperators(sub[i], &subA, PETSC_NULL));
+    _setupAMS(subpc, subA, &field);
+  }
+  _try(PetscFree(sub));
+}
+
+// Whether the preconditioner of ksp, or that of one of its fields, is hypre's
+// AMS set up by _setupAMS
+static bool _usesAMS(KSP ksp)
+{
+  PC pc;
+  _try(KSPGetPC(ksp, &pc));
+  if(_getAMSGradient(pc)) return true;
+  PetscBool split;
+  _try(PetscObjectTypeCompare((PetscObject)pc, PCFIELDSPLIT, &split));
+  if(!split) return false;
+  PetscInt n;
+  KSP *sub;
+  _try(PCFieldSplitGetSubKSP(pc, &n, &sub));
+  bool ams = false;
+  for(PetscInt i = 0; i < n && !ams; i++) {
+    PC subpc;
+    _try(KSPGetPC(sub[i], &subpc));
+    ams = (_getAMSGradient(subpc) != PETSC_NULL);
+  }
+  _try(PetscFree(sub));
+  return ams;
+}
+#endif
+
 // Reports the iterations and the convergence of the last solve with ksp, and
-// returns false if the solver failed (an iterative solver that did not
-// converge has not failed)
+// returns false if the solver failed. An iterative solver that did not converge
+// (in the maximum number of iterations, or because the residual grew too much)
+// has not failed. Both cases give a warning.
 static bool _report(KSP ksp)
 {
   if(Message::GetVerbosity() > 5) {
@@ -2553,8 +2826,14 @@ static bool _report(KSP ksp)
   _try(KSPGetConvergedReason(ksp, &reason));
   Current.KSPConvergedReason = (double)reason;
 
-  return !(reason < 0 && reason != KSP_DIVERGED_ITS &&
-           reason != KSP_DIVERGED_DTOL);
+  bool failed = (reason < 0 && reason != KSP_DIVERGED_ITS &&
+                 reason != KSP_DIVERGED_DTOL);
+  // the reason is the same on all the ranks of the solver
+  if(reason < 0 && (MyComm == PETSC_COMM_SELF || !Message::GetCommRank()))
+    Message::Warning("Linear solver %s (%s after %d iterations)",
+                     failed ? "failed" : "did not converge",
+                     KSPConvergedReasons[reason], (int)its);
+  return !failed;
 }
 
 static void _solve(gMatrix *A, gVector *B, gSolver *Solver, gVector *X,
@@ -2585,6 +2864,11 @@ static void _solve(gMatrix *A, gVector *B, gSolver *Solver, gVector *X,
   if(kspIndex != 0) Message::Info("Using solver index %d", kspIndex);
 
   KSP &ksp = Solver->ksp[kspIndex];
+#if defined(PETSC_HAVE_HYPRE)
+  // hypre's AMS does not free the data of its previous setup when it is set up
+  // again, for a new matrix: a solver that uses it is created again instead
+  if(ksp && precond && _usesAMS(ksp)) _try(KSPDestroy(&ksp));
+#endif
   bool reused = false; // the matrix the KSP was set up with is used again
   if(!ksp)
     _createKSP(&ksp, A->M);
@@ -2596,9 +2880,13 @@ static void _solve(gMatrix *A, gVector *B, gSolver *Solver, gVector *X,
   // override the default options with the ones from the option database (if
   // any)
   _try(KSPSetFromOptions(ksp));
+  _setFields(pc, A->M);
 
 #if defined(PETSC_HAVE_HYPRE)
-  if(_needsAMSSetup(pc)) _setupAMS(pc, A->M);
+  if(_needsAMSSetup(pc))
+    _setupAMS(pc, A->M);
+  else
+    _setupAMSOfFields(ksp, pc, A->M);
 #endif
 
 #if(PETSC_VERSION_MAJOR == 3) && (PETSC_VERSION_MINOR >= 4)
@@ -2651,9 +2939,16 @@ static void _solve(gMatrix *A, gVector *B, gSolver *Solver, gVector *X,
     _try(KSPDestroy(&ksp));
     ksp = PETSC_NULL;
     if(reused) {
-      Message::Info("Linear solver failed: solving again without reusing the "
-                    "previous factorization");
+      Message::Info("Solving again without reusing the previous "
+                    "factorization");
       _solve(A, B, Solver, X, precond, kspIndex);
+    }
+    else if(Message::GetOperatingInTimeLoopAdaptive()) {
+      // as for a PETSc error, the iterative loop stops and the time step is
+      // rejected (see Operation_TimeLoopAdaptive), instead of going on with
+      // what is left of the solution: e.g. NaNs, or no change after an
+      // iterative solver failed at once on a matrix with NaNs
+      Message::SetLastPETScError(PETSC_ERR_NOT_CONVERGED);
     }
     return;
   }
