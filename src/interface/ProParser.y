@@ -124,6 +124,9 @@ static int Legendre_Auto = 0;
 static std::set<std::string> Legendre_Empty;
 static int Flag_EntityType = 0;
 static void Add_LegendreBasisFunctions();
+static int Get_AutoJacobianMethod();
+static void Set_AutoMethodsOfLocalTerm();
+static int Get_AutoIntegrationMethod(int extra);
 static void Add_BasisFunctionIndex(List_T *list, int i);
 static struct Formulation            Formulation_S;
 static struct DefineQuantity           DefineQuantity_S;
@@ -1964,6 +1967,12 @@ JacobianCaseTerm :
         JacobianCase_S.RegionIndex = -1;
     }
 
+  | tJacobian tAuto tEND
+    {
+      JacobianCase_S.TypeJacobian = JACOBIAN_AUTO;
+      JacobianCase_S.NbrParameters = 0;
+    }
+
   | tJacobian String__Index ParametersForFunction tEND
     { JacobianCase_S.TypeJacobian =
 	Get_Define1NbrForString(Jacobian_Type, $2, &FlagError,
@@ -2088,6 +2097,8 @@ IntegrationCase :
     {
       IntegrationCase_S.Type = GAUSS;
       IntegrationCase_S.SubType = STANDARD;
+      IntegrationCase_S.Auto = 0;
+      IntegrationCase_S.AutoExtra = 0;
     }
 
   | IntegrationCase IntegrationCaseTerm
@@ -3868,6 +3879,12 @@ DefineQuantityTerm :
       Free($2);
     }
 
+  | tJacobian tAuto tEND
+    {
+      DefineQuantity_S.IntegralQuantity.JacobianMethodIndex =
+        Get_AutoJacobianMethod();
+    }
+
   | tJacobian String__Index tEND
     {
       int i;
@@ -3952,10 +3969,10 @@ Equations :
 EquationTerm :
 
     tIntegral  '{' LocalTerm '}'
-    { EquationTerm_S.Type = GALERKIN; }
+    { EquationTerm_S.Type = GALERKIN; Set_AutoMethodsOfLocalTerm(); }
 
   | tdeRham  '{' LocalTerm '}'
-    { EquationTerm_S.Type = DERHAM; }
+    { EquationTerm_S.Type = DERHAM; Set_AutoMethodsOfLocalTerm(); }
 
   | tGlobalTerm  '{' GlobalTerm '}'
     { EquationTerm_S.Type = GLOBALTERM; }
@@ -4225,6 +4242,24 @@ LocalTermTerm  :
     {
       EquationTerm_S.Case.LocalTerm.SubRegion =
         Num_Group(&Group_S, strSave("FO_In"), $2);
+    }
+
+  | tJacobian tAuto tEND
+    {
+      EquationTerm_S.Case.LocalTerm.JacobianMethodIndex =
+        Get_AutoJacobianMethod();
+    }
+
+  | tIntegration tAuto tEND
+    {
+      EquationTerm_S.Case.LocalTerm.IntegrationMethodIndex =
+        Get_AutoIntegrationMethod(0);
+    }
+
+  | tIntegration tAuto '{' FExpr '}' tEND
+    {
+      EquationTerm_S.Case.LocalTerm.IntegrationMethodIndex =
+        Get_AutoIntegrationMethod((int)$4);
     }
 
   | tJacobian String__Index tEND
@@ -7182,6 +7217,11 @@ SubPostQuantities :
   | SubPostQuantities tIntegral '{' SubPostQuantity '}'
     {
       PostQuantityTerm_S.EvaluationType = INTEGRAL;
+      // Jacobian Auto and Integration Auto by default
+      if(PostQuantityTerm_S.JacobianMethodIndex < 0)
+        PostQuantityTerm_S.JacobianMethodIndex = Get_AutoJacobianMethod();
+      if(PostQuantityTerm_S.IntegrationMethodIndex < 0)
+        PostQuantityTerm_S.IntegrationMethodIndex = Get_AutoIntegrationMethod(0);
       List_Add($$ = $1, &PostQuantityTerm_S);
     }
 
@@ -7194,6 +7234,12 @@ SubPostQuantities :
 	vyyerror(0, "Unknown EvaluationType for PostQuantityTerm: %s", $2);
       }
       Free($2);
+      // Jacobian Auto by default (and Integration Auto for the integrals)
+      if(PostQuantityTerm_S.JacobianMethodIndex < 0)
+        PostQuantityTerm_S.JacobianMethodIndex = Get_AutoJacobianMethod();
+      if(PostQuantityTerm_S.EvaluationType == INTEGRAL &&
+         PostQuantityTerm_S.IntegrationMethodIndex < 0)
+        PostQuantityTerm_S.IntegrationMethodIndex = Get_AutoIntegrationMethod(0);
       List_Add($$ = $1, &PostQuantityTerm_S);
     }
 
@@ -7272,6 +7318,18 @@ SubPostQuantityTerm :
   | tSubRegion GroupRHS tEND
     {
       PostQuantityTerm_S.SubRegion = Num_Group(&Group_S, strSave("PQ_SR"), $2);
+    }
+
+  | tJacobian tAuto tEND
+    { PostQuantityTerm_S.JacobianMethodIndex = Get_AutoJacobianMethod(); }
+
+  | tIntegration tAuto tEND
+    { PostQuantityTerm_S.IntegrationMethodIndex = Get_AutoIntegrationMethod(0); }
+
+  | tIntegration tAuto '{' FExpr '}' tEND
+    {
+      PostQuantityTerm_S.IntegrationMethodIndex =
+        Get_AutoIntegrationMethod((int)$4);
     }
 
   | tJacobian String__Index tEND
@@ -10954,6 +11012,72 @@ int  Add_Group(struct Group *Group_P, char *Name, int Flag_AddRemove,
   }
 
   return i;
+}
+
+// The Jacobian method used by 'Jacobian Auto', and when a term has no
+// Jacobian: the Jacobian Auto on all the regions (Vol, Sur or Lin according to
+// the dimension of each element and of the mesh)
+static int Get_AutoJacobianMethod()
+{
+  static const char *name = "Auto";
+  if(!Problem_S.JacobianMethod)
+    Problem_S.JacobianMethod = List_Create(5, 5, sizeof(struct JacobianMethod));
+  int i = List_ISearchSeq(Problem_S.JacobianMethod, (void *)name,
+                          fcmp_JacobianMethod_Name);
+  if(i >= 0) return i;
+  struct JacobianCase C;
+  C.RegionIndex = -1; // all the regions
+  C.TypeJacobian = JACOBIAN_AUTO;
+  C.NbrParameters = 0;
+  C.Para = NULL;
+  C.CoefficientIndex = -1;
+  struct JacobianMethod M;
+  M.Name = strSave(name);
+  M.JacobianCase = List_Create(1, 1, sizeof(struct JacobianCase));
+  List_Add(M.JacobianCase, &C);
+  List_Add(Problem_S.JacobianMethod, &M);
+  return List_Nbr(Problem_S.JacobianMethod) - 1;
+}
+
+// The integration method used by 'Integration Auto' or 'Integration
+// Auto{extra}', and when a term has no Integration: the quadrature is chosen
+// for each element from the degree of the integrand, plus extra
+static int Get_AutoIntegrationMethod(int extra)
+{
+  char name[64];
+  if(extra)
+    snprintf(name, sizeof(name), "Auto_%d", extra);
+  else
+    snprintf(name, sizeof(name), "Auto");
+  if(!Problem_S.IntegrationMethod)
+    Problem_S.IntegrationMethod =
+      List_Create(5, 5, sizeof(struct IntegrationMethod));
+  int i = List_ISearchSeq(Problem_S.IntegrationMethod, name,
+                          fcmp_IntegrationMethod_Name);
+  if(i >= 0) return i;
+  struct IntegrationCase C;
+  C.Type = GAUSS;
+  C.SubType = STANDARD;
+  C.Case = NULL;
+  C.Auto = 1;
+  C.AutoExtra = extra;
+  struct IntegrationMethod M;
+  M.Name = strSave(name);
+  M.CriterionIndex = -1;
+  M.IntegrationCase = List_Create(1, 1, sizeof(struct IntegrationCase));
+  List_Add(M.IntegrationCase, &C);
+  List_Add(Problem_S.IntegrationMethod, &M);
+  return List_Nbr(Problem_S.IntegrationMethod) - 1;
+}
+
+// Jacobian Auto and Integration Auto are the default for the local terms
+static void Set_AutoMethodsOfLocalTerm()
+{
+  if(EquationTerm_S.Case.LocalTerm.JacobianMethodIndex < 0)
+    EquationTerm_S.Case.LocalTerm.JacobianMethodIndex = Get_AutoJacobianMethod();
+  if(EquationTerm_S.Case.LocalTerm.IntegrationMethodIndex < 0)
+    EquationTerm_S.Case.LocalTerm.IntegrationMethodIndex =
+      Get_AutoIntegrationMethod(0);
 }
 
 // add a basis function to a list, with the functions it stands for

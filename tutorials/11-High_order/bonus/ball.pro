@@ -44,43 +44,12 @@ If(form == 1 && dim == 2)
   Error["The mixed formulation is only available in 3D"];
 EndIf
 
-Jacobian {
-  { Name Jac;
-    Case {
-      { Region Sur; Jacobian Sur; }
-      { Region Vol; Jacobian Vol; }
-    }
-  }
-}
+// The Jacobian and the integration are automatic (see tutorial 5). On a
+// curved element the Jacobian of the mapping from the reference element is
+// not constant: the automatic integration takes the order of the mesh into
+// account and uses more quadrature points than on a straight element for the
+// same basis functions.
 
-// On a curved element the Jacobian of the mapping from the reference element
-// is not constant: more quadrature points are needed than on a straight
-// element for the same basis functions. Each type of element of the mesh must
-// be given a quadrature ("Triangle2" are the triangles of order 2, etc.).
-ng = p + order + 1;
-
-Integration {
-  { Name Int;
-    Case {
-      { Type GaussLegendre;
-        Case {
-          { GeoElement Line; NumberOfPoints ng; }
-          { GeoElement Line2; NumberOfPoints ng; }
-          { GeoElement Line3; NumberOfPoints ng; }
-          { GeoElement Line4; NumberOfPoints ng; }
-          { GeoElement Triangle; NumberOfPoints ng^2; }
-          { GeoElement Triangle2; NumberOfPoints ng^2; }
-          { GeoElement Triangle3; NumberOfPoints ng^2; }
-          { GeoElement Triangle4; NumberOfPoints ng^2; }
-          { GeoElement Tetrahedron; NumberOfPoints ng^3; }
-          { GeoElement Tetrahedron2; NumberOfPoints ng^3; }
-          { GeoElement Tetrahedron3; NumberOfPoints ng^3; }
-          { GeoElement Tetrahedron4; NumberOfPoints ng^3; }
-        }
-      }
-    }
-  }
-}
 Constraint {
   { Name Dirichlet; Case { { Region Sur; Type Assign; Value 0.; } } }
 }
@@ -138,8 +107,8 @@ Formulation {
   { Name Poisson_H1; Type FemEquation;
     Quantity { { Name u; Type Local; NameOfSpace H1_u; } }
     Equation {
-      Integral { [ Dof{d u} , {d u} ]; In Vol; Jacobian Jac; Integration Int; }
-      Integral { [ -f[] , {u} ]; In Vol; Jacobian Jac; Integration Int; }
+      Integral { [ Dof{d u} , {d u} ]; In Vol; }
+      Integral { [ -f[] , {u} ]; In Vol; }
     }
   }
   // "q = -grad u" and "div q = f", i.e. "(q, q') - (u, div q') = 0" (after
@@ -151,10 +120,10 @@ Formulation {
       { Name u; Type Local; NameOfSpace L2_u; }
     }
     Equation {
-      Integral { [ Dof{q} , {q} ]; In Vol; Jacobian Jac; Integration Int; }
-      Integral { [ -Dof{u} , {d q} ]; In Vol; Jacobian Jac; Integration Int; }
-      Integral { [ Dof{d q} , {u} ]; In Vol; Jacobian Jac; Integration Int; }
-      Integral { [ -f[] , {u} ]; In Vol; Jacobian Jac; Integration Int; }
+      Integral { [ Dof{q} , {q} ]; In Vol; }
+      Integral { [ -Dof{u} , {d q} ]; In Vol; }
+      Integral { [ Dof{d q} , {u} ]; In Vol; }
+      Integral { [ -f[] , {u} ]; In Vol; }
     }
   }
   // "(u, u') = (uExact, u')": the best approximation of the exact solution by
@@ -162,8 +131,8 @@ Formulation {
   { Name Projection_L2; Type FemEquation;
     Quantity { { Name u; Type Local; NameOfSpace L2_u; } }
     Equation {
-      Integral { [ Dof{u} , {u} ]; In Vol; Jacobian Jac; Integration Int; }
-      Integral { [ -uExact[] , {u} ]; In Vol; Jacobian Jac; Integration Int; }
+      Integral { [ Dof{u} , {u} ]; In Vol; }
+      Integral { [ -uExact[] , {u} ]; In Vol; }
     }
   }
 }
@@ -190,17 +159,17 @@ PostProcessing {
   { Name Post; NameOfFormulation Projection_L2;
   EndIf
     Quantity {
-      { Name u; Value { Term { [ {u} ]; In Vol; Jacobian Jac; } } }
+      { Name u; Value { Term { [ {u} ]; In Vol; } } }
       { Name error2;
         Value {
           Integral { [ SquNorm[{u} - uExact[]] ];
-            In Vol; Jacobian Jac; Integration Int; }
+            In Vol; }
         }
       }
       { Name norm2;
         Value {
           Integral { [ SquNorm[uExact[]] ];
-            In Vol; Jacobian Jac; Integration Int; }
+            In Vol; }
         }
       }
       { Name error;

@@ -944,8 +944,51 @@ namespace {
     void quadrature()
     {
       auto &Term = EquationTerm_P->Case.LocalTerm.Term;
-      struct Quadrature *Quadrature_P = (struct Quadrature *)List_PQuery(
-        IntegrationCase_P->Case, &Element->Type, fcmp_int);
+      // For Integration Auto: the degree of the test functions times the
+      // shape functions. If the term has no shape functions of a local
+      // quantity, what multiplies the test functions is
+      //  - the quantities of the term, if its expression has some (e.g. the
+      //    residual of a nonlinear problem): their degree;
+      //  - given data otherwise (a source or a boundary term), which is not
+      //    a polynomial in general: it is integrated as if it had one degree
+      //    more than the test functions of H1, and two more than the others.
+      //    With less the error on the data shows in the solution, e.g. for
+      //    the gradient part of a field of H(curl), which is only controlled
+      //    by such terms.
+      int Degree = -1;
+      if(IntegrationCase_P->Auto) {
+        const int DegreeEqu = Get_IntegrationDegree(
+          Element, QuantityStorageEqu_P, Term.TypeOperatorEqu);
+        int DegreeDof;
+        if(FI->Type_DefineQuantityDof == LOCALQUANTITY && !Term.DofInTrace)
+          DegreeDof = Get_IntegrationDegree(Element, QuantityStorageDof_P,
+                                            Term.TypeOperatorDof);
+        else {
+          bool quantities = (Term.NbrQuantityIndex > 1);
+          for(int i = 0; !quantities && i < List_Nbr(Term.WholeQuantity); i++)
+            quantities = (((struct WholeQuantity *)List_Pointer(
+                             Term.WholeQuantity, i))
+                            ->Type == WQ_OPERATORANDQUANTITY);
+          if(quantities) {
+            DegreeDof = 0;
+            for(int i = 0; i < Term.NbrQuantityIndex; i++) {
+              struct QuantityStorage *Q =
+                QuantityStorage_P0 + Term.QuantityIndexTable[i];
+              if(!Q->DefineQuantity || Q->DefineQuantity->Type != LOCALQUANTITY)
+                continue;
+              int d = Get_IntegrationDegree(Element, Q, NOOP);
+              if(d > DegreeDof) DegreeDof = d;
+            }
+          }
+          else
+            DegreeDof =
+              DegreeEqu +
+              ((FI->Type_FormEqu == FORM0 || FI->Type_FormEqu == FORM0P) ? 1 : 2);
+        }
+        Degree = DegreeEqu + DegreeDof + Get_GeometricIntegrationDegree(Element);
+      }
+      struct Quadrature *Quadrature_P =
+        Get_QuadratureOfElement(IntegrationCase_P, Element, Degree);
       if(!Quadrature_P) {
         Message::Error(
           "Unknown type of Element (%s) for Integration method (%s)",

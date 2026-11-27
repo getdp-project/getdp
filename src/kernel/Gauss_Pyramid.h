@@ -4,12 +4,12 @@
 // issues on https://gitlab.onelab.info/getdp/getdp/issues.
 
 /* 8 integration points from Coulomb et al., IEEE tr.mag. 32(3) May
-   1996, p.1395
+   1996, p.1395: exact for the polynomials of total degree 3
 
    2 plans // a la base quadrangulaire, 4 points par plan suffisant
    pour integrer exactement nodal degre 2
 
-   cf. ../utils/pyram.c */
+   cf. ../utils/pyram.c: exact for the polynomials of total degree 3 */
 
 static double upyr8[8] = {0.2631840555694285, -0.2631840555694285,
                           0.2631840555694285, -0.2631840555694285,

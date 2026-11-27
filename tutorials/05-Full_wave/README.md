@@ -12,6 +12,7 @@ excitation imposed at the input port through an auxiliary projection resolution.
  - Edge finite elements (lowest-order Whitney elements in H(curl))
  - Two- and three-dimensional models
  - Dirichlet boundary condition through an auxiliary resolution
+ - Automatic choice of the Jacobian and of the integration quadrature
 
 See the comments in `full_wave.pro` and `full_wave.geo` for details.
 

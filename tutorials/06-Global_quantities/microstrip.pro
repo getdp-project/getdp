@@ -220,25 +220,9 @@ FunctionSpace {
   }
 }
 
-Jacobian {
-  { Name Vol;
-    Case {
-      { Region All; Jacobian Vol; }
-    }
-  }
-}
-
-Integration {
-  { Name Int;
-    Case {
-      { Type Gauss;
-        Case {
-          { GeoElement Triangle; NumberOfPoints 1; }
-        }
-      }
-    }
-  }
-}
+// The Jacobian and the integration quadratures are chosen automatically (see
+// tutorial 5): no Jacobian or Integration object is defined, and the terms
+// specify none.
 
 Formulation {
   // The formulation contains two changes compared to the formulation from the
@@ -265,7 +249,7 @@ Formulation {
     }
     Equation {
       Integral { [ epsilon[] * Dof{d v} , {d v} ];
-        In Vol_Ele; Jacobian Vol; Integration Int; }
+        In Vol_Ele; }
       // As with "Integral" terms, the second argument of "GlobalTerm [. , .]"
       // is the test function (the "AliasOf" quantity, here "{V}"), and the
       // first argument is the term multiplying the basis function (involving
@@ -293,15 +277,15 @@ PostProcessing {
     Quantity {
       // Local post-processing quantities are defined as usual:
       { Name v; Value {
-          Term { [ {v} ]; In Vol_Ele; Jacobian Vol; }
+          Term { [ {v} ]; In Vol_Ele; }
         }
       }
       { Name e; Value {
-          Term { [ -{d v} ]; In Vol_Ele; Jacobian Vol; }
+          Term { [ -{d v} ]; In Vol_Ele; }
         }
       }
       { Name d; Value {
-          Term { [ -epsilon[] * {d v} ]; In Vol_Ele; Jacobian Vol; }
+          Term { [ -epsilon[] * {d v} ]; In Vol_Ele; }
         }
       }
       // Global quantities defined in a similar way:
@@ -324,18 +308,17 @@ PostProcessing {
       // over the domain, which can be done by defining an "Integral"
       // post-processing quantity:
       { Name energy; Value {
-          Integral { [ epsilon[] / 2. * SquNorm[{d v}] ]; In Vol_Ele;
-            Jacobian Vol; Integration Int; }
+          Integral { [ epsilon[] / 2. * SquNorm[{d v}] ]; In Vol_Ele; }
         }
       }
       // Finally we can use the "BF[]" operator to retrieve the global basis
       // functions on the two electrodes, in order to visualize them:
       { Name sf_Ground; Value {
-          Term { [ BF{vf} ]; In Vol_Ele; SubRegion Ground; Jacobian Vol; }
+          Term { [ BF{vf} ]; In Vol_Ele; SubRegion Ground; }
         }
       }
       { Name sf_Microstrip; Value {
-          Term { [ BF{vf} ]; In Vol_Ele; SubRegion Microstrip; Jacobian Vol; }
+          Term { [ BF{vf} ]; In Vol_Ele; SubRegion Microstrip; }
         }
       }
     }

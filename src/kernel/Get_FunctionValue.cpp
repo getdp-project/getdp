@@ -10,6 +10,8 @@
 #include "DofData.h"
 #include "Cal_Quantity.h"
 #include "Get_Geometry.h"
+#include "BF.h"
+#include "Gauss.h"
 #include "Message.h"
 
 #define SQU(a) ((a) * (a))
@@ -76,6 +78,109 @@ struct IntegrationCase *Get_IntegrationCase(struct Element *Element,
 
   return ((struct IntegrationCase *)List_Pointer(IntegrationCase_L,
                                                  (int)Criterion.Val[0]));
+}
+
+/* ------------------------------------------------------------------------ */
+/*  G e t _ Q u a d r a t u r e O f E l e m e n t                           */
+/* ------------------------------------------------------------------------ */
+
+// The quadrature of an integration case for an element: the one given for
+// the type of the element or, with Integration Auto, the smallest rule that
+// is exact for the polynomials of the given degree (a negative Degree means
+// that the degree of the integrand is not known). Returns NULL if there is
+// none.
+struct Quadrature *Get_QuadratureOfElement(
+  struct IntegrationCase *IntegrationCase_P, struct Element *Element,
+  int Degree)
+{
+  if(!IntegrationCase_P->Auto)
+    return (struct Quadrature *)List_PQuery(IntegrationCase_P->Case,
+                                            &Element->Type, fcmp_int);
+  if(Degree < 0) {
+    Message::Error("Integration Auto cannot be used here (the degree of the "
+                   "integrand is not known): define an Integration method");
+    return NULL;
+  }
+  return Get_AutomaticQuadrature(Element->Type,
+                                 Degree + IntegrationCase_P->AutoExtra);
+}
+
+// the order of the geometry of the elements of a type, and whether they are
+// simplices
+static int Get_GeometricOrder(int Type, bool *Simplex)
+{
+  *Simplex = false;
+  switch(Type) {
+  case POINT_ELEMENT:
+  case LINE:
+  case TRIANGLE:
+  case TETRAHEDRON: *Simplex = true; return 1;
+  case LINE_2:
+  case TRIANGLE_2:
+  case TETRAHEDRON_2: *Simplex = true; return 2;
+  case LINE_3:
+  case TRIANGLE_3:
+  case TETRAHEDRON_3: *Simplex = true; return 3;
+  case LINE_4:
+  case TRIANGLE_4:
+  case TETRAHEDRON_4: *Simplex = true; return 4;
+  case QUADRANGLE_2:
+  case QUADRANGLE_2_8N:
+  case HEXAHEDRON_2:
+  case HEXAHEDRON_2_20N:
+  case PRISM_2:
+  case PRISM_2_15N:
+  case PYRAMID_2:
+  case PYRAMID_2_13N: return 2;
+  case QUADRANGLE_3:
+  case HEXAHEDRON_3:
+  case PRISM_3:
+  case PYRAMID_3: return 3;
+  case QUADRANGLE_4:
+  case HEXAHEDRON_4:
+  case PRISM_4: return 4;
+  default: return 1;
+  }
+}
+
+// The degree of the polynomials that the basis functions of a quantity (or
+// their derivative, for another operator than NoOp) are in the reference
+// element: the total degree on the simplices, the degree in each variable on
+// the other elements.
+int Get_IntegrationDegree(struct Element *Element,
+                          struct QuantityStorage *QuantityStorage_P,
+                          int Type_Operator)
+{
+  bool simplex;
+  const int geometric = Get_GeometricOrder(Element->Type, &simplex);
+  int degree = 0;
+  for(int i = 0; i < QuantityStorage_P->NbrElementaryBasisFunction; i++) {
+    struct BasisFunction *BF = QuantityStorage_P->BasisFunction[i].BasisFunction;
+    if(!BF) continue;
+    // the orders of the vector functions are half integers for the
+    // incomplete polynomials (e.g. 0.5 for the Whitney functions, of degree
+    // 1)
+    int d = (int)ceil(BF->Order - 1.e-6);
+    // the nodal functions have the order of the element
+    if(BF->Function == (void (*)())BF_Node && d < geometric) d = geometric;
+    if(d > degree) degree = d;
+  }
+  // the derivative loses one degree on the simplices only: on the other
+  // elements the degree in the other variables is kept
+  if(Type_Operator != NOOP && simplex && degree > 0) degree--;
+  return degree;
+}
+
+// What the geometry adds to the degree of an integrand: nothing on the
+// straight simplices, whose Jacobian is constant; one degree on the other
+// straight elements, and two per order of the geometry beyond the first on
+// the curved ones (the integrands are then rational functions: these are
+// rules of thumb)
+int Get_GeometricIntegrationDegree(struct Element *Element)
+{
+  bool simplex;
+  const int geometric = Get_GeometricOrder(Element->Type, &simplex);
+  return (simplex ? 0 : 1) + 2 * (geometric - 1);
 }
 
 /* ------------------------------------------------------------------------ */

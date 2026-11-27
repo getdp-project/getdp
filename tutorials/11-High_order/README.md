@@ -17,7 +17,7 @@ line), by type of entity (edges, facets and volumes), and function by function.
  - Automatic definition with `Order` and `Entity Auto`; constraints with
    `EntityType Auto`
  - Definition by type of entity and function by function
- - Quadrature rules for high order (`GaussLegendre`)
+ - Automatic Jacobian and integration, adapted to the order of the functions
  - Error with respect to an exact solution; post-processing of high order
    fields with `Depth`
 

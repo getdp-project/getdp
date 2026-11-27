@@ -3,7 +3,8 @@
 // See the LICENSE.txt file for license information. Please report all
 // issues on https://gitlab.onelab.info/getdp/getdp/issues.
 
-/* 6 integration points (DHATT ET TOUZOT) */
+/* 6 integration points (DHATT ET TOUZOT): exact for the polynomials of total
+   degree 2 in (u, v) and of degree 2 in w */
 
 static double upri6[6] = {0.166666666666666, 0.666666666666666,
                           0.166666666666666, 0.166666666666666,
@@ -17,7 +18,8 @@ static double ppri6[6] = {0.166666666666666, 0.166666666666666,
                           0.166666666666666, 0.166666666666666,
                           0.166666666666666, 0.166666666666666};
 
-/* 9 integration points (DHATT ET TOUZOT) */
+/* 9 integration points (DHATT ET TOUZOT): exact for the polynomials of total
+   degree 2 in (u, v) and of degree 2 in w */
 
 static double upri9[9] = {
   0.166666666666666, 0.666666666666666, 0.166666666666666,
@@ -34,7 +36,8 @@ static double ppri9[9] = {0.0925925925929, 0.0925925925929, 0.0925925925929,
                           0.1481481481481, 0.1481481481481, 0.1481481481481,
                           0.0925925925929, 0.0925925925929, 0.0925925925929};
 
-/* 21 integration points (DHATT ET TOUZOT) */
+/* 21 integration points (DHATT ET TOUZOT): exact for the polynomials of
+   total degree 5 in (u, v) and of degree 5 in w */
 
 static double upri21[21] = {
   0.3333333333333344, 0.4701420641051144, 0.05971587178976982,     0.4701420641051144,
@@ -80,7 +83,8 @@ static double ppri21[21] = {
   0.0367761535523629, 0.0367761535523629, 0.0367761535523629,
   0.03498310570689642, 0.03498310570689642, 0.03498310570689642};
 
-/* 42 integration points (DHATT ET TOUZOT) */
+/* 42 integration points (DHATT ET TOUZOT): exact for the polynomials of
+   total degree 5 in (u, v) and of degree 5 in w */
 
 static double upri42[42] = {
   0.3333333333333326, 0.4701420641051151, 0.05971587178977101,     0.4701420641051151,

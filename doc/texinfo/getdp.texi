@@ -3173,7 +3173,8 @@ FunctionSpace @{
              Group @var{group-def};
              Resolution @var{resolution-id} @{ @var{expression-cst} @} @} >;
        < dFunction @{ @var{basis-function-type}, @var{basis-function-type} @} ; >
-       Support @var{group-def}; Entity @var{group-def}; @} @dots{}
+       < Order @var{expression-cst}; >
+       Support @var{group-def}; Entity @var{group-def} | Auto; @} @dots{}
     @}
   < SubSpace @{
      @{ < Append < @var{expression-cst} >; >
@@ -3254,6 +3255,32 @@ type of the related @code{BasisFunction}), using the
 @code{Region} defined in a @code{Constraint} object as its main
 argument, and the optional @code{SubRegion} in the same object as a
 @var{group-sub-type} argument.
+@item
+With one of the function spaces of arbitrary order
+(@code{BF_H1Legendre}, @code{BF_HcurlLegendre}, @code{BF_HdivLegendre} or
+@code{BF_L2Legendre}) as @code{Function}, a @code{BasisFunction} stands for
+all the functions of the space of the given @code{Order} that are associated
+with the entities of the @code{Entity} group, which must be of type
+@code{NodesOf}, @code{EdgesOf}, @code{FacetsOf} or @code{VolumesOf}. With
+@code{Entity Auto} it stands for the functions of all the types of entities
+that bear functions in the space, i.e., for the whole space on the
+@code{Support}:
+
+@example
+@{ Name s; NameOfCoef u; Function BF_HcurlLegendre; Order 2;
+  Support Domain; Entity Auto; @}
+@end example
+
+@noindent
+A constraint on the @code{NameOfCoef} of such a @code{BasisFunction} applies
+to all its functions, each on its own type of entity (use
+@code{EntityType Auto}). The value of an @code{Assign} or @code{Init}
+constraint is given to the functions of lowest order (the nodal functions
+for @code{BF_H1Legendre}, the Whitney functions for @code{BF_HcurlLegendre}
+and @code{BF_HdivLegendre}), the other functions being set to zero; values
+that are not represented exactly in this way should be imposed through a
+resolution (@code{AssignFromResolution}). A @code{SubSpace} that lists such
+a @code{BasisFunction} contains all its functions.
 @item
 A global basis function (@code{BF_Global} or @code{BF_dGlobal}) needs
 parameters, i.e., it is given by the quantity (@var{quantity-id})
@@ -3407,7 +3434,52 @@ Zero value 0 (on all regions, value @code{Scalar}).
 @item BF_One
 Unit value 1 (on all regions, value @code{Scalar}).
 
+@item BF_Node_1N
+First order nodal function, associated with the vertices of the elements
+whatever the order of the mesh (@code{BF_Node} is of the order of the mesh)
+(on @code{NodesOf}, value @code{Form0}).
+
+@item BF_H1Legendre
+Hierarchical functions of the space H1 of the given @code{Order} (1 or
+more), associated with the nodes, edges, facets and volumes
+(on @code{NodesOf}, @code{EdgesOf}, @code{FacetsOf}, @code{VolumesOf} or
+@code{Auto}, value @code{Form0}).
+
+@item BF_HcurlLegendre
+Hierarchical functions of the space H(curl) of the given @code{Order} (0 or
+more; order 0 gives the Whitney functions @code{BF_Edge}), associated with
+the edges, facets and volumes
+(on @code{EdgesOf}, @code{FacetsOf}, @code{VolumesOf} or @code{Auto}, value
+@code{Form1}).
+
+@item BF_HdivLegendre
+Hierarchical functions of the space H(div) of the given @code{Order} (0 or
+more; order 0 gives the Whitney functions @code{BF_Facet}), associated with
+the facets and volumes; on surface elements, their normal trace
+(on @code{FacetsOf}, @code{VolumesOf} or @code{Auto}, value @code{Form2}).
+
+@item BF_L2Legendre
+Hierarchical functions of the space L2 of the given @code{Order} (0 or
+more), associated with the elements
+(on @code{VolumesOf} or @code{Auto}, value @code{Form3}).
+
+@item BF_H1Legendre_N0, BF_H1Legendre_E@var{k}, BF_H1Legendre_F@var{k}, BF_H1Legendre_V@var{k}
+The individual functions of the hierarchical spaces: the function of a
+node, and the @var{k}-th function of an edge, a facet or a volume (starting
+at 0, the functions of an entity being sorted by increasing order). The same
+holds for @code{BF_HcurlLegendre_E@var{k}}, @code{_F@var{k}} and
+@code{_V@var{k}}, @code{BF_HdivLegendre_F@var{k}} and @code{_V@var{k}}, and
+@code{BF_L2Legendre_V@var{k}}. The functions can be restricted to the
+entities of one shape with @code{FTri@var{k}} and @code{FQua@var{k}}
+(triangular and quadrangular facets), and @code{VTet@var{k}},
+@code{VHex@var{k}} and @code{VPri@var{k}} (tetrahedra, hexahedra and prisms).
+
 @end ftable
+
+@noindent
+The hierarchical functions of arbitrary order are those of Gmsh: they are
+available on lines, triangles, quadrangles, tetrahedra, hexahedra and prisms
+when GetDP is built with the @code{HierarchicalBasis} module of Gmsh.
 
 
 @noindent
@@ -3478,7 +3550,7 @@ Jacobian @{
   @var{string}
 
 @var{jacobian-type}:
-  Vol | Sur | VolAxi | @var{etc}
+  Auto | Vol | Sur | VolAxi | @var{etc}
 @end example
 
 
@@ -3491,6 +3563,12 @@ The optional @code{Append < @var{expression-cst} >} (when the optional level
 @item
 The default case of a @code{Jacobian} object is defined by @code{Region All}
 and must follow all the other cases.
+@item
+A @code{Jacobian} object is not needed when the Jacobian of all the elements
+is the standard one for their dimension: the terms of a @code{Formulation}
+and the quantities of a @code{PostProcessing} can use @code{Jacobian Auto}
+instead of the name of a @code{Jacobian} object, which is also what they use
+if they specify no Jacobian at all.
 @end enumerate
 
 @cindex Jacobian, types
@@ -3500,6 +3578,16 @@ and must follow all the other cases.
 @noindent
 @var{jacobian-type}:
 @ftable @code
+
+@item Auto
+@code{Vol}, @code{Sur} or @code{Lin}, according to the dimension of the
+element and of the mesh: @code{Vol} for the elements of the dimension of the
+mesh, @code{Sur} for those with one dimension less and @code{Lin} for those
+with two dimensions less. The dimension of the mesh is that of the space it
+needs: a mesh of triangles is of dimension 2 if it lies in a plane @var{z} =
+constant, and of dimension 3 otherwise. The transformations that cannot be
+deduced from the mesh (axisymmetric Jacobians, transformations to infinity)
+must be given explicitly.
 
 @item Vol
 Volume Jacobian, for @var{n}-D regions in @var{n}-D geometries,
@@ -3659,12 +3747,30 @@ Integration @{
 @end example
 
 
-@noindent Note:
+@noindent Notes:
 @enumerate
 @item
 The optional @code{Append < @var{expression-cst} >} (when the optional level
 @var{expression-cst} is strictly positive) is used to append an existing
 @code{Integration} of the same @code{Name} with additional @code{Case}s.
+@item
+An @code{Integration} object is not needed for the terms of a
+@code{Formulation} and the integral quantities of a @code{PostProcessing}
+that use @code{Integration Auto} instead of the name of an
+@code{Integration} object, which is also what they use if they specify no
+integration at all. The quadrature is then chosen for each element: the one
+with the fewest points that integrates exactly the polynomials of the degree
+of the integrand, i.e., of the test functions times the unknown functions of
+the term, as given by the order of the basis functions, the type of the
+element and the order of its geometry. In a term without unknown functions,
+the test functions are multiplied by the quantities of the term if there are
+some, and otherwise by given data, which is integrated as if it had one
+degree more than the test functions of H1, and two degrees more than the
+others. @code{Integration Auto@{@var{n}@}} adds @var{n} degrees, e.g., for
+coefficients that vary within the elements. The quadratures are those of
+Gmsh when GetDP is built with Gmsh, and the @code{Gauss} and
+@code{GaussLegendre} ones otherwise. @code{Integration Auto} cannot be used
+for integral quantities (@pxref{Formulation}).
 @end enumerate
 
 @cindex Integration, types
@@ -3793,14 +3899,14 @@ Formulation @{
                   < [ @var{sub-space-id} | @var{global-quantity-id} ] >;
         < Symmetry @var{expression-cst}; >
         < [ @var{expression} ]; In @var{group-def};
-          Jacobian @var{jacobian-id}; Integration @var{integration-id}; >
+          Jacobian @var{jacobian-id} | Auto; Integration @var{integration-id}; >
         < IndexOfSystem @var{integer}; >  @} @dots{}
     @}
     Equation @{
      < @var{local-term-type}
          @{ < @var{term-op-type} > [ @var{expression}, @var{expression} ];
-           In @var{group-def}; Jacobian @var{jacobian-id};
-           Integration @var{integration-id}; @} > @dots{}
+           In @var{group-def}; < Jacobian @var{jacobian-id} | Auto; >
+           < Integration @var{integration-id} | Auto < @{ @var{expression-cst} @} >; > @} > @dots{}
      < GlobalTerm
          @{ < @var{term-op-type} > [ @var{expression}, @var{expression} ];
            In @var{group-def}; < SubType @var{equation-term-sub-type}; > @} > @dots{}
@@ -3862,6 +3968,11 @@ Mutual contributions need piecewise functions defined on pairs or regions.
 @item
 A @code{GlobalEquation} defines a global equation to be assembled in the
 matrix of the system.
+@item
+The @code{Jacobian} and the @code{Integration} of a local term are optional:
+by default they are @code{Jacobian Auto} and @code{Integration Auto}, the
+Jacobian and the quadrature being chosen for each element (@pxref{Jacobian},
+and @pxref{Integration}).
 @end enumerate
 
 @cindex Formulation, types
@@ -4849,11 +4960,12 @@ PostProcessing @{
   Local @{ @var{local-value} @} | Integral @{ @var{integral-value} @}
 
 @var{local-value}:
-  [ @var{expression} ]; In @var{group-def}; Jacobian @var{jacobian-id};
+  [ @var{expression} ]; In @var{group-def}; < Jacobian @var{jacobian-id} | Auto; >
 
 @var{integral-value}:
   [ @var{expression} ]; In @var{group-def};
-  Integration @var{integration-id}; Jacobian @var{jacobian-id};
+  < Integration @var{integration-id} | Auto < @{ @var{expression-cst} @} >; >
+  < Jacobian @var{jacobian-id} | Auto; >
 @end example
 
 @noindent Notes:

@@ -103,40 +103,14 @@ Function {
   ];
 }
 
-Jacobian {
-  { Name Jac;
-    Case {
-      { Region Sur_Port_Wav; Jacobian Sur; }
-      { Region Sur_Out_Wav; Jacobian Sur; }
-      { Region Vol_Wav; Jacobian Vol; }
-    }
-  }
-}
-
-// The products of basis functions of order "p" are polynomials whose degree
-// grows as "2 p": the numerical quadrature must follow, otherwise the benefit
-// of the high order is lost (or the matrix becomes singular). The "Gauss"
-// quadratures used so far are only available for a limited number of points;
-// "GaussLegendre" quadratures, built as products of 1D rules, are available
-// for any number of points. With "ng" points per direction they integrate
-// exactly the polynomials up to degree "2 ng - 1" in each direction.
-ng = p + 2;
-
-Integration {
-  { Name Int;
-    Case {
-      { Type GaussLegendre;
-        Case {
-          { GeoElement Line; NumberOfPoints ng; }
-          { GeoElement Triangle; NumberOfPoints ng^2; }
-          { GeoElement Quadrangle; NumberOfPoints ng^2; }
-          { GeoElement Tetrahedron; NumberOfPoints ng^3; }
-          { GeoElement Hexahedron; NumberOfPoints ng^3; }
-        }
-      }
-    }
-  }
-}
+// As in tutorial 5, the Jacobian and the integration quadratures are chosen
+// automatically: no Jacobian or Integration object is defined. This matters
+// more here than with first order elements: the products of basis functions of
+// order "p" are polynomials whose degree grows as "2 p", and the quadrature
+// must follow, otherwise the benefit of the high order is lost (or the matrix
+// becomes singular). The automatic integration selects for each element the
+// quadrature with the fewest points that integrates these products exactly,
+// whatever the order and the shape of the element.
 
 // The boundary conditions are those of tutorial 5: the tangential component
 // of the electric field vanishes on the walls, and it is given on the input
@@ -335,11 +309,11 @@ Formulation {
     }
     Equation {
       Integral { [ nu[] * Dof{d e} , {d e} ];
-        In Vol_Wav; Integration Int; Jacobian Jac; }
+        In Vol_Wav; }
       Integral { [ -omega^2 * epsilon[] * Dof{e} , {e} ];
-        In Vol_Wav; Integration Int; Jacobian Jac; }
+        In Vol_Wav; }
       Integral { [ i[] * nu[] * k^2 / beta * Dof{e} , {e} ];
-        In Sur_Out_Wav; Integration Int; Jacobian Jac; }
+        In Sur_Out_Wav; }
     }
   }
   { Name Projection_e; Type FemEquation;
@@ -348,9 +322,9 @@ Formulation {
     }
     Equation {
       Integral { [ Dof{e} , {e} ];
-        In Sur_Port_Wav; Integration Int; Jacobian Jac; }
+        In Sur_Port_Wav; }
       Integral { [ -eExact[] , {e} ];
-        In Sur_Port_Wav; Integration Int; Jacobian Jac; }
+        In Sur_Port_Wav; }
     }
   }
 }
@@ -382,19 +356,19 @@ Resolution {
 PostProcessing {
   { Name Wav; NameOfFormulation FullWave_e;
     Quantity {
-      { Name e; Value { Term{ [ {e} ]; In Vol_Wav; Jacobian Jac; } } }
+      { Name e; Value { Term{ [ {e} ]; In Vol_Wav; } } }
       { Name eExact;
-        Value { Term{ [ eExact[] ]; In Vol_Wav; Jacobian Jac; } } }
+        Value { Term{ [ eExact[] ]; In Vol_Wav; } } }
       { Name error2;
         Value {
           Integral { [ SquNorm[{e} - eExact[]] ];
-            In Vol_Wav; Integration Int; Jacobian Jac; }
+            In Vol_Wav; }
         }
       }
       { Name norm2;
         Value {
           Integral { [ SquNorm[eExact[]] ];
-            In Vol_Wav; Integration Int; Jacobian Jac; }
+            In Vol_Wav; }
         }
       }
       { Name error;

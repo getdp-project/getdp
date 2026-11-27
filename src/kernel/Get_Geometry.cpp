@@ -57,6 +57,47 @@ void *Get_JacobianFunction(int Type_Jacobian, int Type_Element,
                            int *Type_Dimension)
 {
   switch(Type_Jacobian) {
+  case JACOBIAN_AUTO: {
+    // The Jacobian of the elements of the dimension of the mesh is Vol, that
+    // of the elements of one dimension less Sur, and of two dimensions less
+    // Lin. The dimension of the mesh is here that of the space it needs: a
+    // mesh of triangles is of dimension 2 if it lies in the plane z =
+    // constant (Vol for its triangles, Sur for its lines), and 3 otherwise
+    // (Sur for its triangles, Lin for its lines).
+    extern struct CurrentData Current;
+    struct GeoData *G = Current.GeoData;
+    const bool flat = !G || (G->Zmin == G->Zmax);
+    const bool straight = flat && (!G || G->Ymin == G->Ymax);
+    int dim = 3;
+    switch(Type_Element) {
+    case POINT_ELEMENT: dim = 0; break;
+    case LINE:
+    case LINE_2:
+    case LINE_3:
+    case LINE_4: dim = 1; break;
+    case TRIANGLE:
+    case TRIANGLE_2:
+    case TRIANGLE_3:
+    case TRIANGLE_4:
+    case QUADRANGLE:
+    case QUADRANGLE_2:
+    case QUADRANGLE_2_8N:
+    case QUADRANGLE_3:
+    case QUADRANGLE_4: dim = 2; break;
+    }
+    const int space = straight ? 1 : flat ? 2 : 3;
+    int type = JACOBIAN_VOL;
+    if(dim == 2 && space == 3)
+      type = JACOBIAN_SUR;
+    else if(dim == 1)
+      type = (space == 3) ? JACOBIAN_LIN : (space == 2) ? JACOBIAN_SUR :
+                                                          JACOBIAN_VOL;
+    else if(dim == 0)
+      type = (space == 3) ? JACOBIAN_LIN : (space == 2) ? JACOBIAN_SUR :
+                                                          JACOBIAN_VOL;
+    return Get_JacobianFunction(type, Type_Element, Type_Dimension);
+  }
+
   case JACOBIAN_VOL:
 
     switch(Type_Element) {

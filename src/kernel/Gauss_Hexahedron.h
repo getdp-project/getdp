@@ -3,7 +3,8 @@
 // See the LICENSE.txt file for license information. Please report all
 // issues on https://gitlab.onelab.info/getdp/getdp/issues.
 
-/* 6 integration points (DHATT ET TOUZOT, page 299) */
+/* 6 integration points (DHATT ET TOUZOT, page 299): exact for the
+   polynomials of total degree 3, and of degree 1 in each variable */
 
 // degree 3 rule: sqrt(1/6), sqrt(2/3), sqrt(1/2), sqrt(1/3) and 4/3
 #define a1 0.408248290463863
@@ -23,6 +24,9 @@ static double phex6[6] = {w1, w1, w1, w1, w1, w1};
 #undef c1
 #undef w1
 
+/* 14 integration points: exact for the polynomials of total degree 5, and
+   of degree 1 in each variable */
+
 // sqrt(19/30), sqrt(19/33), 320/361 and 121/361
 #define b 0.7958224257542215
 #define c 0.7587869106393281
@@ -40,7 +44,8 @@ static double phex14[14] = {wb, wb, wb, wb, wb, wb, wc,
 #undef wb
 #undef wc
 
-/* 34 integration points (DHATT ET TOUZOT, page 299) */
+/* 34 integration points (DHATT ET TOUZOT, page 299): exact for the
+   polynomials of total degree 7, and of degree 3 in each variable */
 
 static double xhex34[34] = {0.9317379298946291,
                             -0.9317379298946291,
@@ -153,7 +158,8 @@ static double phex34[34] = {
   0.4229417241977057, 0.2138202961255882, 0.2138202961255882, 0.2138202961255882, 0.2138202961255882,
   0.2138202961255882, 0.2138202961255882, 0.2138202961255882, 0.2138202961255882};
 
-/* 77 integration points (STROUD, page 238) */
+/* 77 integration points (STROUD, page 238): exact for the polynomials of
+   total degree 9, and of degree 3 in each variable */
 
 static double xhex77[77] = {0.,
                             0.5384693101056842,

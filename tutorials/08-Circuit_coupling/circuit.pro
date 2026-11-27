@@ -262,32 +262,9 @@ Constraint {
   }
 }
 
-Jacobian {
-  { Name Vol;
-    Case {
-      { Region All; Jacobian Vol; }
-    }
-  }
-  { Name Sur;
-    Case {
-      { Region All; Jacobian Sur; }
-    }
-  }
-}
-
-Integration {
-  { Name Int;
-    Case {
-      { Type Gauss;
-        Case {
-          { GeoElement Line; NumberOfPoints 4; }
-          { GeoElement Triangle; NumberOfPoints 4; }
-          { GeoElement Tetrahedron; NumberOfPoints 4; }
-        }
-      }
-    }
-  }
-}
+// The Jacobian and the integration quadratures are chosen automatically (see
+// tutorial 5): no Jacobian or Integration object is defined, and the terms
+// specify none.
 
 FunctionSpace {
   If(dim == 2)
@@ -443,16 +420,16 @@ Formulation {
     Equation {
       // FE terms for the a-v formulation (as in tutorial 7):
       Integral { [ nu[] * Dof{d a} , {d a} ];
-        In Vol_Mag; Jacobian Vol; Integration Int; }
+        In Vol_Mag; }
       Integral { DtDof [ sigma[] * Dof{a} , {a} ];
-        In Vol_C_Mag; Jacobian Vol; Integration Int; }
+        In Vol_C_Mag; }
       Integral { [ sigma[] * Dof{ur} / CoefGeo[] , {a} ];
-        In Vol_C_Mag; Jacobian Vol; Integration Int; }
+        In Vol_C_Mag; }
 
       Integral { DtDof [ sigma[] * Dof{a} , {ur} ];
-        In Vol_C_Mag; Jacobian Vol; Integration Int; }
+        In Vol_C_Mag; }
       Integral { [ sigma[] * Dof{ur} / CoefGeo[] , {ur} ];
-        In Vol_C_Mag; Jacobian Vol; Integration Int; }
+        In Vol_C_Mag; }
 
       // In 2D the global current-voltage relation is per conducting region; in
       // 3D it is per electrode surface:
@@ -537,18 +514,18 @@ PostProcessing {
     Quantity {
       { Name a;
         Value {
-          Term { [ {a} ]; In Vol_Mag; Jacobian Vol; }
+          Term { [ {a} ]; In Vol_Mag; }
         }
       }
       { Name b;
         Value {
-          Term { [ {d a} ]; In Vol_Mag; Jacobian Vol; }
+          Term { [ {d a} ]; In Vol_Mag; }
         }
       }
       { Name j;
         Value {
           Term { [ -sigma[] * (Dt[{a}] + {ur} / CoefGeo[]) ];
-            In Vol_C_Mag; Jacobian Vol; }
+            In Vol_C_Mag; }
         }
       }
       // Global quantities can be evaluated both on FE regions and on circuit

@@ -3,14 +3,14 @@
 // See the LICENSE.txt file for license information. Please report all
 // issues on https://gitlab.onelab.info/getdp/getdp/issues.
 
-/* 1 integration point */
+/* 1 integration point: exact for the polynomials of total degree 1 */
 
 static double xtet1[1] = {0.25};
 static double ytet1[1] = {0.25};
 static double ztet1[1] = {0.25};
 static double ptet1[1] = {0.166666666667};
 
-/* 4 integration points */
+/* 4 integration points: exact for the polynomials of total degree 2 */
 
 static double xtet4[4] = {0.138196601125, 0.138196601125, 0.138196601125,
                           0.585410196625};
@@ -21,7 +21,7 @@ static double ztet4[4] = {0.138196601125, 0.585410196625, 0.138196601125,
 static double ptet4[4] = {0.0416666666667, 0.0416666666667, 0.0416666666667,
                           0.0416666666667};
 
-/* 5 integration points */
+/* 5 integration points: exact for the polynomials of total degree 3 */
 
 static double xtet5[5] = {0.25, 0.166666666667, 0.166666666667, 0.166666666667,
                           0.5};
@@ -31,7 +31,7 @@ static double ztet5[5] = {0.25, 0.166666666667, 0.5, 0.166666666667,
                           0.166666666667};
 static double ptet5[5] = {-0.133333333333, 0.075, 0.075, 0.075, 0.075};
 
-/* 15 integration points */
+/* 15 integration points: exact for the polynomials of total degree 5 */
 
 static double xtet15[15] = {0.25,
                             0.0919710780526,
@@ -84,7 +84,7 @@ static double ptet15[15] = {
   0.011511367871,   0.00881834215168, 0.00881834215168, 0.00881834215168,
   0.00881834215168, 0.00881834215168, 0.00881834215168};
 
-/* 16 integration points */
+/* 16 integration points: exact for the polynomials of total degree 4 */
 
 #define a16 0.0503737941001228 / 6.0
 #define b16 0.0665420686332923 / 6.0
@@ -110,7 +110,7 @@ static double ptet16[16] = {a16, a16, a16, a16, b16, b16, b16, b16,
 #undef f16
 #undef g16
 
-/* 17 integration points */
+/* 17 integration points: exact for the polynomials of total degree 5 */
 
 #define a17 0.1884185567365407 / 6.0
 #define b17 0.06703858372604277 / 6.0
@@ -138,7 +138,7 @@ static double ptet17[17] = {a17, b17, b17, b17, b17, c17, c17, c17, c17,
 #undef f17
 #undef g17
 
-/* 29 integration points */
+/* 29 integration points: exact for the polynomials of total degree 6 */
 
 #define a29 0.0904012904601475 / 6.0
 #define b29 0.0191198342789912 / 6.0

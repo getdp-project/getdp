@@ -3,19 +3,22 @@
 // See the LICENSE.txt file for license information. Please report all
 // issues on https://gitlab.onelab.info/getdp/getdp/issues.
 
-/* 1 integration point */
+/* 1 integration point: exact for the polynomials of total degree 1, and of
+   degree 1 in each variable */
 
 static double xq1[1] = {0.};
 static double yq1[1] = {0.};
 static double pq1[1] = {4.};
 
-/* 3 integration points */
+/* 3 integration points: exact for the polynomials of total degree 2, and of
+   degree 1 in each variable */
 
 static double xq3[3] = {0.816496580928, -0.408248290464, -0.408248290464};
 static double yq3[3] = {0.0, 0.707106781187, -0.707106781187};
 static double pq3[3] = {1.33333333333, 1.33333333333, 1.33333333333};
 
-/* 4 integration points */
+/* 4 integration points: exact for the polynomials of total degree 3, and of
+   degree 3 in each variable */
 
 static double xq4[4] = {0.577350269189, -0.577350269189, 0.577350269189,
                         -0.577350269189};
@@ -23,7 +26,8 @@ static double yq4[4] = {0.577350269189, 0.577350269189, -0.577350269189,
                         -0.577350269189};
 static double pq4[4] = {1., 1., 1., 1.};
 
-/* 7 integration points */
+/* 7 integration points: exact for the polynomials of total degree 5, and of
+   degree 3 in each variable */
 
 static double xq7[7] = {0.,
                         0.,

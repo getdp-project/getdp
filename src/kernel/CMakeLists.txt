@@ -10,6 +10,7 @@ set(SRC
       Gauss_Triangle.cpp Gauss_Quadrangle.cpp
       Gauss_Tetrahedron.cpp Gauss_Hexahedron.cpp
       Gauss_Prism.cpp Gauss_Pyramid.cpp
+      Gauss_Auto.cpp
     GeoData.cpp
       GeoEntity.cpp
       GeoNormal.cpp

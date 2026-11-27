@@ -19,6 +19,13 @@ void Get_FunctionValue(int Nbr_Function, void (*xFunctionBF[])(),
 void Get_InitFunctionValue(int Type_Operator,
                            struct QuantityStorage *QuantityStorage_P,
                            int *Type_Form);
+struct Quadrature *Get_QuadratureOfElement(
+  struct IntegrationCase *IntegrationCase_P, struct Element *Element,
+  int Degree);
+int Get_IntegrationDegree(struct Element *Element,
+                          struct QuantityStorage *QuantityStorage_P,
+                          int Type_Operator);
+int Get_GeometricIntegrationDegree(struct Element *Element);
 double Cal_InterpolationOrder(struct Element *Element,
                               struct QuantityStorage *QuantityStorage);
 double Cal_MaxEdgeLength(struct Element *Element);

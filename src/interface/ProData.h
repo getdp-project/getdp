@@ -299,6 +299,9 @@ struct JacobianCase {
 #define JACOBIAN_LIN 1
 #define JACOBIAN_SUR 2
 #define JACOBIAN_VOL 3
+/* Vol, Sur or Lin according to the dimension of the element and of the mesh
+   (Jacobian Auto) */
+#define JACOBIAN_AUTO 200
 
 #define JACOBIAN_SUR_AXI 10
 #define JACOBIAN_VOL_AXI 11
@@ -348,6 +351,9 @@ struct IntegrationMethod {
 struct IntegrationCase {
   int Type, SubType;
   List_T *Case;
+  // the quadrature is chosen for each element from the degree of the
+  // integrand (Integration Auto), plus AutoExtra
+  int Auto, AutoExtra;
 };
 
 /* IntegrationCase.Type */

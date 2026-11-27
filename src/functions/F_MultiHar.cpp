@@ -591,8 +591,12 @@ void Cal_GalerkinTermOfFemEquation_MHBilinear(
     Message::Error("Analytical integration not implemented for MHBilinear");
   }
 
-  Quadrature_P = (struct Quadrature *)List_PQuery(IntegrationCase_P->Case,
-                                                  &Element->Type, fcmp_int);
+  Quadrature_P = Get_QuadratureOfElement(
+    IntegrationCase_P, Element,
+    2 * Get_IntegrationDegree(
+          Element, FI->QuantityStorageEqu_P,
+          EquationTerm_P->Case.LocalTerm.Term.TypeOperatorEqu) +
+      Get_GeometricIntegrationDegree(Element));
 
   if(!Quadrature_P)
     Message::Error("Unknown type of Element (%s) for Integration method (%s)",

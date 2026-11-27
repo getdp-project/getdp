@@ -14,7 +14,7 @@ domain.
  - `BF_H1Legendre`, `BF_HdivLegendre` and `BF_L2Legendre` function spaces
  - Mixed formulation of the Poisson problem
  - Curved (high order) meshes vs. high order basis functions
- - Quadrature rules on curved elements
+ - Automatic integration on curved elements
 
 See the comments in `ball.pro` and `ball.geo` for details.
 

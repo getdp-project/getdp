@@ -3,25 +3,25 @@
 // See the LICENSE.txt file for license information. Please report all
 // issues on https://gitlab.onelab.info/getdp/getdp/issues.
 
-/* 1 integration point */
+/* 1 integration point: exact for the polynomials of total degree 1 */
 
 static double xt1[1] = {0.333333333333333};
 static double yt1[1] = {0.333333333333333};
 static double pt1[1] = {0.5};
 
-/* 3 integration points */
+/* 3 integration points: exact for the polynomials of total degree 2 */
 
 static double xt3[3] = {0.16666666666666, 0.66666666666666, 0.16666666666666};
 static double yt3[3] = {0.16666666666666, 0.16666666666666, 0.66666666666666};
 static double pt3[3] = {0.16666666666666, 0.16666666666666, 0.16666666666666};
 
-/* 4 integration points */
+/* 4 integration points: exact for the polynomials of total degree 3 */
 
 static double xt4[4] = {0.333333333333333, 0.6, 0.2, 0.2};
 static double yt4[4] = {0.3333333333333333, 0.2, 0.6, 0.2};
 static double pt4[4] = {-0.28125, .260416666666, .260416666666, .260416666666};
 
-/* 6 integration points */
+/* 6 integration points: exact for the polynomials of total degree 4 */
 
 static double xt6[6] = {0.816847572980459, 0.091576213509771,
                         0.091576213509771, 0.108103018168070,
@@ -32,7 +32,7 @@ static double yt6[6] = {0.091576213509771, 0.816847572980459,
 static double pt6[6] = {0.054975871827661, 0.054975871827661, 0.054975871827661,
                         0.111690794839,    0.111690794839,    0.111690794839};
 
-/* 7 integration points */
+/* 7 integration points: exact for the polynomials of total degree 5 */
 
 static double xt7[7] = {0.333333333333333, 0.797426985353087, 0.101286507323456,
                         0.101286507323456, 0.470142064105115, 0.059715871789770,
@@ -43,7 +43,7 @@ static double yt7[7] = {0.333333333333333, 0.101286507323456, 0.797426985353087,
 static double pt7[7] = {0.112500000000000, 0.062969590272414, 0.062969590272414,
                         0.062969590272414, 0.066197076394253, 0.066197076394253,
                         0.066197076394253};
-/* 12 integration points */
+/* 12 integration points: exact for the polynomials of total degree 6 */
 
 static double xt12[12] = {
   0.873821971016996, 0.063089014491502, 0.063089014491502, 0.501426509658179,
@@ -58,7 +58,7 @@ static double pt12[12] = {
   0.058393137863189, 0.058393137863189, 0.041425537809187, 0.041425537809187,
   0.041425537809187, 0.041425537809187, 0.041425537809187, 0.041425537809187};
 
-/* 13 integration points */
+/* 13 integration points: exact for the polynomials of total degree 7 */
 
 static double xt13[13] = {
   0.333333333333333, 0.479308067841920, 0.260345966079040, 0.260345966079040,
@@ -76,7 +76,7 @@ static double pt13[13] = {
   0.038556880445128,  0.038556880445128, 0.038556880445128, 0.038556880445128,
   0.038556880445128};
 
-/* 16 integration points */
+/* 16 integration points: exact for the polynomials of total degree 8 */
 
 static double xt16[16] = {
   0.333333333333333, 0.081414823414554, 0.459292588292723, 0.459292588292723,

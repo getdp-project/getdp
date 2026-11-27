@@ -40,6 +40,11 @@ void Cal_InitIntegralQuantity(struct Element *Element,
     /* Numerical Integration */
   case GAUSS:
   case GAUSSLEGENDRE:
+    if(IQA->IntegrationCase_P->Auto) {
+      Message::Error("Integration Auto cannot be used for integral "
+                     "quantities: define an Integration method");
+      return;
+    }
     Quadrature_P = (struct Quadrature *)List_PQuery(
       IQA->IntegrationCase_P->Case, &ElementSourceType, fcmp_int);
 

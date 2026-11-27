@@ -184,31 +184,36 @@ Function {
   ];
 }
 
-Jacobian {
-  // Instead of explicitly defining a Jacobian method for volumes and surfaces,
-  // a single Jacobian method can be defined piecewise:
-  { Name Jac;
-    Case {
-      { Region Sur_Port_Wav; Jacobian Sur; }
-      { Region Sur_Inf_Wav; Jacobian Sur; }
-      { Region Vol_Wav; Jacobian Vol; }
-    }
-  }
-}
-
-Integration {
-  { Name Int;
-    Case {
-      { Type Gauss;
-        Case {
-          { GeoElement Line; NumberOfPoints 4; }
-          { GeoElement Triangle; NumberOfPoints 4; }
-          { GeoElement Tetrahedron; NumberOfPoints 4; }
-        }
-      }
-    }
-  }
-}
+// In the previous tutorials the Jacobian and Integration methods were defined
+// explicitly: which mapping to use on which region ("Vol" on the volume
+// elements, "Sur" on the surface elements), and how many quadrature points to
+// use on each type of element. Here both would have to be adapted to the
+// dimension of the model: in 2D the volume elements are triangles and the
+// surface elements lines, whereas in 3D they are tetrahedra and triangles.
+//
+// GetDP can make these choices automatically, with "Jacobian Auto" and
+// "Integration Auto" in a term:
+//  - "Jacobian Auto" uses "Vol" on the elements that have the dimension of the
+//    model, "Sur" on those with one dimension less and "Lin" on those with two
+//    dimensions less;
+//  - "Integration Auto" selects, for each element, a quadrature that
+//    integrates exactly the product of the test functions by the unknown
+//    functions of the term, from the type of the element and the polynomial
+//    degree of these functions. Terms without unknown functions (sources,
+//    boundary data) are integrated with two degrees more than the test
+//    functions. If a term contains a coefficient that varies rapidly within
+//    an element, "Integration Auto{n}" adds "n" degrees.
+// Both are the default: a term that specifies no Jacobian or no Integration
+// gets the automatic one. The Jacobian and Integration objects are thus not
+// needed in this model, and are not defined.
+//
+// Explicit definitions remain necessary for the mappings that cannot be
+// guessed from the mesh: the transformations to infinity of tutorial 3
+// ("VolSphShell") and the axisymmetric Jacobians of tutorial 4 ("VolAxi").
+// "Jacobian Auto" can also be used inside a Jacobian object, e.g. for
+// "Region All" after the special cases. Explicit Integration objects remain
+// useful to control the cost and the accuracy of the quadratures, and are
+// required for the integral quantities.
 
 Constraint {
   { Name e_Wav;
@@ -291,14 +296,16 @@ Formulation {
       { Name e; Type Local; NameOfSpace Hcurl_e_Wav; }
     }
     Equation {
+      // (The automatic Jacobian and Integration are written out in this
+      // first term only; they are omitted in all the other terms.)
       Integral { [ nu[] * Dof{d e} , {d e} ];
-        In Vol_Wav; Integration Int; Jacobian Jac; }
+        In Vol_Wav; Jacobian Auto; Integration Auto; }
 
       Integral { [ -omega^2 * epsilon[] * Dof{e} , {e} ];
-        In Vol_Wav; Integration Int; Jacobian Jac; }
+        In Vol_Wav; }
 
       Integral { [ i[] * omega * Sqrt[epsilon[] / mu[]] * Dof{e} , {e} ];
-        In Sur_Inf_Wav; Integration Int; Jacobian Jac; }
+        In Sur_Inf_Wav; }
     }
   }
 
@@ -325,9 +332,9 @@ Formulation {
     }
     Equation {
       Integral { [ Dof{e} , {e} ];
-        In Sur_Port_Wav; Integration Int; Jacobian Jac; }
+        In Sur_Port_Wav; }
       Integral { [ -ePort[] , {e} ];
-        In Sur_Port_Wav; Integration Int; Jacobian Jac; }
+        In Sur_Port_Wav; }
     }
   }
 }
@@ -365,17 +372,17 @@ PostProcessing {
     Quantity {
       { Name e;
         Value {
-          Term{ [ {e} ]; In Vol_Wav; Jacobian Jac; }
+          Term{ [ {e} ]; In Vol_Wav; }
         }
       }
       { Name eNorm;
         Value {
-          Term{ [ Norm[{e}] ]; In Vol_Wav; Jacobian Jac; }
+          Term{ [ Norm[{e}] ]; In Vol_Wav; }
         }
       }
       { Name h;
         Value{
-          Term{ [ i[] * nu[] / omega * {d e} ]; In Vol_Wav; Jacobian Jac; }
+          Term{ [ i[] * nu[] / omega * {d e} ]; In Vol_Wav; }
         }
       }
       // The (complex) Poynting vector "s = e x h*" gives the time-averaged
@@ -384,8 +391,7 @@ PostProcessing {
       // conjugate:
       { Name s;
         Value{
-          Term{ [ 0.5 * {e} /\ Conj[i[] * nu[] / omega * {d e}] ]; In Vol_Wav;
-            Jacobian Jac; }
+          Term{ [ 0.5 * {e} /\ Conj[i[] * nu[] / omega * {d e}] ]; In Vol_Wav; }
         }
       }
     }

@@ -1305,6 +1305,15 @@ if(${Python3_FOUND} AND GMSH)
   test_tuto(09c 09-Template_library "transfo" "-setnumber LoadType 2")
   test_tuto(10a 10-Gauging "transfo" "")
   test_tuto(10b 10-Gauging "transfo" "-setnumber GaugeType 1")
+  if(HAVE_GMSH_HIERARCHICAL)
+    test_tuto(11a 11-High_order "high_order" "")
+    test_tuto(11b 11-High_order "high_order" "-setnumber def 1 -setnumber p 3")
+    test_tuto(11c 11-High_order "high_order"
+              "-setnumber dim 3 -setnumber shape 1 -setnumber def 2")
+    test_tuto(11d 11-High_order/bonus "ball" "-setnumber order 2")
+    test_tuto(11e 11-High_order/bonus "ball"
+              "-setnumber dim 3 -setnumber order 2 -setnumber form 1 -setnumber p 3")
+  endif()
 
   # what is done differently on several ranks (see tests/parallel.pro)
   test_mpi(parallel_points tests "parallel.geo -2"
@@ -1399,6 +1408,36 @@ if(${Python3_FOUND} AND GMSH)
            --getdp-options "search.pro -pre Grouped ; search.pro -cal")
   test_mpi(grouped_assembly tests "search.geo -3"
            "search.pro -pre Grouped ; search.pro -cal")
+  # Legendre basis functions of Gmsh, in H1, H(curl), H(div) and L2, on meshes
+  # with several shapes of elements, with and without periodicity (see
+  # tests/legendre_*.pro)
+  if(HAVE_GMSH_HIERARCHICAL)
+    function(test_legendre name space opts)
+      add_test(NAME legendre_${name}
+               COMMAND ${RUN_TEST} --workdir ${CMAKE_SOURCE_DIR}/tests
+               --name "legendre_${name}"
+               --gmsh-options "legendre.geo -3 ${opts}"
+               --getdp-options "legendre_${space}.pro -msh legendre.msh ${opts} -solve R -pos P")
+      test_mpi(legendre_${name} tests "legendre.geo -3 ${opts}"
+               "legendre_${space}.pro -msh legendre.msh ${opts} -solve R -pos P")
+    endfunction()
+    test_legendre(h1 h1 "-setnumber dim 3 -setnumber shape 3 -setnumber per 1 -setnumber p 3")
+    test_legendre(h1_2d h1 "-setnumber dim 2 -setnumber shape 3 -setnumber per 2 -setnumber p 4")
+    test_legendre(hcurl hcurl "-setnumber dim 3 -setnumber shape 4 -setnumber per 1 -setnumber p 2")
+    test_legendre(hcurl_2d hcurl "-setnumber dim 2 -setnumber shape 3 -setnumber per 1 -setnumber p 2")
+    test_legendre(hdiv hdiv "-setnumber dim 3 -setnumber shape 2 -setnumber p 1")
+    test_legendre(l2 l2 "-setnumber dim 2 -setnumber shape 3 -setnumber p 2")
+  endif()
+
+  # automatic Jacobian and integration: the default of the terms, 'Jacobian
+  # Auto' and 'Integration Auto', compared with explicit methods (see
+  # tests/auto.pro)
+  add_test(NAME auto
+           COMMAND ${RUN_TEST} --workdir ${CMAKE_SOURCE_DIR}/tests
+           --name "auto" --gmsh-options "parallel.geo -2"
+           --getdp-options "auto.pro -msh parallel.msh -solve Check -pos Check")
+  test_mpi(auto tests "parallel.geo -2"
+           "auto.pro -msh parallel.msh -solve Check -pos Check")
   # SolveNL (PETSc SNES) gives the solution of Solve on a linear problem, and of
   # Newton and of fixed point iterations (where the JacNL term is discarded)
   # on a nonlinear one (see tests/solve_nl.pro)

@@ -190,8 +190,23 @@ void Pos_LocalOrIntegralQuantity(struct PostQuantity *PostQuantity_P,
       return;
     }
 
-    Quadrature_P = (struct Quadrature *)List_PQuery(IntegrationCase_P->Case,
-                                                    &Element->Type, fcmp_int);
+    // (for Integration Auto: twice the degree of the quantities of the term,
+    // plus two as the integrand is not a polynomial in general)
+    int Degree = -1;
+    if(IntegrationCase_P->Auto) {
+      int d = 1;
+      for(i = 0; i < PostQuantityTerm_P->NbrQuantityIndex; i++) {
+        struct QuantityStorage *Q =
+          QuantityStorage_P0 + PostQuantityTerm_P->QuantityIndexTable[i];
+        if((DefineQuantity_P0 + PostQuantityTerm_P->QuantityIndexTable[i])
+             ->Type != LOCALQUANTITY)
+          continue;
+        int dq = Get_IntegrationDegree(Element, Q, NOOP);
+        if(dq > d) d = dq;
+      }
+      Degree = 2 * d + 2 + Get_GeometricIntegrationDegree(Element);
+    }
+    Quadrature_P = Get_QuadratureOfElement(IntegrationCase_P, Element, Degree);
 
     if(!Quadrature_P) {
       Message::Error("Unknown type of Element (%s) for Integration method (%s) "

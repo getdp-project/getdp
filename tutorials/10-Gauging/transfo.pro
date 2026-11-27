@@ -196,32 +196,9 @@ Constraint {
   }
 }
 
-Jacobian {
-  { Name Vol;
-    Case {
-      { Region All; Jacobian Vol; }
-    }
-  }
-  { Name Sur;
-    Case {
-      { Region All; Jacobian Sur; }
-    }
-  }
-}
-
-Integration {
-  { Name Int;
-    Case {
-      { Type Gauss;
-        Case {
-          { GeoElement Line; NumberOfPoints 4; }
-          { GeoElement Triangle; NumberOfPoints 4; }
-          { GeoElement Tetrahedron; NumberOfPoints 4; }
-        }
-      }
-    }
-  }
-}
+// The Jacobian and the integration quadratures are chosen automatically (see
+// tutorial 5): no Jacobian or Integration object is defined, and the terms
+// specify none.
 
 Group {
   DefineGroup[ Source_Cir, Resistance_Cir, Inductance_Cir, Capacitance_Cir ];
@@ -301,7 +278,7 @@ For i In {1 : NumCoils}
       }
       Equation {
         Integral { [ Dof{d vs} , {d vs} ];
-          In Vol_Ele~{i}; Jacobian Vol; Integration Int; }
+          In Vol_Ele~{i}; }
         GlobalTerm { [ Dof{I} , {V} ]; In Sur_Electrode_Ele~{i}; }
       }
     }
@@ -446,7 +423,7 @@ Formulation {
     }
     Equation {
       Integral { [ nu[] * Dof{d a} , {d a} ];
-        In Vol_Mag; Jacobian Vol; Integration Int; }
+        In Vol_Mag; }
 
       // The Coulomb gauge weakly imposes div(a) = 0 via a Lagrange multiplier
       // saddle-point formulation. It picks, within each equivalence class "a +
@@ -487,9 +464,9 @@ Formulation {
       // 0"):
       If(GaugeType == 1)
         Integral { [ Dof{a}, {d xi} ] ;
-          In Vol_Mag; Jacobian Vol; Integration Int; }
+          In Vol_Mag; }
         Integral { [ Dof{d xi}, {a} ] ;
-          In Vol_Mag; Jacobian Vol; Integration Int; }
+          In Vol_Mag; }
       EndIf
 
       // The pre-computed source distribution "-grad(vs)" is normalized to a
@@ -500,16 +477,16 @@ Formulation {
       // back-EMF in the voltage equation) thus carry the opposite sign of the
       // source term:
       Integral { [ Ns[] * Dof{d vs} , {a} ];
-        In Vol_S_Mag; Jacobian Vol; Integration Int; }
+        In Vol_S_Mag; }
 
       Integral { DtDof[ -Ns[] * Dof{a} , {d vs} ];
-        In Vol_S_Mag; Jacobian Vol; Integration Int; }
+        In Vol_S_Mag; }
 
       // DC resistance of the winding. The "Ns^2" factor comes from Ns turns in
       // series, each one with cross-section Sc/Ns and length proportional to
       // Ns, i.e. R_total = Ns^2 * L / (sigma * Sc):
       Integral { [ Ns[]^2 / sigma[] * Dof{d vs} , {d vs} ];
-        In Vol_S_Mag; Jacobian Vol; Integration Int; }
+        In Vol_S_Mag; }
 
       GlobalTerm { [ Dof{Us} , {Is} ]; In Vol_S_Mag; }
 
@@ -551,22 +528,22 @@ PostProcessing {
     Quantity {
       { Name a;
         Value {
-          Term { [ {a} ]; In Vol_Mag; Jacobian Vol; }
+          Term { [ {a} ]; In Vol_Mag; }
         }
       }
       { Name vs;
         Value {
-          Term { [ {vs} ]; In Vol_S_Mag; Jacobian Vol; }
+          Term { [ {vs} ]; In Vol_S_Mag; }
         }
       }
       { Name js;
         Value {
-          Term { [ - {d vs} ]; In Vol_S_Mag; Jacobian Vol; }
+          Term { [ - {d vs} ]; In Vol_S_Mag; }
         }
       }
       { Name b;
         Value {
-          Term { [ {d a} ]; In Vol_Mag; Jacobian Vol; }
+          Term { [ {d a} ]; In Vol_Mag; }
         }
       }
       { Name U; Value {
