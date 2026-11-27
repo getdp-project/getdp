@@ -166,6 +166,9 @@ namespace {
     // (for the points given by Cal_SetReferencePoint: counts the first
     // points of the sets)
     unsigned long long pass = 0;
+    // the coordinates of the point, if known
+    bool hasCoordinates = false;
+    double x = 0., y = 0., z = 0.;
   } integrationPoint;
   unsigned long long referencePointPass = 0;
 
@@ -190,12 +193,35 @@ void Cal_SetReferencePoint(struct Element *Element,
   if(!Element) referenceValues.recycle();
   if(Element && !Index) referencePointPass++;
   integrationPoint.pass = Element ? referencePointPass : 0;
+  integrationPoint.hasCoordinates = false;
   integrationPoint.Element = Element;
   integrationPoint.Quadrature = Points;
   integrationPoint.index = Index;
   integrationPoint.u = u;
   integrationPoint.v = v;
   integrationPoint.w = w;
+}
+
+void Cal_SetReferencePointCoordinates(double x, double y, double z)
+{
+  integrationPoint.hasCoordinates = true;
+  integrationPoint.x = x;
+  integrationPoint.y = y;
+  integrationPoint.z = z;
+}
+
+bool Cal_GetReferencePointCoordinates(struct Element *Element, double u,
+                                      double v, double w, double *x, double *y,
+                                      double *z)
+{
+  const IntegrationPoint &p = integrationPoint;
+  if(!p.hasCoordinates || !p.Element || p.Element != Element || p.u != u ||
+     p.v != v || p.w != w)
+    return false;
+  *x = p.x;
+  *y = p.y;
+  *z = p.z;
+  return true;
 }
 
 unsigned long long Cal_GetReferencePointPass(struct Element *Element)
@@ -1108,6 +1134,7 @@ namespace {
         integrationPoint.u = Current.u;
         integrationPoint.v = Current.v;
         integrationPoint.w = Current.w;
+        integrationPoint.hasCoordinates = false;
 
         /* Geometry */
 
@@ -1126,6 +1153,7 @@ namespace {
           Current.y += Element->y[i] * Element->n[i];
           Current.z += Element->z[i] * Element->n[i];
         }
+        Cal_SetReferencePointCoordinates(Current.x, Current.y, Current.z);
 
         if(FI->Flag_ChangeCoord && !(ConstantJacobian && i_IntPoint)) {
           Element->DetJac = Get_Jacobian(Element, &Element->Jac);

@@ -44,6 +44,15 @@ void Cal_SetReferencePoint(struct Element *Element, struct Quadrature *Points,
 // as it does not change.
 unsigned long long Cal_GetReferencePointPass(struct Element *Element);
 
+// The coordinates of the current integration or reference point, given once
+// they are known and asked by the functions of the coordinates (X[], XYZ[],
+// ...), which otherwise compute them from the geometrical shape functions:
+// returns whether they are known for the point (u, v, w) of the element
+void Cal_SetReferencePointCoordinates(double x, double y, double z);
+bool Cal_GetReferencePointCoordinates(struct Element *Element, double u,
+                                      double v, double w, double *x, double *y,
+                                      double *z);
+
 /* In F_MultiHar */
 void Cal_InitGalerkinTermOfFemEquation_MHBilinear(
   struct EquationTerm *EquationTerm_P);

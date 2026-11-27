@@ -286,31 +286,6 @@ void Pos_FemInterpolation(struct Element *Element,
        ----- */
 
     if(Type_DefineQuantity == LOCALQUANTITY) {
-      if(TheElement_P->Num != NO_ELEMENT) {
-        // at an integration point of a Galerkin term the values of the
-        // functions in the reference element can be known already
-        const double *Ref = Cal_GetReferenceValuesAtIntegrationPoint(
-          TheElement_P, u, v, w, Nbr_Dof, (void (**)())xFunctionBF.data(),
-          QuantityStorage_P);
-        for(j = 0; j < Nbr_Dof; j++) {
-          if(Ref) {
-            vBFu[j][0] = Ref[3 * j];
-            vBFu[j][1] = Ref[3 * j + 1];
-            vBFu[j][2] = Ref[3 * j + 2];
-          }
-          else
-            xFunctionBF[j](
-              TheElement_P,
-              QuantityStorage_P->BasisFunction[j].NumEntityInElement + 1, u, v,
-              w, vBFu[j]);
-          ((void (*)(struct Element *, double *,
-                     double *))xChangeOfCoordinates)(TheElement_P, vBFu[j],
-                                                     vBFxDof[j].Val);
-        }
-      }
-
-      /* interpolate (vBFxDof is real-valued) */
-
       // at the points of a set given for the element (the nodes of the
       // element on which a field is exported) the values of the Dofs are
       // those of the first point
@@ -362,7 +337,75 @@ void Pos_FemInterpolation(struct Element *Element,
         }
       }
 
+      // whether the value is that of a scalar or of a vector
+      int Type_Interpolated = NONE;
       switch(Type_Form) {
+      case FORM0:
+      case FORM3:
+      case FORM3P:
+      case SCALAR: Type_Interpolated = SCALAR; break;
+      case FORM1:
+      case FORM1P:
+      case FORM2:
+      case FORM2P:
+      case FORM1S:
+      case FORM2S:
+      case VECTOR:
+      case VECTORP: Type_Interpolated = VECTOR; break;
+      }
+      bool Interpolated = false;
+
+      if(TheElement_P->Num != NO_ELEMENT) {
+        // at an integration point of a Galerkin term the values of the
+        // functions in the reference element can be known already
+        const double *Ref = Cal_GetReferenceValuesAtIntegrationPoint(
+          TheElement_P, u, v, w, Nbr_Dof, (void (**)())xFunctionBF.data(),
+          QuantityStorage_P);
+        if(Ref && DofValues && Type_Interpolated != NONE) {
+          // with the values of the functions and of the Dofs at hand the
+          // field is interpolated in the reference element, and the result
+          // (its real and imaginary parts) is mapped to the element once: the
+          // change of coordinates is linear
+          const int nh = Current.NbrHar;
+          for(k = 0; k < nh; k++) {
+            double r[3] = {0., 0., 0.}, m[MAX_DIM] = {0., 0., 0.};
+            for(j = 0; j < Nbr_Dof; j++) {
+              const double d = DofValues[j * nh + k];
+              r[0] += Ref[3 * j] * d;
+              r[1] += Ref[3 * j + 1] * d;
+              r[2] += Ref[3 * j + 2] * d;
+            }
+            ((void (*)(struct Element *, double *,
+                       double *))xChangeOfCoordinates)(TheElement_P, r, m);
+            Val[MAX_DIM * k] += m[0];
+            if(Type_Interpolated == VECTOR) {
+              Val[MAX_DIM * k + 1] += m[1];
+              Val[MAX_DIM * k + 2] += m[2];
+            }
+          }
+          *Type_Value = Type_Interpolated;
+          Interpolated = true;
+        }
+        for(j = 0; !Interpolated && j < Nbr_Dof; j++) {
+          if(Ref) {
+            vBFu[j][0] = Ref[3 * j];
+            vBFu[j][1] = Ref[3 * j + 1];
+            vBFu[j][2] = Ref[3 * j + 2];
+          }
+          else
+            xFunctionBF[j](
+              TheElement_P,
+              QuantityStorage_P->BasisFunction[j].NumEntityInElement + 1, u, v,
+              w, vBFu[j]);
+          ((void (*)(struct Element *, double *,
+                     double *))xChangeOfCoordinates)(TheElement_P, vBFu[j],
+                                                     vBFxDof[j].Val);
+        }
+      }
+
+      /* interpolate (vBFxDof is real-valued) */
+
+      if(!Interpolated) switch(Type_Form) {
       case FORM0:
       case FORM3:
       case FORM3P:

@@ -1008,9 +1008,12 @@ void Pos_PrintOnElementsOf(struct PostQuantity *NCPQ_P,
               Current.x = PE->x[iNode];
               Current.y = PE->y[iNode];
               Current.z = PE->z[iNode];
-              if(Points)
+              if(Points) {
                 Cal_SetReferencePoint(&Element, Points, iNode, PE->u[iNode],
                                       PE->v[iNode], PE->w[iNode]);
+                Cal_SetReferencePointCoordinates(PE->x[iNode], PE->y[iNode],
+                                                 PE->z[iNode]);
+              }
               Cal_PostQuantity(NCPQ_P, DefineQuantity_P0, QuantityStorage_P0,
                                PSO_P->SingleProcess,
                                NULL, &Element, PE->u[iNode], PE->v[iNode],

@@ -14,6 +14,9 @@
 void Get_NodesCoordinatesOfElement(struct Element *Element);
 
 void Get_BFGeoElement(struct Element *Element, double u, double v, double w);
+void Get_BFGeoElementAtPoint(struct Element *Element,
+                             struct Quadrature *Quadrature, int Index, double u,
+                             double v, double w);
 
 void *Get_JacobianFunction(int Type_Jacobian, int Type_Element,
                            int *Type_Dimension);

@@ -12,6 +12,7 @@
 #if defined(HAVE_KERNEL)
 #include "GeoData.h"
 #include "Get_Geometry.h"
+#include "Cal_GalerkinTermOfFemEquation.h"
 #endif
 
 extern struct CurrentData Current;
@@ -32,6 +33,10 @@ void F_CoordXYZ(F_ARG)
     X = Current.x;
     Y = Current.y;
     Z = Current.z;
+  }
+  else if(Cal_GetReferencePointCoordinates(Current.Element, Current.u,
+                                           Current.v, Current.w, &X, &Y, &Z)) {
+    // (known at the integration points)
   }
   else {
     Get_NodesCoordinatesOfElement(Current.Element);
@@ -99,8 +104,14 @@ void F_CoordXYZS(F_ARG)
   int i, k;                                                                    \
   double tmp;                                                                  \
                                                                                \
+  double xyz_x, xyz_y, xyz_z;                                                  \
   if(!Current.Element || Current.Element->Num == NO_ELEMENT) {                 \
     tmp = Current.coord;                                                       \
+  }                                                                            \
+  else if(Cal_GetReferencePointCoordinates(Current.Element, Current.u,         \
+                                           Current.v, Current.w, &xyz_x,       \
+                                           &xyz_y, &xyz_z)) {                  \
+    tmp = xyz_##coord;                                                         \
   }                                                                            \
   else {                                                                       \
     Get_NodesCoordinatesOfElement(Current.Element);                            \

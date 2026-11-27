@@ -7,6 +7,9 @@
 //   Patrick Lefevre
 //
 
+#include <map>
+#include <vector>
+#include <cmath>
 #include <math.h>
 #include "GetDPConfig.h"
 #include "ProData.h"
@@ -46,6 +49,50 @@ void Get_BFGeoElement(struct Element *Element, double u, double v, double w)
   for(i = 0; i < Element->GeoElement->NbrNodes; i++) {
     BF_Node(Element, i + 1, u, v, w, &(Element->n[i]));
     BF_GradNode(Element, i + 1, u, v, w, Element->dndu[i]);
+  }
+}
+
+// The same at the point Index of a quadrature (u, v, w), where the values only
+// depend on the type of the element: they are computed once
+void Get_BFGeoElementAtPoint(struct Element *Element,
+                             struct Quadrature *Quadrature, int Index, double u,
+                             double v, double w)
+{
+  struct Key {
+    int type, numPoints;
+    void (*function)();
+    bool operator<(const Key &o) const
+    {
+      if(type != o.type) return type < o.type;
+      if(numPoints != o.numPoints) return numPoints < o.numPoints;
+      return (void *)function < (void *)o.function;
+    }
+  };
+  static std::map<Key, std::vector<double> > tables;
+  static const Key *lastKey = NULL;
+  static std::vector<double> *last = NULL;
+  const int numNodes = Element->GeoElement->NbrNodes;
+  const Key key = {Element->Type, Quadrature->NumberOfPoints,
+                   Quadrature->Function};
+  if(!lastKey || *lastKey < key || key < *lastKey) {
+    auto it = tables.insert({key, std::vector<double>()}).first;
+    lastKey = &it->first;
+    last = &it->second;
+    // (filled point by point: 4 values per node)
+    last->resize((std::size_t)key.numPoints * numNodes * 4, NAN);
+  }
+  double *t = last->data() + (std::size_t)Index * numNodes * 4;
+  if(t[0] != t[0]) {
+    Get_BFGeoElement(Element, u, v, w);
+    for(int i = 0; i < numNodes; i++) {
+      t[4 * i] = Element->n[i];
+      for(int j = 0; j < 3; j++) t[4 * i + 1 + j] = Element->dndu[i][j];
+    }
+    return;
+  }
+  for(int i = 0; i < numNodes; i++) {
+    Element->n[i] = t[4 * i];
+    for(int j = 0; j < 3; j++) Element->dndu[i][j] = t[4 * i + 1 + j];
   }
 }
 

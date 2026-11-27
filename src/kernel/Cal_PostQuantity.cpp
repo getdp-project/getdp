@@ -12,6 +12,7 @@
 #include "GeoData.h"
 #include "Get_DofOfElement.h"
 #include "Cal_Quantity.h"
+#include "Cal_GalerkinTermOfFemEquation.h"
 #include "Cal_Value.h"
 #include "Get_Geometry.h"
 #include "Get_FunctionValue.h"
@@ -231,7 +232,7 @@ void Pos_LocalOrIntegralQuantity(struct PostQuantity *PostQuantity_P,
 
       Get_IntPoint(Nbr_IntPoints, i_IntPoint, &ui, &vi, &wi, &weight);
 
-      Get_BFGeoElement(Element, ui, vi, wi);
+      Get_BFGeoElementAtPoint(Element, Quadrature_P, i_IntPoint, ui, vi, wi);
       Element->DetJac = Get_Jacobian(Element, &Element->Jac);
       if(Element->DetJac != 0.) {
         Get_InverseMatrix(Type_Dimension, Element->Type, Element->DetJac,
@@ -240,14 +241,25 @@ void Pos_LocalOrIntegralQuantity(struct PostQuantity *PostQuantity_P,
       else {
         Message::Warning("Zero determinant in 'Cal_PostQuantity'");
       }
+      // (the coordinates of the point, also for the functions X[], XYZ[], ...)
+      double xi = 0., yi = 0., zi = 0.;
+      for(i = 0; i < Element->GeoElement->NbrNodes; i++) {
+        xi += Element->x[i] * Element->n[i];
+        yi += Element->y[i] * Element->n[i];
+        zi += Element->z[i] * Element->n[i];
+      }
       Current.x = Current.y = Current.z = 0.;
       if(Type_Quantity == INTEGRALQUANTITY) {
-        for(i = 0; i < Element->GeoElement->NbrNodes; i++) {
-          Current.x += Element->x[i] * Element->n[i];
-          Current.y += Element->y[i] * Element->n[i];
-          Current.z += Element->z[i] * Element->n[i];
-        }
+        Current.x = xi;
+        Current.y = yi;
+        Current.z = zi;
       }
+
+      // the integration points are the same for all the elements of a type:
+      // the values of the functions in the reference element are computed
+      // once, and the values of the Dofs once per element
+      Cal_SetReferencePoint(Element, Quadrature_P, i_IntPoint, ui, vi, wi);
+      Cal_SetReferencePointCoordinates(xi, yi, zi);
 
       Cal_WholeQuantity(Current.Element = Element, QuantityStorage_P0,
                         PostQuantityTerm_P->WholeQuantity, Current.u = ui,
@@ -258,6 +270,7 @@ void Pos_LocalOrIntegralQuantity(struct PostQuantity *PostQuantity_P,
       TermValue.Type = tmpValue.Type;
       Cal_AddMultValue(&TermValue, &tmpValue, Factor, &TermValue);
     }
+    Cal_SetReferencePoint(NULL, NULL, 0, 0., 0., 0.);
   }
 
   Value->Type = TermValue.Type;
