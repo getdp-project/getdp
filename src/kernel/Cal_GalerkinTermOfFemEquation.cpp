@@ -1368,6 +1368,13 @@ void Cal_GalerkinTermOfFemEquation(struct Element *Element,
 
   Current.flagAssDiag = 0; /*+++prov*/
 
+  /* the terms of the Jacobian matrix are not computed if there is none */
+  if((FI->Function_AssembleTerm == Cal_AssembleTerm_JacNL ||
+      FI->Function_AssembleTerm == Cal_AssembleTerm_DtDofJacNL ||
+      (FI->MHBilinear && FI->MHBilinear_JacNL)) &&
+     !Cal_HasJacobianMatrix())
+    return;
+
   /* treatment of MHBilinear-term in separate routine */
   if(FI->MHBilinear) {
     /* if only the RHS of the system is to be calculated

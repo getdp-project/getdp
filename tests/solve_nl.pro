@@ -10,6 +10,11 @@
      Newton iterations (GenerateJac and SolveJac), which must not move the
      solution of SolveNL
 
+   getdp solve_nl.pro -msh parallel.msh -solve Picard -pos Picard
+     the same nonlinear problem, solved by fixed point iterations (Generate
+     and Solve: the JacNL term is discarded, as there is no Jacobian matrix
+     yet) and then by Newton iterations, which must not move the solution
+
    SolveNL starts from zero, and the comparison stops getdp with an error if
    the solutions differ. The Prints are those of the solution of SolveNL. */
 
@@ -131,6 +136,22 @@ Resolution {
       SaveSolution[A];
     }
   }
+  { Name Picard;
+    System {
+      { Name A; NameOfFormulation NonLinear; }
+    }
+    Operation {
+      InitSolution[A];
+      For i In {1:40}
+        Generate[A]; Solve[A];
+      EndFor
+      CopySolution[A, "x_nl"];
+      IterativeLoop[20, 1e-12, 1] { GenerateJac[A]; SolveJac[A]; }
+      Evaluate[$tol = 1e-8];
+      Call CompareWithSolveNL;
+      SaveSolution[A];
+    }
+  }
 }
 
 PostProcessing {
@@ -159,6 +180,13 @@ PostOperation {
     }
   }
   { Name NonLinear; NameOfPostProcessing NonLinear;
+    Operation {
+      Print[ u, OnLine {{0.013, 0.021, 0} {0.987, 0.933, 0}} {20},
+        Format Table, File "line_u.txt" ];
+      Print[ int_u[Domain], OnGlobal, Format Table, File "integral_u.txt" ];
+    }
+  }
+  { Name Picard; NameOfPostProcessing NonLinear;
     Operation {
       Print[ u, OnLine {{0.013, 0.021, 0} {0.987, 0.933, 0}} {20},
         Format Table, File "line_u.txt" ];

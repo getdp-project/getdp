@@ -74,6 +74,26 @@ int Cal_GetSeparateIndex(int TypeTimeDerivative)
 }
 
 /* ------------------------------------------------------------------------ */
+/*  Jacobian matrix                                                         */
+/* ------------------------------------------------------------------------ */
+
+// The Jacobian matrix only exists once it has been generated (GenerateJac):
+// the JacNL terms of a formulation are discarded as long as it does not,
+// e.g. when the system is generated with Generate (they contribute to the
+// Jacobian matrix only)
+bool Cal_HasJacobianMatrix()
+{
+  static bool warned = false;
+  if(Current.DofData->Flag_Init[0] >= 2) return true;
+  if(!warned) {
+    Message::Info(3, "Discarded JacNL term: the Jacobian matrix is not "
+                     "generated (use GenerateJac)");
+    warned = true;
+  }
+  return false;
+}
+
+/* ------------------------------------------------------------------------ */
 /*  Terms assembled in a single matrix                                      */
 /* ------------------------------------------------------------------------ */
 
@@ -571,6 +591,8 @@ void Cal_AssembleTerm_JacNL(struct Dof *Equ, struct Dof *Dof, double Val[])
 {
   int k;
 
+  if(!Cal_HasJacobianMatrix()) return;
+
   if(Current.TypeAssembly == ASSEMBLY_SEPARATE) {
     Message::Error("JacNL not implemented for separate assembly");
   }
@@ -604,6 +626,8 @@ void Cal_AssembleTerm_JacNL(struct Dof *Equ, struct Dof *Dof, double Val[])
 void Cal_AssembleTerm_DtDofJacNL(struct Dof *Equ, struct Dof *Dof, double Val[])
 {
   double tmp[2];
+
+  if(!Cal_HasJacobianMatrix()) return;
 
   if(Current.TypeAssembly == ASSEMBLY_SEPARATE)
     Message::Error("DtDofJacNL not implemented for separate assembly");

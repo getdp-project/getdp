@@ -118,6 +118,8 @@ void Cal_GlobalTermOfFemEquation(int Num_Region,
   if(i_WQ < List_Nbr(WholeQuantity_L)) { // Multi-harmonic case
     if(Message::GetVerbosity() == 10)
       Message::Info("MHBilinear in Global term");
+    // (assembled in the Jacobian matrix)
+    if(!Cal_HasJacobianMatrix()) return;
     if(QuantityStorageEqu_P != QuantityStorageDof_P) {
       Message::Error("Global term with MHBilinear is not symmetric ?!");
       return;

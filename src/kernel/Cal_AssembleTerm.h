@@ -10,6 +10,7 @@
 
 void Cal_InitSeparate(int k);
 int Cal_GetSeparateIndex(int TypeTimeDerivative);
+bool Cal_HasJacobianMatrix();
 bool Cal_GetAssembleTermMatrix(void (*Function)(struct Dof *, struct Dof *,
                                                 double *),
                                gMatrix **Mat, gVector **Vec, List_T **Vecs,

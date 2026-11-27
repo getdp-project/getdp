@@ -1400,9 +1400,10 @@ if(${Python3_FOUND} AND GMSH)
   test_mpi(grouped_assembly tests "search.geo -3"
            "search.pro -pre Grouped ; search.pro -cal")
   # SolveNL (PETSc SNES) gives the solution of Solve on a linear problem, and of
-  # Newton iterations on a nonlinear one (see tests/solve_nl.pro)
+  # Newton and of fixed point iterations (where the JacNL term is discarded)
+  # on a nonlinear one (see tests/solve_nl.pro)
   if(HAVE_PETSC)
-    foreach(r Linear NonLinear)
+    foreach(r Linear NonLinear Picard)
       add_test(NAME solve_nl_${r}
                COMMAND ${RUN_TEST} --workdir ${CMAKE_SOURCE_DIR}/tests
                --name "solve_nl_${r}" --gmsh-options "parallel.geo -2"
