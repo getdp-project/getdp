@@ -7,6 +7,7 @@
 //   Francois Henrotte
 //   Guillaume Demesy
 
+#include <algorithm>
 #include <math.h>
 #include "ProData.h"
 #include "GeoData.h"
@@ -267,6 +268,11 @@ void Get_ValueForConstraint(struct ConstraintInFS *Constraint_P, double Value[],
     // cf. LinAlg_SetScalar() calls in DofData.cpp
     Value[1] = 0.;
     Value2[1] = 0.;
+  }
+
+  // the higher order functions of a space do not take the value
+  if(Constraint_P->ZeroValue) {
+    for(k = 0; k < std::max(Current.NbrHar, 2); k++) Value[k] = Value2[k] = 0.;
   }
 
   Current.Element = old;

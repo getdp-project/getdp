@@ -11,6 +11,9 @@
 
 #include <iostream>
 #include <algorithm>
+#include <set>
+#include <string>
+#include <vector>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
@@ -111,6 +114,17 @@ static struct GlobalBasisFunction        GlobalBasisFunction_S;
 static struct SubSpace                 SubSpace_S;
 static struct GlobalQuantity           GlobalQuantity_S;
 static struct ConstraintInFS           ConstraintInFS_S;
+// a basis function standing for the functions of a Legendre space: the name
+// of the space, its order, whether the entities are all those bearing
+// functions (Entity Auto), and the coefficients of the current function space
+// that have no function at all at their order
+static char *Legendre_Name = NULL;
+static double Legendre_Order = -1.;
+static int Legendre_Auto = 0;
+static std::set<std::string> Legendre_Empty;
+static int Flag_EntityType = 0;
+static void Add_LegendreBasisFunctions();
+static void Add_BasisFunctionIndex(List_T *list, int i);
 static struct Formulation            Formulation_S;
 static struct DefineQuantity           DefineQuantity_S;
 static struct EquationTerm             EquationTerm_S;
@@ -2562,6 +2576,7 @@ FunctionSpace :
       FunctionSpace_S.BasisFunction = FunctionSpace_S.SubSpace =
 	FunctionSpace_S.GlobalQuantity = FunctionSpace_S.Constraint = NULL;
       FunctionSpace_S.PeriodicNodesGeoData = NULL;
+      Legendre_Empty.clear();
       level_Append = 0;
     }
 
@@ -2625,6 +2640,14 @@ BasisFunctions :
       if((i = List_ISearchSeq(FunctionSpace_S.BasisFunction, BasisFunction_S.Name,
                               fcmp_BasisFunction_Name)) < 0) {
       */
+      if(Legendre_Name) {
+        Add_LegendreBasisFunctions();
+      }
+      else if(Legendre_Order >= 0. || Legendre_Auto) {
+        vyyerror(0, "Order and Entity Auto need a function space as Function "
+                 "of the BasisFunction (e.g. BF_H1Legendre)");
+      }
+      else {
       if(index_Append_2 < 0) {
 	BasisFunction_S.Num = Num_BasisFunction;
 	Num_BasisFunction += (BasisFunction_S.SubFunction)?
@@ -2642,6 +2665,7 @@ BasisFunctions :
         List_Write(FunctionSpace_S.BasisFunction, index_Append_2, &BasisFunction_S);
       else
         List_Add(FunctionSpace_S.BasisFunction, &BasisFunction_S);
+      }
     }
 
   | BasisFunctions ParserCommands
@@ -2665,6 +2689,12 @@ BasisFunction :
       BasisFunction_S.SupportIndex = -1;
       BasisFunction_S.EntityIndex  = -1;
       BasisFunction_S.EntityFilter = ENTITYFILTER_NONE;
+      BasisFunction_S.Parent = -1;
+      BasisFunction_S.HigherOrder = 0;
+      if(Legendre_Name) Free(Legendre_Name);
+      Legendre_Name = NULL;
+      Legendre_Order = -1.;
+      Legendre_Auto = 0;
       level_Append_2 = (level_Append)? level_Append-1 : 0;
       index_Append_2 = -1;
     }
@@ -2703,6 +2733,11 @@ BasisFunctionTerm :
 
   | tFunction String__Index OptionalParametersForBasisFunction tEND
     {
+      if(BF_IsLegendreSpace($2)) {
+        // the functions of a space, known once its order and the entities are
+        Legendre_Name = strSave($2);
+      }
+      else {
       Get_3Function3NbrForString
 	(BF_Function, $2, &FlagError,
 	 &BasisFunction_S.Function, &BasisFunction_S.dFunction,
@@ -2713,21 +2748,28 @@ BasisFunctionTerm :
          BasisFunction_S.Function == (void(*)())BF_GradNode_1N)
         BasisFunction_S.EntityFilter = ENTITYFILTER_VERTICES;
       // the Legendre functions of arbitrary order are not in the table
-      if(FlagError &&
-         BF_GetLegendre($2, &BasisFunction_S.Function,
-                        &BasisFunction_S.dFunction,
-                        &BasisFunction_S.dInvFunction,
-                        &BasisFunction_S.Order,
-                        &BasisFunction_S.ElementType,
-                        &BasisFunction_S.Orient,
-                        &BasisFunction_S.EntityFilter))
+      if(FlagError && BF_GetLegendre($2, &BasisFunction_S)) {
+        BasisFunction_S.HigherOrder = 0;
         FlagError = 0;
+      }
       if(FlagError){
 	Get_Valid_SX3F3N($2, BF_Function);
 	vyyerror(0, "Unknown Function for BasisFunction: %s", $2);
       }
+      }
       Free($2);
     }
+
+  | tOrder FExpr tEND
+    {
+      if($2 < 0. || $2 != (int)$2)
+        vyyerror(0, "Wrong Order for BasisFunction: %g", $2);
+      else
+        Legendre_Order = $2;
+    }
+
+  | tEntity tAuto tEND
+    { Legendre_Auto = 1; }
 
   | tdFunction '{' String__Index Comma String__Index '}' tEND
     {
@@ -2999,9 +3041,9 @@ ListOfBasisFunction :
       int i;
       if((i = List_ISearchSeq(Current_BasisFunction_L,
 			       $1, fcmp_BasisFunction_Name)) < 0)
-	vyyerror(0, "Unknown BasisFunction: %s", $1);
+	{ if(!Legendre_Empty.count($1)) vyyerror(0, "Unknown BasisFunction: %s", $1); }
       else {
-	List_Add($$, &i);
+	Add_BasisFunctionIndex($$, i);
 	int j = i+1;
 	while((i = List_ISearchSeqPartial(Current_BasisFunction_L,
 					  $1, j, fcmp_BasisFunction_Name)) >= 0) {
@@ -3029,9 +3071,9 @@ RecursiveListOfBasisFunction :
       int i;
       if((i = List_ISearchSeq(Current_BasisFunction_L,
                               $3, fcmp_BasisFunction_Name)) < 0)
-	vyyerror(0, "Unknown BasisFunction: %s", $3);
+	{ if(!Legendre_Empty.count($3)) vyyerror(0, "Unknown BasisFunction: %s", $3); }
       else {
-	List_Add($1, &i);
+	Add_BasisFunctionIndex($1, i);
 	int j = i+1;
 	while((i = List_ISearchSeqPartial(Current_BasisFunction_L,
 					  $3, j, fcmp_BasisFunction_Name)) >= 0) {
@@ -3052,9 +3094,9 @@ ListOfBasisFunctionCoef :
       int i;
       if((i = List_ISearchSeq(Current_BasisFunction_L,
 			       $1, fcmp_BasisFunction_NameOfCoef)) < 0)
-	vyyerror(0, "Unknown BasisFunctionCoef: %s", $1);
+	{ if(!Legendre_Empty.count($1)) vyyerror(0, "Unknown BasisFunctionCoef: %s", $1); }
       else {
-	List_Add($$, &i);
+	Add_BasisFunctionIndex($$, i);
       }
       Free($1);
     }
@@ -3077,9 +3119,9 @@ RecursiveListOfBasisFunctionCoef :
       int i;
       if((i = List_ISearchSeq(Current_BasisFunction_L,
 			       $3, fcmp_BasisFunction_NameOfCoef)) < 0)
-	vyyerror(0, "Unknown BasisFunctionCoef: %s", $3);
+	{ if(!Legendre_Empty.count($3)) vyyerror(0, "Unknown BasisFunctionCoef: %s", $3); }
       else {
-	List_Add($1, &i);
+	Add_BasisFunctionIndex($1, i);
       }
       $$ = $1; Free($3);
     }
@@ -3161,6 +3203,39 @@ ConstraintInFSs :
 
   | ConstraintInFSs '{' ConstraintInFS '}'
     {
+      // a constraint on the coefficient of the functions of a Legendre space
+      // applies to all its functions, each on its type of entity (or to those
+      // of the given EntityType)
+      std::vector<int> targets;
+      if(ConstraintInFS_S.ReferenceIndex >= 0) {
+        targets.push_back(ConstraintInFS_S.ReferenceIndex);
+        if(ConstraintInFS_S.QuantityType == LOCALQUANTITY)
+          for(int i = 0; i < List_Nbr(FunctionSpace_S.BasisFunction); i++)
+            if(i != ConstraintInFS_S.ReferenceIndex &&
+               ((struct BasisFunction *)
+                List_Pointer(FunctionSpace_S.BasisFunction, i))->Parent ==
+               ConstraintInFS_S.ReferenceIndex)
+              targets.push_back(i);
+      }
+      const int Type_Function_Given = Type_Function;
+      for(std::size_t target = 0; target < targets.size(); target++) {
+      Type_Function = Type_Function_Given;
+      int Flag_Volume = 0;
+      ConstraintInFS_S.ZeroValue = 0;
+      if(ConstraintInFS_S.QuantityType == LOCALQUANTITY) {
+        struct BasisFunction *bf = (struct BasisFunction *)
+          List_Pointer(FunctionSpace_S.BasisFunction, targets[target]);
+        if(bf->Parent >= 0) {
+          int own = ((struct Group *)
+                     List_Pointer(Problem_S.Group, bf->EntityIndex))->FunctionType;
+          if(Flag_EntityType && Type_Function != own) continue;
+          Type_Function = own;
+          Flag_Volume = (own == VOLUMESOF);
+          ConstraintInFS_S.ReferenceIndex = targets[target];
+          ConstraintInFS_S.ZeroValue = bf->HigherOrder;
+        }
+      }
+
       Group_S.FunctionType = Type_Function;
       Group_S.SuppListType = Type_SuppList;
 
@@ -3189,6 +3264,11 @@ ConstraintInFSs :
         for(int i = 0; i < List_Nbr(Constraint_P->ConstraintPerRegion); i++) {
           ConstraintPerRegion_P = (struct ConstraintPerRegion *)
             List_Pointer(Constraint_P->ConstraintPerRegion, i);
+
+          // the functions of the volumes are not linked
+          if(Flag_Volume && (ConstraintPerRegion_P->Type == CST_LINK ||
+                             ConstraintPerRegion_P->Type == CST_LINKCPLX))
+            continue;
 
           if( ConstraintPerRegion_P->RegionIndex >= 0 ) {
 
@@ -3227,6 +3307,7 @@ ConstraintInFSs :
           }
         }
       }
+      }
     }
 
   | ConstraintInFSs ParserCommands
@@ -3239,6 +3320,8 @@ ConstraintInFS :
     {
       ConstraintInFS_S.QuantityType = LOCALQUANTITY;
       ConstraintInFS_S.ReferenceIndex = -1; ConstraintInFS_S.EntityIndex = -1;
+      ConstraintInFS_S.ZeroValue = 0;
+      Flag_EntityType = 0;
       ConstraintInFS_S.ConstraintPerRegion = NULL;
       ConstraintInFS_S.Active.ResolutionIndex = -1;
       ConstraintInFS_S.Active.Active = NULL;
@@ -3259,8 +3342,10 @@ ConstraintInFSTerm :
       if((i = List_ISearchSeq(FunctionSpace_S.BasisFunction, $2,
                               fcmp_BasisFunction_NameOfCoef)) < 0) {
 	if((i = List_ISearchSeq(FunctionSpace_S.GlobalQuantity, $2,
-                                fcmp_GlobalQuantity_Name)) < 0)
-	  vyyerror(0, "Unknown NameOfCoef: %s", $2);
+                                fcmp_GlobalQuantity_Name)) < 0) {
+          // (nothing to constrain if the space has no function at its order)
+	  if(!Legendre_Empty.count($2)) vyyerror(0, "Unknown NameOfCoef: %s", $2);
+        }
 	else {
 	  ConstraintInFS_S.QuantityType   = GLOBALQUANTITY;
 	  ConstraintInFS_S.ReferenceIndex = i;
@@ -3277,19 +3362,22 @@ ConstraintInFSTerm :
       }
 
       // Auto selection of Type_Function
+      if(index_BF >= 0) {
       int entity_index =
         ((struct BasisFunction *)
          List_Pointer(FunctionSpace_S.BasisFunction, index_BF))->EntityIndex;
       if(entity_index<0)
         vyyerror(0, "Undefined Entity for NameOfCoef %s", $2);
+      else
       Type_Function =
         ((struct Group *)List_Pointer(Problem_S.Group, entity_index))->FunctionType;
+      }
 
       Free($2);
     }
 
   | tEntityType FunctionForGroup tEND
-    { Type_Function = $2; }
+    { Type_Function = $2; Flag_EntityType = 1; }
 
   | tEntityType tAuto tEND
     {
@@ -10866,6 +10954,111 @@ int  Add_Group(struct Group *Group_P, char *Name, int Flag_AddRemove,
   }
 
   return i;
+}
+
+// add a basis function to a list, with the functions it stands for
+static void Add_BasisFunctionIndex(List_T *list, int i)
+{
+  List_Add(list, &i);
+  for(int j = 0; j < List_Nbr(Current_BasisFunction_L); j++)
+    if(j != i && ((struct BasisFunction *)
+                  List_Pointer(Current_BasisFunction_L, j))->Parent == i)
+      List_Add(list, &j);
+}
+
+// Add the functions of a Legendre space of a given order: one basis function
+// per function of the entities of the type of the Entity group, or of all the
+// types of entity bearing functions with Entity Auto. The first one keeps the
+// given Name and NameOfCoef, the next ones add _N, _E, _F or _V and their
+// position on the entity.
+static void Add_LegendreBasisFunctions()
+{
+  static const int types[4] = {NODESOF, EDGESOF, FACETSOF, VOLUMESOF};
+  static const char letters[] = "NEFV";
+  if(!BasisFunction_S.Name || !BasisFunction_S.NameOfCoef) {
+    vyyerror(0, "Missing Name or NameOfCoef for BasisFunction '%s'",
+             Legendre_Name);
+    return;
+  }
+  if(Legendre_Order < 0.) {
+    vyyerror(0, "Missing Order for BasisFunction '%s'", BasisFunction_S.Name);
+    return;
+  }
+  if(BasisFunction_S.SupportIndex < 0) {
+    vyyerror(0, "Missing Support for BasisFunction '%s'", BasisFunction_S.Name);
+    return;
+  }
+  int first = 0, last = 3;
+  if(!Legendre_Auto) {
+    int t = -1;
+    if(BasisFunction_S.EntityIndex >= 0) {
+      int f = ((struct Group *)List_Pointer(Problem_S.Group,
+                                            BasisFunction_S.EntityIndex))
+                ->FunctionType;
+      for(int i = 0; i < 4; i++)
+        if(f == types[i]) t = i;
+    }
+    if(t < 0) {
+      vyyerror(0, "Entity of BasisFunction '%s' should be Auto, NodesOf, "
+               "EdgesOf, FacetsOf or VolumesOf", BasisFunction_S.Name);
+      return;
+    }
+    first = last = t;
+  }
+  const int parent = List_Nbr(FunctionSpace_S.BasisFunction);
+  char *name = BasisFunction_S.Name, *coef = BasisFunction_S.NameOfCoef;
+  int num = 0;
+  for(int t = first; t <= last; t++) {
+    std::vector<struct BasisFunction> functions;
+    if(!BF_GetLegendreSpace(Legendre_Name, (int)Legendre_Order, t, functions)) {
+      vyyerror(0, "Could not get the functions of '%s' of order %g",
+               Legendre_Name, Legendre_Order);
+      return;
+    }
+    if(functions.empty()) continue;
+    int entity = BasisFunction_S.EntityIndex;
+    if(Legendre_Auto) {
+      // all the entities of that type
+      Group_S.Type = REGIONLIST;
+      Group_S.FunctionType = types[t];
+      Group_S.InitialList = NULL;
+      Group_S.SuppListType = Group_S.SuppListType2 = SUPPLIST_NONE;
+      Group_S.InitialSuppList = Group_S.InitialSuppList2 = NULL;
+      Group_S.InitialListGroupIndex = -1;
+      Group_S.InitialSuppListGroupIndex = -1;
+      Group_S.InitialSuppList2GroupIndex = -1;
+      entity = Add_Group(&Group_S, strSave("BF_Entity"), 0, 1, 0);
+    }
+    for(std::size_t k = 0; k < functions.size(); k++) {
+      struct BasisFunction bf = BasisFunction_S;
+      bf.Function = functions[k].Function;
+      bf.dFunction = functions[k].dFunction;
+      bf.dInvFunction = functions[k].dInvFunction;
+      bf.Order = functions[k].Order;
+      bf.ElementType = functions[k].ElementType;
+      bf.Orient = functions[k].Orient;
+      bf.EntityFilter = functions[k].EntityFilter;
+      bf.HigherOrder = functions[k].HigherOrder;
+      bf.EntityIndex = entity;
+      bf.Parent = parent;
+      bf.Num = Num_BasisFunction++;
+      if(num) {
+        char tmp[1024];
+        snprintf(tmp, sizeof(tmp), "%s_%c%d", name, letters[t], (int)k);
+        bf.Name = strSave(tmp);
+        snprintf(tmp, sizeof(tmp), "%s_%c%d", coef, letters[t], (int)k);
+        bf.NameOfCoef = strSave(tmp);
+      }
+      List_Add(FunctionSpace_S.BasisFunction, &bf);
+      num++;
+    }
+  }
+  // no function at that order (e.g. on the edges for H1 at order 1): the
+  // constraints on the coefficient are ignored
+  if(!num) {
+    Legendre_Empty.insert(name);
+    Legendre_Empty.insert(coef);
+  }
 }
 
 int  Num_Group(struct Group *Group_P, char *Name, int Num_Group)

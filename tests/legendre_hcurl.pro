@@ -49,70 +49,31 @@ Function {
   EndIf
   uex[] = u0[] + g[];
 }
-// number of functions per edge (after the Whitney function), triangle,
-// quadrangle, tetrahedron, hexahedron and prism
-nE = p; nTri = (p-1)*(p+1); nQua = 2*p*(p+1);
-nTet = (p-2)*(p-1)*(p+1)/2; nHex = 3*p^2*(p+1); nPri = 3*(p-1)*p*(p+1)/2;
 FunctionSpace {
   { Name H; Type Form1;
     BasisFunction {
-      If(whitney)
-        { Name se; NameOfCoef ue; Function BF_Edge; Support Dom; Entity EdgesOf[All]; }
+      If(!whitney)
+        { Name s; NameOfCoef u; Function BF_HcurlLegendre; Order p; Support Dom; Entity Auto; }
       Else
-        { Name se; NameOfCoef ue; Function BF_HcurlLegendre_E0; Support Dom; Entity EdgesOf[All]; }
-      EndIf
-      If(nE > 0)
-        For k In {1:nE}
+        // the Whitney functions, with the other functions of the edges one by
+        // one, and the functions of the space borne by the facets and the
+        // volumes
+        { Name s; NameOfCoef u; Function BF_Edge; Support Dom; Entity EdgesOf[All]; }
+        For k In {1:p}
           { Name se~{k}; NameOfCoef ue~{k}; Function BF_HcurlLegendre_E~{k}; Support Dom; Entity EdgesOf[All]; }
         EndFor
-      EndIf
-      If(nTri > 0)
-        For k In {0:nTri-1}
-          { Name st~{k}; NameOfCoef ut~{k}; Function BF_HcurlLegendre_FTri~{k}; Support Dom; Entity FacetsOf[All]; }
-        EndFor
-      EndIf
-      If(nQua > 0)
-        For k In {0:nQua-1}
-          { Name sq~{k}; NameOfCoef uq~{k}; Function BF_HcurlLegendre_FQua~{k}; Support Dom; Entity FacetsOf[All]; }
-        EndFor
-      EndIf
-      If(nTet > 0)
-        For k In {0:nTet-1}
-          { Name svt~{k}; NameOfCoef uvt~{k}; Function BF_HcurlLegendre_VTet~{k}; Support Dom; Entity VolumesOf[All]; }
-        EndFor
-      EndIf
-      If(nHex > 0)
-        For k In {0:nHex-1}
-          { Name svh~{k}; NameOfCoef uvh~{k}; Function BF_HcurlLegendre_VHex~{k}; Support Dom; Entity VolumesOf[All]; }
-        EndFor
-      EndIf
-      If(nPri > 0)
-        For k In {0:nPri-1}
-          { Name svp~{k}; NameOfCoef uvp~{k}; Function BF_HcurlLegendre_VPri~{k}; Support Dom; Entity VolumesOf[All]; }
-        EndFor
+        { Name sf; NameOfCoef uf; Function BF_HcurlLegendre; Order p; Support Dom; Entity FacetsOf[All]; }
+        { Name sv; NameOfCoef uv; Function BF_HcurlLegendre; Order p; Support Dom; Entity VolumesOf[All]; }
       EndIf
     }
     Constraint {
       If(link)
-        { NameOfCoef ue; EntityType EdgesOf; NameOfConstraint Periodic; }
-        If(nE > 0)
-          For k In {1:nE}
-            { NameOfCoef ue~{k}; EntityType EdgesOf; NameOfConstraint Periodic; }
+        { NameOfCoef u; EntityType Auto; NameOfConstraint Periodic; }
+        If(whitney)
+          For k In {1:p}
+            { NameOfCoef ue~{k}; EntityType Auto; NameOfConstraint Periodic; }
           EndFor
-        EndIf
-        If(dim == 3)
-          If(nTri > 0)
-            For k In {0:nTri-1}
-              { NameOfCoef ut~{k}; EntityType FacetsOf; NameOfConstraint Periodic; }
-            EndFor
-          EndIf
-        EndIf
-        If(dim == 3)
-          If(nQua > 0)
-            For k In {0:nQua-1}
-              { NameOfCoef uq~{k}; EntityType FacetsOf; NameOfConstraint Periodic; }
-            EndFor
-          EndIf
+          { NameOfCoef uf; EntityType Auto; NameOfConstraint Periodic; }
         EndIf
       EndIf
     }

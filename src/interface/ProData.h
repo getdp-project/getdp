@@ -401,6 +401,11 @@ struct BasisFunction {
   // the entities of an element bearing the function, among those of the type
   // of the function (ENTITYFILTER_)
   int EntityFilter;
+  // for the basis functions standing for all the functions of a space of a
+  // given order (the Legendre functions): the index of the first one (-1 for
+  // the other basis functions), and whether the function is not one of the
+  // functions of lowest order of the space
+  int Parent, HigherOrder;
 };
 
 /* BasisFunction.EntityFilter: all the entities, the vertices of the element
@@ -465,6 +470,9 @@ struct GlobalQuantity {
 
 struct ConstraintInFS {
   int QuantityType, ReferenceIndex, EntityIndex;
+  // the value of an Assign or Init constraint is replaced by zero (for the
+  // higher order functions of a space)
+  int ZeroValue;
   struct ConstraintPerRegion *ConstraintPerRegion;
   struct {
     int ResolutionIndex;

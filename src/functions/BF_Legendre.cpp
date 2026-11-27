@@ -8,11 +8,30 @@
 // "HdivLegendre" and "L2Legendre" function spaces of its HierarchicalBasis
 // module), on lines, triangles, quadrangles, tetrahedra, hexahedra and prisms.
 //
+// The functions of a space of order p are given by the name of the space and
+// its order, on the entities of one type, or on all of them with Entity Auto:
+//
+//   { Name s; NameOfCoef u; Function BF_HcurlLegendre; Order p;
+//     Support Omega; Entity Auto; }
+//
+// with BF_H1Legendre (p >= 1), BF_HcurlLegendre, BF_HdivLegendre and
+// BF_L2Legendre (p >= 0), and their exterior derivatives BF_GradH1Legendre,
+// BF_CurlHcurlLegendre and BF_DivHdivLegendre. Entity NodesOf[...],
+// EdgesOf[...], FacetsOf[...] or VolumesOf[...] gives the functions of the
+// space borne by these entities only, so that the order can differ from one
+// type of entity or from one region to the other. A constraint on the
+// coefficient (NameOfCoef u) applies to all the functions, each on its type
+// of entity; the value of an Assign or Init constraint is given to the
+// functions of lowest order (the nodal functions of H1, the Whitney functions
+// of H(curl) and H(div)) and the other functions are set to zero.
+//
 // A basis function of GetDP is one function per entity (node, edge, facet or
-// volume), whereas the number of functions per entity grows with the order.
-// The functions are thus named after the type of their entity and their
-// position among the functions of that entity in Gmsh, which does not depend
-// on the order of the space:
+// volume), whereas the number of functions per entity grows with the order:
+// such a basis function stands for one basis function per function of an
+// entity, named s, s_E1, s_F0, ..., with the coefficients u, u_E1, u_F0, ...
+// (the first one keeps the given names). These functions can also be given one
+// by one, by the type of their entity and their position among the functions
+// of that entity in Gmsh, which does not depend on the order of the space:
 //
 //   BF_H1Legendre_N0       function of a node          (Entity NodesOf)
 //   BF_H1Legendre_E<k>     k-th function of an edge    (Entity EdgesOf)
@@ -22,16 +41,17 @@
 //   BF_HdivLegendre_F<k>, BF_HdivLegendre_V<k>
 //   BF_L2Legendre_V<k>     k-th function of an element (Entity VolumesOf)
 //
-// (or BF_H1Legendre_E_<k>, etc., as given by BF_H1Legendre_E~{k} in a loop),
-// with their exterior derivatives BF_GradH1Legendre_..., BF_CurlHcurlLegendre_...
-// and BF_DivHdivLegendre_...
-//
-// The triangular and quadrangular facets do not bear the same functions, nor
-// the same number of functions for a given order, and neither do the elements
-// of different shapes. On meshes with several shapes the functions can be
-// restricted to the entities of one shape, with FTri<k> and FQua<k> for the
-// facets, and VTet<k>, VHex<k> and VPri<k> for the volumes (and VLin<k>,
-// VTri<k> and VQua<k> for the elements of L2), e.g. BF_HcurlLegendre_FQua<k>.
+// (or BF_H1Legendre_E_<k>, etc., as given by BF_H1Legendre_E~{k} in a loop).
+// The triangular and quadrangular facets do not bear the same number of
+// functions for a given order, and neither do the elements of different
+// shapes: in a space of a given order, the function at a given position is
+// only borne by the entities that have it at that order. Given one by one,
+// the functions can be restricted to the entities of one shape, with FTri<k>
+// and FQua<k> for the facets, and VTet<k>, VHex<k> and VPri<k> for the volumes
+// (and VLin<k>, VTri<k> and VQua<k> for the elements of L2), e.g.
+// BF_L2Legendre_VTet<k>: this is only needed for a space whose order differs
+// from one shape to the other (e.g. the divergence of the functions of H(div)
+// of order p, of order p - 1 on the tetrahedra and p on the other shapes).
 //
 // The functions of an entity are sorted by increasing order: the space of
 // order p is made of the n first functions of each entity, with n given by
@@ -323,6 +343,9 @@ namespace {
     // there is none), and whether it is known to be in the kernel of the
     // derivative
     virtual int order(int type, int numNodes, int position, bool &kernel) = 0;
+    // the number of functions, in the space of the given order, of an entity
+    // of the given type, with the given number of nodes if it is a facet
+    virtual int count(int type, int numNodes, int order) = 0;
   };
 
   // E is the type of the functions: Dual for the scalar functions of H1 and
@@ -396,6 +419,21 @@ namespace {
         return p;
       }
       return -1;
+    }
+
+    int count(int type, int numNodes, int order)
+    {
+      if(_space == L2) type = _shape->dim;
+      HierarchicalBasis *b =
+        HierarchicalBasis::create(spaceName[_space][0], _shape->type, order);
+      if(!b) return 0;
+      // the first entity, or the first facet with that number of nodes
+      int entity = (type == 2 && numNodes == 3) ? b->getNumQuadFace() : 0;
+      int n = 0;
+      for(auto &f : b->getFunctions())
+        if(f.type == type && f.entity == entity) n++;
+      delete b;
+      return n;
     }
 
   private:
@@ -718,24 +756,187 @@ namespace {
 
 #endif
 
-bool BF_GetLegendre(const char *Name, void (**Function)(),
-                    void (**dFunction)(), void (**dInvFunction)(),
-                    double *Order, int *ElementType, int *Orient,
-                    int *EntityFilter)
+#if defined(HAVE_GMSH_HIERARCHICAL) && defined(HAVE_KERNEL)
+
+namespace {
+
+  // the first type of entity bearing functions: the nodes for H1, the edges
+  // for H(curl), the facets for H(div) and the elements for L2
+  int firstType(Space space) { return (space == L2) ? 3 : (int)space; }
+
+  // the shape giving the functions of the triangular (numNodes = 3) or
+  // quadrangular facets: H(div) has no functions in the plane
+  int facetShape(Space space, int numNodes)
+  {
+    if(space == HDIV) return (numNodes == 4) ? HEX : TET;
+    return (numNodes == 4) ? QUA : TRI;
+  }
+
+  // Set the function at the given position on the entities of the given type,
+  // borne by the elements of the given types (the order of the function is
+  // that on the given shape, with numNodes nodes per facet)
+  bool setFunction(Space space, int derivative, int type, int position,
+                   int elementType, int entityFilter, int shape, int numNodes,
+                   struct BasisFunction *bf)
+  {
+    Family *family = getFamily(space, shape);
+    bool kernel = false;
+    int order = family ? family->order(type, numNodes, position, kernel) : -1;
+    if(order < 0) return false;
+    void (*f)() = getFunction(space, 0, type, position);
+    // L2 has no derivative: the function itself, as BF_Volume
+    void (*df)() = (space == L2) ? f : getFunction(space, 1, type, position);
+    if(!f || !df) return false;
+    bf->Function = derivative ? df : f;
+    bf->dFunction = (space == L2) ? f : derivative ? (void (*)())BF_Zero : df;
+    bf->dInvFunction = derivative ? f : (void (*)())BF_Zero;
+    // The orders of GetDP. For H1 and L2, the order in Gmsh. For H(curl) and
+    // H(div) on the simplices, 0.5 for the Whitney functions, p for the
+    // functions of order p in the kernel of the derivative (the gradients and
+    // the curls), which complete the polynomials of degree p, and p - 0.5 for
+    // the other functions of order p (see the function space types in Gmsh);
+    // on the other shapes, where the orders of GetDP do not match those of
+    // Gmsh, p + 0.5. One order less for the derivatives.
+    double o;
+    if(space == H1 || space == L2)
+      o = order;
+    else if(shapes[shape].simplex)
+      o = kernel ? order : (order > 0) ? order - 0.5 : 0.5;
+    else
+      o = order + 0.5;
+    if(derivative) o = (o >= 1.) ? o - 1. : 0.;
+    bf->Order = o;
+    bf->ElementType = elementType;
+    // the functions are oriented here, from the tags of the nodes
+    bf->Orient = 0;
+    bf->EntityFilter = entityFilter;
+    bf->HigherOrder = (type != firstType(space) || position > 0);
+    return true;
+  }
+
+} // namespace
+
+#endif
+
+// the names of the spaces: the space and whether it is the derivative
+static const struct {
+  const char *name;
+  int space, derivative;
+} legendreNames[] = {{"BF_H1Legendre", 0, 0},    {"BF_GradH1Legendre", 0, 1},
+                     {"BF_HcurlLegendre", 1, 0}, {"BF_CurlHcurlLegendre", 1, 1},
+                     {"BF_HdivLegendre", 2, 0},  {"BF_DivHdivLegendre", 2, 1},
+                     {"BF_L2Legendre", 3, 0}};
+
+bool BF_IsLegendreSpace(const char *Name)
 {
-  // the names of the functions: the space and whether it is the derivative
-  static const struct {
-    const char *prefix;
-    int space, derivative;
-  } names[] = {{"BF_H1Legendre_", 0, 0},        {"BF_GradH1Legendre_", 0, 1},
-               {"BF_HcurlLegendre_", 1, 0},     {"BF_CurlHcurlLegendre_", 1, 1},
-               {"BF_HdivLegendre_", 2, 0},      {"BF_DivHdivLegendre_", 2, 1},
-               {"BF_L2Legendre_", 3, 0}};
+  for(auto &n : legendreNames)
+    if(!strcmp(Name, n.name)) return true;
+  return false;
+}
+
+bool BF_GetLegendreSpace(const char *Name, int Order, int EntityType,
+                         std::vector<struct BasisFunction> &Functions)
+{
+  Functions.clear();
+  int sp = -1, derivative = 0;
+  for(auto &n : legendreNames) {
+    if(!strcmp(Name, n.name)) {
+      sp = n.space;
+      derivative = n.derivative;
+    }
+  }
+  if(sp < 0 || EntityType < 0 || EntityType > 3) return false;
+
+#if defined(HAVE_GMSH_HIERARCHICAL) && defined(HAVE_KERNEL)
+  Space space = (Space)sp;
+  if(Order < ((space == H1) ? 1 : 0) || Order > MAX_ORDER) {
+    Message::Error("Wrong order %d for '%s' (%d to %d)", Order, Name,
+                   (space == H1) ? 1 : 0, MAX_ORDER);
+    return false;
+  }
+  const int type = EntityType;
+  // no functions on the entities of that type
+  if(type < firstType(space)) return true;
+
+  // the shapes of the entities of that type, with the number of nodes of the
+  // facets, the shape giving their functions and the elements bearing them
+  const int *e = elementTypes;
+  struct Bearer {
+    int shape, numNodes, elementType, entityFilter, count;
+  };
+  std::vector<Bearer> bearers;
+  if(space == L2) {
+    for(int s = LIN; s <= PRI; s++)
+      bearers.push_back({s, 0, e[s], ENTITYFILTER_NONE, 0});
+  }
+  else if(type == 0) {
+    // no function on the high order nodes of an element
+    bearers.push_back(
+      {LIN, 0, e[PNT] | e[LIN] | e[TRI] | e[QUA] | e[TET] | e[HEX] | e[PRI],
+       ENTITYFILTER_VERTICES, 0});
+  }
+  else if(type == 1) {
+    bearers.push_back(
+      {LIN, 0, e[LIN] | e[TRI] | e[QUA] | e[TET] | e[HEX] | e[PRI],
+       ENTITYFILTER_NONE, 0});
+  }
+  else if(type == 2) {
+    bearers.push_back({facetShape(space, 3), 3, e[TRI] | e[TET] | e[PRI],
+                       ENTITYFILTER_TRIANGLES, 0});
+    bearers.push_back({facetShape(space, 4), 4, e[QUA] | e[HEX] | e[PRI],
+                       ENTITYFILTER_QUADRANGLES, 0});
+  }
+  else {
+    for(int s = TET; s <= PRI; s++)
+      bearers.push_back({s, 0, e[s], ENTITYFILTER_NONE, 0});
+  }
+  int n = 0;
+  for(auto &b : bearers) {
+    Family *family = getFamily(space, b.shape);
+    b.count = family ? family->count(type, b.numNodes, Order) : 0;
+    n = std::max(n, b.count);
+  }
+
+  // a function is borne by the entities with at least that many functions at
+  // that order: the triangular and quadrangular facets do not bear the same
+  // number of functions, nor do the elements of different shapes
+  for(int position = 0; position < n; position++) {
+    int elementType = 0, entityFilter = ENTITYFILTER_NONE, num = 0;
+    const Bearer *first = nullptr;
+    for(auto &b : bearers) {
+      if(position >= b.count) continue;
+      elementType |= b.elementType;
+      entityFilter = b.entityFilter;
+      if(!first) first = &b;
+      num++;
+    }
+    if(num > 1) entityFilter = ENTITYFILTER_NONE;
+    struct BasisFunction bf;
+    if(!setFunction(space, derivative, type, position, elementType,
+                    entityFilter, first->shape, first->numNodes, &bf)) {
+      Message::Error("No function at position %d for '%s' of order %d",
+                     position, Name, Order);
+      return false;
+    }
+    Functions.push_back(bf);
+  }
+  return true;
+#else
+  (void)derivative;
+  (void)Order;
+  Message::Error("'%s' requires the HierarchicalBasis module of Gmsh", Name);
+  return false;
+#endif
+}
+
+bool BF_GetLegendre(const char *Name, struct BasisFunction *Function)
+{
   const char *s = nullptr;
   int sp = 0, derivative = 0;
-  for(auto &n : names) {
-    if(!strncmp(Name, n.prefix, strlen(n.prefix))) {
-      s = Name + strlen(n.prefix);
+  for(auto &n : legendreNames) {
+    size_t l = strlen(n.name);
+    if(!strncmp(Name, n.name, l) && Name[l] == '_') {
+      s = Name + l + 1;
       sp = n.space;
       derivative = n.derivative;
     }
@@ -759,13 +960,10 @@ bool BF_GetLegendre(const char *Name, void (**Function)(),
   for(const char *c = s; *c; c++)
     if(*c < '0' || *c > '9') return false;
   int position = atoi(s);
-  *EntityFilter = ENTITYFILTER_NONE;
 
 #if defined(HAVE_GMSH_HIERARCHICAL) && defined(HAVE_KERNEL)
   Space space = (Space)sp;
-  // the entities bearing functions: all of them for H1, from the edges for
-  // H(curl), from the facets for H(div), and the elements for L2
-  if(type < ((space == L2) ? 3 : (int)space)) {
+  if(type < firstType(space)) {
     Message::Error("No function '%s': wrong type of entity for this space",
                    Name);
     return false;
@@ -779,83 +977,52 @@ bool BF_GetLegendre(const char *Name, void (**Function)(),
     Message::Error("No function '%s': wrong shape for this entity", Name);
     return false;
   }
-
-  // the functions are defined on the entity bearing them and on the elements
-  // it bounds
+  // the function is defined on the entity bearing it and on the elements it
+  // bounds, whatever their shape if none is given; its order is then that on
+  // the simplices
   const int *e = elementTypes;
-  int shape; // a shape giving the order of the function
-  if(space == L2) {
-    *ElementType = tag ? e[tag] : (e[LIN] | e[TRI] | e[QUA] | e[TET] | e[HEX] |
-                                   e[PRI]);
-    // the order of a function depends on the shape of the element
-    shape = tag ? tag : TET;
+  int elementType, entityFilter = ENTITYFILTER_NONE, shape;
+  if(tag && type == 3) {
+    elementType = e[tag];
+    shape = tag;
+  }
+  else if(tag == TRI) {
+    elementType = e[TRI] | e[TET] | e[PRI];
+    entityFilter = ENTITYFILTER_TRIANGLES;
+    shape = facetShape(space, 3);
+  }
+  else if(tag == QUA) {
+    elementType = e[QUA] | e[HEX] | e[PRI];
+    entityFilter = ENTITYFILTER_QUADRANGLES;
+    shape = facetShape(space, 4);
+  }
+  else if(space == L2) {
+    elementType = e[LIN] | e[TRI] | e[QUA] | e[TET] | e[HEX] | e[PRI];
+    shape = TET;
   }
   else if(type == 0) {
-    *ElementType =
-      e[PNT] | e[LIN] | e[TRI] | e[QUA] | e[TET] | e[HEX] | e[PRI];
+    elementType = e[PNT] | e[LIN] | e[TRI] | e[QUA] | e[TET] | e[HEX] | e[PRI];
     // no function on the high order nodes of an element
-    *EntityFilter = ENTITYFILTER_VERTICES;
+    entityFilter = ENTITYFILTER_VERTICES;
     shape = LIN;
   }
   else if(type == 1) {
-    *ElementType = e[LIN] | e[TRI] | e[QUA] | e[TET] | e[HEX] | e[PRI];
+    elementType = e[LIN] | e[TRI] | e[QUA] | e[TET] | e[HEX] | e[PRI];
     shape = LIN;
   }
   else if(type == 2) {
-    if(tag == TRI) {
-      *ElementType = e[TRI] | e[TET] | e[PRI];
-      *EntityFilter = ENTITYFILTER_TRIANGLES;
-    }
-    else if(tag == QUA) {
-      *ElementType = e[QUA] | e[HEX] | e[PRI];
-      *EntityFilter = ENTITYFILTER_QUADRANGLES;
-    }
-    else
-      *ElementType = e[TRI] | e[QUA] | e[TET] | e[HEX] | e[PRI];
-    // H(div) has no functions in the plane
-    if(space == HDIV)
-      shape = (tag == QUA) ? HEX : TET;
-    else
-      shape = (tag == QUA) ? QUA : TRI;
+    elementType = e[TRI] | e[QUA] | e[TET] | e[HEX] | e[PRI];
+    shape = facetShape(space, 3);
   }
   else {
-    *ElementType = tag ? e[tag] : (e[TET] | e[HEX] | e[PRI]);
-    shape = tag ? tag : TET;
+    elementType = e[TET] | e[HEX] | e[PRI];
+    shape = TET;
   }
-
-  Family *family = getFamily(space, shape);
-  bool kernel = false;
-  int order =
-    family ? family->order(type, (tag == QUA) ? 4 : 3, position, kernel) : -1;
-  if(order < 0) {
+  if(!setFunction(space, derivative, type, position, elementType, entityFilter,
+                  shape, (tag == QUA) ? 4 : 3, Function)) {
     Message::Error("No function '%s' up to order %d", Name, MAX_ORDER);
     return false;
   }
-  void (*f)() = getFunction(space, 0, type, position);
-  // L2 has no derivative: the function itself, as BF_Volume
-  void (*df)() = (space == L2) ? f : getFunction(space, 1, type, position);
-  if(!f || !df) return false;
-  *Function = derivative ? df : f;
-  *dFunction = (space == L2) ? f : derivative ? (void (*)())BF_Zero : df;
-  *dInvFunction = derivative ? f : (void (*)())BF_Zero;
-  // The orders of GetDP. For H1 and L2, the order in Gmsh. For H(curl) and
-  // H(div) on the simplices, 0.5 for the Whitney functions, p for the functions
-  // of order p in the kernel of the derivative (the gradients and the curls),
-  // which complete the polynomials of degree p, and p - 0.5 for the other
-  // functions of order p (see the function space types in Gmsh); on the other
-  // shapes, where the orders of GetDP do not match those of Gmsh, p + 0.5. One
-  // order less for the derivatives.
-  double o;
-  if(space == H1 || space == L2)
-    o = order;
-  else if(shapes[shape].simplex)
-    o = kernel ? order : (order > 0) ? order - 0.5 : 0.5;
-  else
-    o = order + 0.5;
-  if(derivative) o = (o >= 1.) ? o - 1. : 0.;
-  *Order = o;
-  // the functions are oriented here, from the tags of the nodes
-  *Orient = 0;
   return true;
 #else
   (void)sp;

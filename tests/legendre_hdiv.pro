@@ -2,7 +2,7 @@
 // (q, t) - (phi, div t) = - <phi, t . n>, (div q, v) = (f, v), with H(div) of
 // order p; the divergence of the functions of order p has the order p on the
 // hexahedra and prisms, and p - 1 on the tetrahedra (0 if p = 0)
-DefineConstant[ p = 1, dim = 3, whitney = 0 ];
+DefineConstant[ p = 1, dim = 3 ];
 Include "legendre_common.pro";
 Function {
   If(per)
@@ -17,64 +17,21 @@ Function {
     f[] = 6*phiex[];
   EndIf
 }
-// number of functions per triangle and quadrangle (after the Whitney
-// function), tetrahedron, hexahedron and prism
-nTri = (p+1)*(p+2)/2 - 1; nQua = (p+1)^2 - 1;
-nTet = (p-1)*(p+1)*(p+2)/2; nHex = 3*p*(p+1)^2;
-nPri = p*(p+1)*(3*p+4)/2;
 // number of functions of L2
 lTet = (p > 0) ? p*(p+1)*(p+2)/6 : 1; lHex = (p+1)^3;
 lPri = (p+1)^2*(p+2)/2;
 FunctionSpace {
   { Name Hdiv; Type Form2;
     BasisFunction {
-      If(whitney)
-        { Name sf; NameOfCoef qf; Function BF_Facet; Support Dom; Entity FacetsOf[All]; }
-      Else
-        { Name sf; NameOfCoef qf; Function BF_HdivLegendre_F0; Support Dom; Entity FacetsOf[All]; }
-      EndIf
-      If(nTri > 0)
-        For k In {1:nTri}
-          { Name st~{k}; NameOfCoef qt~{k}; Function BF_HdivLegendre_FTri~{k}; Support Dom; Entity FacetsOf[All]; }
-        EndFor
-      EndIf
-      If(nQua > 0)
-        For k In {1:nQua}
-          { Name sq~{k}; NameOfCoef qq~{k}; Function BF_HdivLegendre_FQua~{k}; Support Dom; Entity FacetsOf[All]; }
-        EndFor
-      EndIf
-      If(nTet > 0)
-        For k In {0:nTet-1}
-          { Name svt~{k}; NameOfCoef qvt~{k}; Function BF_HdivLegendre_VTet~{k}; Support Dom; Entity VolumesOf[All]; }
-        EndFor
-      EndIf
-      If(nHex > 0)
-        For k In {0:nHex-1}
-          { Name svh~{k}; NameOfCoef qvh~{k}; Function BF_HdivLegendre_VHex~{k}; Support Dom; Entity VolumesOf[All]; }
-        EndFor
-      EndIf
-      If(nPri > 0)
-        For k In {0:nPri-1}
-          { Name svp~{k}; NameOfCoef qvp~{k}; Function BF_HdivLegendre_VPri~{k}; Support Dom; Entity VolumesOf[All]; }
-        EndFor
-      EndIf
+      { Name s; NameOfCoef q; Function BF_HdivLegendre; Order p; Support Dom; Entity Auto; }
     }
     Constraint {
       If(link)
-        { NameOfCoef qf; EntityType FacetsOf; NameOfConstraint Periodic; }
-        If(nTri > 0)
-          For k In {1:nTri}
-            { NameOfCoef qt~{k}; EntityType FacetsOf; NameOfConstraint Periodic; }
-          EndFor
-        EndIf
-        If(nQua > 0)
-          For k In {1:nQua}
-            { NameOfCoef qq~{k}; EntityType FacetsOf; NameOfConstraint Periodic; }
-          EndFor
-        EndIf
+        { NameOfCoef q; EntityType Auto; NameOfConstraint Periodic; }
       EndIf
     }
   }
+  // (the order of L2 depends on the shape: the functions are given one by one)
   { Name L2; Type Form3;
     BasisFunction {
       If(lTet > 0)

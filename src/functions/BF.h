@@ -6,6 +6,7 @@
 #ifndef BF_H
 #define BF_H
 
+#include <vector>
 #include "ProData.h"
 
 #define BF_ARG                                                                 \
@@ -301,16 +302,26 @@ void BF_DivWire(BF_ARG);
 #undef BF_ARG
 
 /* Legendre basis functions: hierarchical functions of Gmsh, of arbitrary
-   order, for H1, H(curl), H(div) and L2 (BF_H1Legendre_N0,
-   BF_HcurlLegendre_E<k>, BF_HdivLegendre_F<k>, BF_L2Legendre_V<k>, etc., and
-   their derivatives; see BF_Legendre.cpp): get the functions and the data of
-   the basis function of the given name (EntityFilter gives the entities
-   bearing the function, see ENTITYFILTER_); return false if it is not the name
-   of such a function */
+   order, for H1, H(curl), H(div) and L2 (see BF_Legendre.cpp) */
 
-bool BF_GetLegendre(const char *Name, void (**Function)(),
-                    void (**dFunction)(), void (**dInvFunction)(),
-                    double *Order, int *ElementType, int *Orient,
-                    int *EntityFilter);
+struct BasisFunction;
+
+/* whether Name is the name of a space (BF_H1Legendre, BF_HcurlLegendre,
+   BF_HdivLegendre, BF_L2Legendre) or of its derivative (BF_GradH1Legendre,
+   BF_CurlHcurlLegendre, BF_DivHdivLegendre) */
+bool BF_IsLegendreSpace(const char *Name);
+
+/* get the functions of the space of the given order borne by the nodes,
+   edges, facets or volumes (EntityType 0, 1, 2 or 3), in the order of their
+   position on the entity: their Function, dFunction, dInvFunction, Order,
+   ElementType, Orient, EntityFilter and HigherOrder are set; return false on
+   error */
+bool BF_GetLegendreSpace(const char *Name, int Order, int EntityType,
+                         std::vector<struct BasisFunction> &Functions);
+
+/* get the function of the given name (BF_H1Legendre_N0, BF_HcurlLegendre_E<k>,
+   BF_HdivLegendre_F<k>, BF_L2Legendre_V<k>, etc., and their derivatives);
+   return false if it is not the name of such a function */
+bool BF_GetLegendre(const char *Name, struct BasisFunction *Function);
 
 #endif

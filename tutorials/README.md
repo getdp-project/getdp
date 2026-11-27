@@ -26,6 +26,9 @@ order:
    magnetically coupled circuits, stranded coils, ferromagnetic laminations.
 10. **Gauging**: Tree-cotree vs. Coulomb gauge, 3D transformer model with
    global coil basis functions.
+11. **High order**: Hierarchical basis functions of arbitrary order, defined
+   automatically, by type of entity or function by function; error with
+   respect to an exact solution.
 
 Each [tutorial directory](https://gitlab.onelab.info/getdp/getdp/tree/master/tutorials/)
 contains a `.geo` file (geometry and mesh), a `.pro` file (finite element model)

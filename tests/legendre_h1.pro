@@ -33,74 +33,31 @@ Function {
     f[] = 7*uex[];
   EndIf
 }
-// number of functions per edge, triangle, quadrangle, tetrahedron, hexahedron
-// and prism
-nE = p-1; nTri = (p-2)*(p-1)/2; nQua = (p-1)^2;
-nTet = (p-3)*(p-2)*(p-1)/6; nHex = (p-1)^3; nPri = (p-2)*(p-1)^2/2;
 FunctionSpace {
   { Name H; Type Form0;
     BasisFunction {
       If(node == 0)
-        { Name sn; NameOfCoef un; Function BF_H1Legendre_N0; Support Dom; Entity NodesOf[All]; }
-      ElseIf(node == 1)
-        // first order functions, whatever the order of the mesh
-        { Name sn; NameOfCoef un; Function BF_Node_1N; Support Dom; Entity NodesOf[All]; }
+        { Name s; NameOfCoef u; Function BF_H1Legendre; Order p; Support Dom; Entity Auto; }
       Else
-        // functions of the order of the mesh
-        { Name sn; NameOfCoef un; Function BF_Node; Support Dom; Entity NodesOf[All]; }
-      EndIf
-      If(nE > 0)
-        For k In {0:nE-1}
-          { Name se~{k}; NameOfCoef ue~{k}; Function BF_H1Legendre_E~{k}; Support Dom; Entity EdgesOf[All]; }
-        EndFor
-      EndIf
-      If(nTri > 0)
-        For k In {0:nTri-1}
-          { Name st~{k}; NameOfCoef ut~{k}; Function BF_H1Legendre_FTri~{k}; Support Dom; Entity FacetsOf[All]; }
-        EndFor
-      EndIf
-      If(nQua > 0)
-        For k In {0:nQua-1}
-          { Name sq~{k}; NameOfCoef uq~{k}; Function BF_H1Legendre_FQua~{k}; Support Dom; Entity FacetsOf[All]; }
-        EndFor
-      EndIf
-      If(nTet > 0)
-        For k In {0:nTet-1}
-          { Name svt~{k}; NameOfCoef uvt~{k}; Function BF_H1Legendre_VTet~{k}; Support Dom; Entity VolumesOf[All]; }
-        EndFor
-      EndIf
-      If(nHex > 0)
-        For k In {0:nHex-1}
-          { Name svh~{k}; NameOfCoef uvh~{k}; Function BF_H1Legendre_VHex~{k}; Support Dom; Entity VolumesOf[All]; }
-        EndFor
-      EndIf
-      If(nPri > 0)
-        For k In {0:nPri-1}
-          { Name svp~{k}; NameOfCoef uvp~{k}; Function BF_H1Legendre_VPri~{k}; Support Dom; Entity VolumesOf[All]; }
-        EndFor
+        // nodal functions (the first order ones whatever the order of the mesh
+        // if node == 1, those of the order of the mesh otherwise), with the
+        // functions of the space borne by the edges, the facets and the volumes
+        If(node == 1)
+          { Name s; NameOfCoef u; Function BF_Node_1N; Support Dom; Entity NodesOf[All]; }
+        Else
+          { Name s; NameOfCoef u; Function BF_Node; Support Dom; Entity NodesOf[All]; }
+        EndIf
+        { Name se; NameOfCoef ue; Function BF_H1Legendre; Order p; Support Dom; Entity EdgesOf[All]; }
+        { Name sf; NameOfCoef uf; Function BF_H1Legendre; Order p; Support Dom; Entity FacetsOf[All]; }
+        { Name sv; NameOfCoef uv; Function BF_H1Legendre; Order p; Support Dom; Entity VolumesOf[All]; }
       EndIf
     }
     Constraint {
       If(link)
-        { NameOfCoef un; EntityType NodesOf; NameOfConstraint Periodic; }
-        If(nE > 0)
-          For k In {0:nE-1}
-            { NameOfCoef ue~{k}; EntityType EdgesOf; NameOfConstraint Periodic; }
-          EndFor
-        EndIf
-        If(dim == 3)
-          If(nTri > 0)
-            For k In {0:nTri-1}
-              { NameOfCoef ut~{k}; EntityType FacetsOf; NameOfConstraint Periodic; }
-            EndFor
-          EndIf
-        EndIf
-        If(dim == 3)
-          If(nQua > 0)
-            For k In {0:nQua-1}
-              { NameOfCoef uq~{k}; EntityType FacetsOf; NameOfConstraint Periodic; }
-            EndFor
-          EndIf
+        { NameOfCoef u; EntityType Auto; NameOfConstraint Periodic; }
+        If(node)
+          { NameOfCoef ue; EntityType Auto; NameOfConstraint Periodic; }
+          { NameOfCoef uf; EntityType Auto; NameOfConstraint Periodic; }
         EndIf
       EndIf
     }
