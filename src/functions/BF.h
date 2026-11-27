@@ -324,4 +324,13 @@ bool BF_GetLegendreSpace(const char *Name, int Order, int EntityType,
    return false if it is not the name of such a function */
 bool BF_GetLegendre(const char *Name, struct BasisFunction *Function);
 
+/* whether Function is one of the Legendre functions */
+bool BF_IsLegendre(void (*Function)());
+
+/* The values of the Legendre functions in the reference element only depend,
+   for the elements of one type, on the orientation of the edges and facets,
+   i.e. on the order of the nodes of the element: get a number identifying
+   that order */
+unsigned long long BF_GetLegendreOrientation(struct Element *Element);
+
 #endif

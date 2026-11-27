@@ -267,6 +267,9 @@ struct _Assembly {
   _Storage rows;
   std::unordered_map<int, std::map<int, PetscScalar> > nonLocalRows;
   bool isNew = false; // the PETSc matrix was just created: preallocate it
+  // the matrix that this one replaces, kept until the first assembly if it
+  // can be reused (see _assembleInPrevious)
+  Mat previous = PETSC_NULL;
 };
 
 static std::map<Mat, _Assembly> _assembly;
@@ -290,6 +293,9 @@ static _Assembly &_getAssembly(Mat M)
 
 static void _dropAssembly(Mat M)
 {
+  auto it = _assembly.find(M);
+  if(it != _assembly.end() && it->second.previous)
+    _try(MatDestroy(&it->second.previous));
   _assembly.erase(M);
   _lastMat = PETSC_NULL;
 }
@@ -310,9 +316,10 @@ static int _ownerOf(const PetscInt *ranges, int size, PetscInt i)
 
 static void _setRow(Mat M, PetscInt i, _Storage::Row &r)
 {
-  if(r.cols.empty()) return;
-  _try(MatSetValues(M, 1, &i, (PetscInt)r.cols.size(), r.cols.data(),
-                    r.vals.data(), ADD_VALUES));
+  const std::vector<PetscInt> &cols = r.cols();
+  if(cols.empty()) return;
+  _try(MatSetValues(M, 1, &i, (PetscInt)cols.size(), cols.data(),
+                    r.vals().data(), ADD_VALUES));
 }
 
 // Collective: sends the entries of the rows owned by other ranks (the rows of
@@ -352,10 +359,12 @@ static void _gatherRows(Mat M)
     }
     for(auto &row : S.others()) {
       int owner = _ownerOf(ranges, size, row.first);
-      for(std::size_t k = 0; k < row.second.cols.size(); k++) {
+      const std::vector<PetscInt> &cols = row.second.cols();
+      const std::vector<PetscScalar> &vals = row.second.vals();
+      for(std::size_t k = 0; k < cols.size(); k++) {
         idx[owner].push_back(row.first);
-        idx[owner].push_back(row.second.cols[k]);
-        val[owner].push_back(row.second.vals[k]);
+        idx[owner].push_back(cols[k]);
+        val[owner].push_back(vals[k]);
       }
     }
     S.others().clear();
@@ -382,7 +391,7 @@ static void _preallocate(Mat M, _Storage &S)
   for(PetscInt i = S.first(); i < S.last(); i++) {
     // PETSc (I)LU does not like matrices with empty diagonals
     if(size == 1 && i < nc) S.add(i, i, 0.);
-    for(PetscInt j : S.row(i).cols) {
+    for(PetscInt j : S.row(i).cols()) {
       if(j >= cfirst && j < clast)
         dnnz[i - S.first()]++;
       else
@@ -395,12 +404,75 @@ static void _preallocate(Mat M, _Storage &S)
   _try(MatSetOption(M, MAT_NEW_NONZERO_ALLOCATION_ERR, PETSC_FALSE));
 }
 
+// When a system is generated again (nonlinear iterations, time steps) its
+// matrix is created anew, so that it only holds the entries of the new
+// assembly; but most of the time the new matrix has exactly the nonzero
+// pattern of the previous one. The previous matrix (a sequential AIJ matrix)
+// is then kept until the new one is assembled: if the rows of the storage
+// have the columns of its rows, their values are copied in its array, which
+// avoids the search of MatSetValues for each entry, and it becomes the matrix
+// again. Returns false otherwise, the previous matrix being destroyed.
+static bool _assembleInPrevious(gMatrix *G)
+{
+  _Assembly &A = _getAssembly(G->M);
+  _Storage &S = A.rows;
+  Mat P = A.previous;
+  PetscInt nr, nc, pr, pc, n = 0;
+  _try(MatGetSize(G->M, &nr, &nc));
+  _try(MatGetSize(P, &pr, &pc));
+  bool same = (nr == pr && nc == pc && S.first() == 0 && S.last() == nr);
+  if(same) {
+    // (as in _preallocate)
+    for(PetscInt i = 0; i < nr; i++)
+      if(i < nc) S.add(i, i, 0.);
+    const PetscInt *ia, *ja;
+    PetscBool done = PETSC_FALSE;
+    _try(MatGetRowIJ(P, 0, PETSC_FALSE, PETSC_FALSE, &n, &ia, &ja, &done));
+    same = (done && n == nr);
+    for(PetscInt i = 0; same && i < nr; i++) {
+      const std::vector<PetscInt> &cols = S.row(i).cols();
+      same = ((std::size_t)(ia[i + 1] - ia[i]) == cols.size() &&
+              (cols.empty() || !memcmp(ja + ia[i], cols.data(),
+                                       cols.size() * sizeof(PetscInt))));
+    }
+    if(same) {
+      PetscScalar *a;
+      _try(MatSeqAIJGetArray(P, &a));
+      for(PetscInt i = 0; i < nr; i++) {
+        const std::vector<PetscScalar> &vals = S.row(i).vals();
+        if(!vals.empty())
+          memcpy(a + ia[i], vals.data(), vals.size() * sizeof(PetscScalar));
+      }
+      _try(MatSeqAIJRestoreArray(P, &a));
+    }
+    _try(MatRestoreRowIJ(P, 0, PETSC_FALSE, PETSC_FALSE, &n, &ia, &ja, &done));
+  }
+  if(!same) {
+    _try(MatDestroy(&A.previous));
+    return false;
+  }
+  // the previous matrix replaces the new, empty one
+  Mat fresh = G->M;
+  _Assembly moved = std::move(A);
+  moved.previous = PETSC_NULL;
+  moved.isNew = false;
+  moved.rows.clear();
+  _assembly.erase(fresh);
+  _lastMat = PETSC_NULL;
+  _try(MatDestroy(&fresh));
+  G->M = P;
+  _assembly[P] = std::move(moved);
+  return true;
+}
+
 // Gives the entries added to the storage of M since the last hand-over to the
 // PETSc matrix (collective).
-static void _handOver(Mat M)
+static void _handOver(gMatrix *G)
 {
+  _gatherRows(G->M);
+  if(_getAssembly(G->M).previous && _assembleInPrevious(G)) return;
+  Mat M = G->M;
   _Assembly &A = _getAssembly(M);
-  _gatherRows(M);
   if(A.isNew) _preallocate(M, A.rows);
   A.isNew = false;
   for(PetscInt i = A.rows.first(); i < A.rows.last(); i++)
@@ -817,8 +889,20 @@ void LinAlg_RecreateMatrix(gMatrix *M, gSolver *Solver, int n, int m)
 {
   _Storage rows = std::move(_getAssembly(M->M).rows);
   rows.clear();
-  LinAlg_DestroyMatrix(M);
+  // an assembled sequential AIJ matrix is kept until the new one is assembled
+  // (see _assembleInPrevious)
+  Mat previous = PETSC_NULL;
+  PetscBool seq = PETSC_FALSE, assembled = PETSC_FALSE;
+  _try(PetscObjectTypeCompare((PetscObject)M->M, MATSEQAIJ, &seq));
+  if(seq) _try(MatAssembled(M->M, &assembled));
+  if(seq && assembled) {
+    previous = M->M;
+    _dropAssembly(previous);
+  }
+  else
+    LinAlg_DestroyMatrix(M);
   LinAlg_CreateMatrix(M, Solver, n, m);
+  _getAssembly(M->M).previous = previous;
   _Storage &S = _getAssembly(M->M).rows;
   if(rows.first() == S.first() && rows.last() == S.last()) S = std::move(rows);
 }
@@ -1420,6 +1504,38 @@ void LinAlg_AddDoubleInMatrix(double d, gMatrix *M, int i, int j)
   _addInMatrix(M, i, j, d);
 }
 
+void LinAlg_AddRowInMatrix(gMatrix *M, int i, int n, const int *cols,
+                           const double *re, const double *im)
+{
+  if(n <= 0 || !_addsRow(M, i)) return;
+  static std::vector<PetscInt> c;
+  static std::vector<PetscScalar> v;
+  c.resize(n);
+  v.resize(n);
+  for(int k = 0; k < n; k++) {
+    c[k] = cols[k];
+#if defined(PETSC_USE_COMPLEX)
+    v[k] = im ? (re[k] + PETSC_i * im[k]) : PetscScalar(re[k]);
+#else
+    v[k] = re[k];
+#endif
+  }
+  if(Current.DofData->DummyDof ||
+     (!Current.DofData->NonLocalEquations.empty() &&
+      Dof_IsNonLocalEquation(i))) {
+    // one entry at a time
+    int *DummyDof = Current.DofData->DummyDof;
+    for(int k = 0; k < n; k++) {
+      if(DummyDof && (DummyDof[i] == 1 || DummyDof[cols[k]] == 1) &&
+         i != cols[k])
+        continue;
+      _addInMatrix(M, i, cols[k], v[k]);
+    }
+    return;
+  }
+  _getAssembly(M->M).rows.row(i).addSorted(n, c.data(), v.data());
+}
+
 void LinAlg_AddComplexInMatrix(double d1, double d2, gMatrix *M, int i, int j,
                                int k, int l)
 {
@@ -1715,7 +1831,7 @@ void LinAlg_VectorNormInf(gVector *V1, double *norm)
 
 void LinAlg_AssembleMatrix(gMatrix *M)
 {
-  _handOver(M->M);
+  _handOver(M);
   Message::Barrier();
   _try(MatAssemblyBegin(M->M, MAT_FINAL_ASSEMBLY));
   _try(MatAssemblyEnd(M->M, MAT_FINAL_ASSEMBLY));

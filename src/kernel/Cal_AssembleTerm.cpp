@@ -9,6 +9,7 @@
 
 #include "ProData.h"
 #include "DofData.h"
+#include "Cal_AssembleTerm.h"
 #include "Message.h"
 #include <math.h>
 
@@ -70,6 +71,66 @@ int Cal_GetSeparateIndex(int TypeTimeDerivative)
   case NLEIG1DOF_: return 7;
   default: return 0;
   }
+}
+
+/* ------------------------------------------------------------------------ */
+/*  Terms assembled in a single matrix                                      */
+/* ------------------------------------------------------------------------ */
+
+// In the most common cases all that Function (Cal_AssembleTerm_NoDt, _DtDof,
+// _DtDtDof or _JacNL) does with a value is to assemble it, times a factor, in
+// one matrix (with Dof_AssembleInMat): in a static or a harmonic analysis
+// (with a single frequency and complex scalars), with separate matrices, or
+// for the Jacobian matrix. Returns
+// that matrix, with its vectors, and the (complex) factor in these cases, so
+// that elementary matrices can be assembled as a whole (see
+// Dof_AssembleElementaryMatrix), and false otherwise.
+bool Cal_GetAssembleTermMatrix(void (*Function)(struct Dof *, struct Dof *,
+                                                double *),
+                               gMatrix **Mat, gVector **Vec, List_T **Vecs,
+                               double Factor[2])
+{
+  int type = (Function == Cal_AssembleTerm_NoDt) ? 1 :
+             (Function == Cal_AssembleTerm_DtDof) ? 2 :
+             (Function == Cal_AssembleTerm_DtDtDof) ? 3 :
+             (Function == Cal_AssembleTerm_JacNL) ? 4 : 0;
+  if(!type) return false;
+  if(Current.NbrHar != 1 && !(Current.NbrHar == 2 && gSCALAR_SIZE == 2))
+    return false;
+  struct DofData *D = Current.DofData;
+  Factor[0] = 1.;
+  Factor[1] = 0.;
+  *Vecs = NULL;
+  if(type == 4) {
+    // the Jacobian matrix, without right-hand side
+    if(Current.TypeAssembly == ASSEMBLY_SEPARATE) return false;
+    if(Current.NbrHar == 1 && Current.TypeTime == TIME_NEWMARK) return false;
+    *Mat = &D->Jac;
+    *Vec = NULL;
+    return true;
+  }
+  if(Current.TypeAssembly == ASSEMBLY_SEPARATE) {
+    Cal_InitSeparate(type);
+    gMatrix *M[4] = {NULL, &D->M1, &D->M2, &D->M3};
+    gVector *m[4] = {NULL, &D->m1, &D->m2, &D->m3};
+    List_T *ms[4] = {NULL, D->m1s, D->m2s, D->m3s};
+    *Mat = M[type];
+    *Vec = m[type];
+    *Vecs = ms[type];
+    return true;
+  }
+  *Mat = &D->A;
+  *Vec = &D->b;
+  if(Current.NbrHar == 1)
+    return type == 1 &&
+           (Current.TypeTime == TIME_STATIC || Current.TypeTime == TIME_GEAR);
+  if(type == 2) {
+    Factor[0] = 0.;
+    Factor[1] = D->Val_Pulsation[0];
+  }
+  else if(type == 3)
+    Factor[0] = -SQU(D->Val_Pulsation[0]);
+  return true;
 }
 
 /* ------------------------------------------------------------------------ */

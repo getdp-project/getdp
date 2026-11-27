@@ -228,6 +228,11 @@ void Dof_UpdateAssignFixedDof(int D1, int D2, int NbrHar, double *Val,
                               double *Val2);
 void Dof_UpdateLinkDof(int D1, int D2, int NbrHar, double Value[], int D2_Link);
 
+void Dof_AssembleElementaryMatrix(int NbrEqu, struct Dof **Equ, int NbrDof,
+                                  struct Dof **Dof, int NbrHar,
+                                  const double *Val, int NbrCol,
+                                  const double Factor[2], gMatrix *Mat,
+                                  gVector *Vec, List_T *Vecs);
 void Dof_AssembleInMat(struct Dof *Equ_P, struct Dof *Dof_P, int NbrHar,
                        double *Val, gMatrix *Mat, gVector *Vec,
                        List_T *Vecs = 0);

@@ -171,6 +171,11 @@ void LinAlg_AddDoubleInVector(double d, gVector *V, int i);
 void LinAlg_AddComplexInVector(double d1, double d2, gVector *V, int i, int j);
 void LinAlg_AddScalarInMatrix(gScalar *S, gMatrix *M, int i, int j);
 void LinAlg_AddDoubleInMatrix(double d, gMatrix *M, int i, int j);
+// adds n entries to row i, given in the order of their columns (the same
+// column can be given several times); im is NULL for real values, and can only
+// be given with complex scalars (gSCALAR_SIZE == 2)
+void LinAlg_AddRowInMatrix(gMatrix *M, int i, int n, const int *cols,
+                           const double *re, const double *im);
 void LinAlg_AddComplexInMatrix(double d1, double d2, gMatrix *M, int i, int j,
                                int k, int l);
 void LinAlg_AddVectorVector(gVector *V1, gVector *V2, gVector *V3);

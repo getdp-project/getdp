@@ -10,6 +10,10 @@
 
 void Cal_InitSeparate(int k);
 int Cal_GetSeparateIndex(int TypeTimeDerivative);
+bool Cal_GetAssembleTermMatrix(void (*Function)(struct Dof *, struct Dof *,
+                                                double *),
+                               gMatrix **Mat, gVector **Vec, List_T **Vecs,
+                               double Factor[2]);
 void Cal_AssembleTerm_NoDt(struct Dof *Equ, struct Dof *Dof, double Val[]);
 void Cal_AssembleTerm_DtDof(struct Dof *Equ, struct Dof *Dof, double Val[]);
 void Cal_AssembleTerm_Dt(struct Dof *Equ, struct Dof *Dof, double Val[]);

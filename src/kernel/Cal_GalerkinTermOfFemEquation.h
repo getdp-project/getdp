@@ -19,6 +19,15 @@ void Cal_GalerkinTermOfFemEquation(struct Element *Element,
 
 void Cal_EndGalerkinTermOfFemEquation();
 
+// While the elementary matrix of a Galerkin term is computed by a numerical
+// quadrature: the values in the reference element (3 components each) of the
+// n given functions of the element at the current integration point, if the
+// point (u, v, w) of the element is that point and the values are known (see
+// the reference values in Cal_GalerkinTermOfFemEquation.cpp); NULL otherwise
+const double *Cal_GetReferenceValuesAtIntegrationPoint(
+  struct Element *Element, double u, double v, double w, int n,
+  void (**Functions)(), struct QuantityStorage *QuantityStorage);
+
 /* In F_MultiHar */
 void Cal_InitGalerkinTermOfFemEquation_MHBilinear(
   struct EquationTerm *EquationTerm_P);

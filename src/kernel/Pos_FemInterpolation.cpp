@@ -11,6 +11,7 @@
 #include "Get_Geometry.h"
 #include "Get_FunctionValue.h"
 #include "Cal_IntegralQuantity.h"
+#include "Cal_GalerkinTermOfFemEquation.h"
 #include "Pos_Search.h"
 #include "Message.h"
 
@@ -286,11 +287,22 @@ void Pos_FemInterpolation(struct Element *Element,
 
     if(Type_DefineQuantity == LOCALQUANTITY) {
       if(TheElement_P->Num != NO_ELEMENT) {
+        // at an integration point of a Galerkin term the values of the
+        // functions in the reference element can be known already
+        const double *Ref = Cal_GetReferenceValuesAtIntegrationPoint(
+          TheElement_P, u, v, w, Nbr_Dof, (void (**)())xFunctionBF.data(),
+          QuantityStorage_P);
         for(j = 0; j < Nbr_Dof; j++) {
-          xFunctionBF[j](
-            TheElement_P,
-            QuantityStorage_P->BasisFunction[j].NumEntityInElement + 1, u, v, w,
-            vBFu[j]);
+          if(Ref) {
+            vBFu[j][0] = Ref[3 * j];
+            vBFu[j][1] = Ref[3 * j + 1];
+            vBFu[j][2] = Ref[3 * j + 2];
+          }
+          else
+            xFunctionBF[j](
+              TheElement_P,
+              QuantityStorage_P->BasisFunction[j].NumEntityInElement + 1, u, v,
+              w, vBFu[j]);
           ((void (*)(struct Element *, double *,
                      double *))xChangeOfCoordinates)(TheElement_P, vBFu[j],
                                                      vBFxDof[j].Val);

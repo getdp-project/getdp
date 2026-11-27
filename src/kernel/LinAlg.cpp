@@ -104,6 +104,11 @@ void LinAlg_AddComplexInVector(double d1, double d2, gVector *V, int i, int j)
 }
 void LinAlg_AddScalarInMatrix(gScalar *S, gMatrix *M, int i, int j) { err; }
 void LinAlg_AddDoubleInMatrix(double d, gMatrix *M, int i, int j) { err; }
+void LinAlg_AddRowInMatrix(gMatrix *M, int i, int n, const int *cols,
+                           const double *re, const double *im)
+{
+  err;
+}
 void LinAlg_AddComplexInMatrix(double d1, double d2, gMatrix *M, int i, int j,
                                int k, int l)
 {

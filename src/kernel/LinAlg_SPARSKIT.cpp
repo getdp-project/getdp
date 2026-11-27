@@ -403,6 +403,16 @@ void LinAlg_AddDoubleInMatrix(double d, gMatrix *M, int i, int j)
   add_matrix_double(&M->M, i + 1, j + 1, d);
 }
 
+void LinAlg_AddRowInMatrix(gMatrix *M, int i, int n, const int *cols,
+                           const double *re, const double *im)
+{
+  if(im) {
+    Message::Error("Complex rows cannot be added to a real matrix");
+    return;
+  }
+  for(int k = 0; k < n; k++) LinAlg_AddDoubleInMatrix(re[k], M, i, cols[k]);
+}
+
 void LinAlg_AddComplexInMatrix(double d1, double d2, gMatrix *M, int i, int j,
                                int k, int l)
 {

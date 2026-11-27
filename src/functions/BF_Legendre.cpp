@@ -88,6 +88,7 @@
 #include <limits.h>
 #include <map>
 #include <string>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 #include <stdlib.h>
@@ -709,6 +710,7 @@ namespace {
     int derivative, type, position;
   };
   std::vector<Slot> slots;
+  std::unordered_set<void (*)()> usedFunctions;
 
   template <int I> void BF(BF_ARG)
   {
@@ -749,7 +751,10 @@ namespace {
       }
       slots.push_back({space, derivative, type, position});
     }
-    return (void (*)())getTable(std::make_index_sequence<MAX_FUNCTIONS>())[i];
+    void (*f)() =
+      (void (*)())getTable(std::make_index_sequence<MAX_FUNCTIONS>())[i];
+    usedFunctions.insert(f);
+    return f;
   }
 
 } // namespace
@@ -817,6 +822,38 @@ namespace {
 } // namespace
 
 #endif
+
+bool BF_IsLegendre(void (*Function)())
+{
+#if defined(HAVE_GMSH_HIERARCHICAL) && defined(HAVE_KERNEL)
+  return usedFunctions.count(Function) != 0;
+#else
+  return false;
+#endif
+}
+
+unsigned long long BF_GetLegendreOrientation(struct Element *Element)
+{
+#if defined(HAVE_GMSH_HIERARCHICAL) && defined(HAVE_KERNEL)
+  // the rank of each vertex in the order of the node keys (see _orient)
+  int shape = getShape(Element->Type);
+  if(shape < 0) return 0;
+  struct Geo_Element *ge = Element->GeoElement;
+  const int n = shapes[shape].numVertices;
+  struct Geo_NodeKey key[8];
+  for(int i = 0; i < n; i++) Geo_GetNodeKey(ge->NumNodes[i], key[i]);
+  unsigned long long orientation = 0;
+  for(int i = 0; i < n; i++) {
+    unsigned long long rank = 0;
+    for(int j = 0; j < n; j++)
+      if(Geo_IsNodeKeyBefore(key[j], key[i])) rank++;
+    orientation |= rank << (4 * i);
+  }
+  return orientation;
+#else
+  return 0;
+#endif
+}
 
 // the names of the spaces: the space and whether it is the derivative
 static const struct {

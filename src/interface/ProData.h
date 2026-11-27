@@ -794,7 +794,6 @@ struct FemLocalTermActive {
   int Type_FormEqu, Type_FormDof, Type_ValueDof;
   int Type_DefineQuantityDof;
   int SymmetricalMatrix;
-  int ScalarCoefficient; // the term is (constants) * Dof{}
 
   List_T *IntegrationCase_L, *JacobianCase_L;
   int CriterionIndex;
@@ -802,10 +801,10 @@ struct FemLocalTermActive {
   int NbrJacobianCase, Flag_ChangeCoord, Flag_InvJac;
   double CoefJac;
 
-  void (*xChangeOfCoordinatesEqu)();
-  void (*xChangeOfCoordinatesDof)();
+  void (*xChangeOfCoordinatesEqu)(struct Element *, double *, double *);
+  void (*xChangeOfCoordinatesDof)(struct Element *, double *, double *);
   double (*Cal_Productx)();
-  void (*Function_AssembleTerm)();
+  void (*Function_AssembleTerm)(struct Dof *, struct Dof *, double *);
 
   struct IntegralQuantityActive IntegralQuantityActive;
 

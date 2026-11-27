@@ -2563,6 +2563,98 @@ void Dof_AssembleInMat(struct Dof *Equ_P, struct Dof *Dof_P, int NbrHar,
 }
 
 /* ------------------------------------------------------------------------ */
+/*  D o f _ A s s e m b l e E l e m e n t a r y M a t r i x                 */
+/* ------------------------------------------------------------------------ */
+
+// Assembles an elementary matrix times Factor in Mat, as Dof_AssembleInMat
+// does for each of its entries: Val gives the NbrHar values of the entry of
+// the equation i and the Dof j at ((i * NbrCol) + j) * NbrHar (NbrHar is 1, or
+// 2 with complex scalars). The entries of the equations and Dofs that are
+// unknowns (directly or through links with real coefficients), i.e. nearly all
+// of them, are added one row at a time, with the columns sorted once for all
+// the rows: assembling them one by one costs a search in the row of the
+// matrix for each entry, which dominates for the high order elements. The
+// other entries (fixed Dofs, etc.) are assembled one by one.
+void Dof_AssembleElementaryMatrix(int NbrEqu, struct Dof **Equ, int NbrDof,
+                                  struct Dof **Dof, int NbrHar,
+                                  const double *Val, int NbrCol,
+                                  const double Factor[2], gMatrix *Mat,
+                                  gVector *Vec, List_T *Vecs)
+{
+  static std::vector<int> row, col, order, cols;
+  static std::vector<double> rowCoef, colCoef, re, im;
+
+  // follows the links with real coefficients
+  auto resolve = [](struct Dof *D, double &coef) {
+    coef = 1.;
+    while(D->Type == DOF_LINK) {
+      coef *= D->Case.Link.Coef;
+      D = D->Case.Link.Dof;
+    }
+    return D;
+  };
+
+  // the rows and the columns of the unknowns (-1 for the others)
+  row.resize(NbrEqu);
+  rowCoef.resize(NbrEqu);
+  for(int i = 0; i < NbrEqu; i++) {
+    struct Dof *D = resolve(Equ[i], rowCoef[i]);
+    row[i] = (D->Type == DOF_UNKNOWN || D->Type == DOF_FIXEDWITHASSOCIATE) ?
+               D->Case.Unknown.NumDof - 1 : -1;
+  }
+  col.resize(NbrDof);
+  colCoef.resize(NbrDof);
+  order.clear();
+  for(int j = 0; j < NbrDof; j++) {
+    struct Dof *D = resolve(Dof[j], colCoef[j]);
+    col[j] = (D->Type == DOF_UNKNOWN) ? D->Case.Unknown.NumDof - 1 : -1;
+    if(col[j] >= 0) order.push_back(j);
+  }
+  std::sort(order.begin(), order.end(),
+            [&](int a, int b) { return col[a] < col[b]; });
+  const int n = (int)order.size();
+  cols.resize(n);
+  for(int k = 0; k < n; k++) cols[k] = col[order[k]];
+  re.resize(n);
+  im.resize(n);
+
+  const bool complex = (NbrHar == 2);
+  const bool noMatrix = Current.DofData->Flag_RHS;
+  double tmp[2];
+  for(int i = 0; i < NbrEqu; i++) {
+    const double *v = Val + (std::size_t)i * NbrCol * NbrHar;
+    if(row[i] >= 0 && !noMatrix && n) {
+      for(int k = 0; k < n; k++) {
+        const int j = order[k];
+        const double c = rowCoef[i] * colCoef[j];
+        if(complex) {
+          const double a = v[2 * j], b = v[2 * j + 1];
+          re[k] = c * (a * Factor[0] - b * Factor[1]);
+          im[k] = c * (a * Factor[1] + b * Factor[0]);
+        }
+        else
+          re[k] = c * Factor[0] * v[j];
+      }
+      LinAlg_AddRowInMatrix(Mat, row[i], n, cols.data(), re.data(),
+                            complex ? im.data() : NULL);
+    }
+    // the other entries
+    if(row[i] >= 0 && n == NbrDof) continue;
+    for(int j = 0; j < NbrDof; j++) {
+      if(row[i] >= 0 && col[j] >= 0) continue;
+      if(complex) {
+        const double a = v[2 * j], b = v[2 * j + 1];
+        tmp[0] = a * Factor[0] - b * Factor[1];
+        tmp[1] = a * Factor[1] + b * Factor[0];
+      }
+      else
+        tmp[0] = Factor[0] * v[j];
+      Dof_AssembleInMat(Equ[i], Dof[j], NbrHar, tmp, Mat, Vec, Vecs);
+    }
+  }
+}
+
+/* ------------------------------------------------------------------------ */
 /*  D o f _ A s s e m b l e I n V e c                                       */
 /* ------------------------------------------------------------------------ */
 
